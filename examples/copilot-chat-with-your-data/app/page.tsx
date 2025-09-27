@@ -1,13 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { CopilotSidebar } from "@copilotkit/react-ui";
 import { Dashboard } from "../components/Dashboard";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { CustomAssistantMessage } from "../components/AssistantMessage";
 import { prompt } from "../lib/prompt";
 import { useCopilotReadable } from "@copilotkit/react-core";
+
+const CopilotSidebar = dynamic(
+  () => import("@copilotkit/react-ui").then((mod) => mod.CopilotSidebar),
+  { ssr: false },
+);
 
 const MIN_DASHBOARD_WIDTH_PX = 1024;
 const SIDEBAR_WIDTH_PX = 28 * 16; // Copilot sidebar expands to 28rem
@@ -53,7 +58,7 @@ export default function Home() {
         <Dashboard />
       </main>
       <Footer />
-      <div suppressHydrationWarning>
+      <div>
         <CopilotSidebar
           instructions={prompt}
           AssistantMessage={CustomAssistantMessage}

@@ -5,8 +5,14 @@ import { CustomAssistantMessage } from "@/components/chat/AssistantMessage";
 import { CustomResponseButton } from "./chat/ResponseButton";
 import ContactInfo from "./generative-ui/ContactInfo";
 import { useCopilotAction } from "@copilotkit/react-core";
+import { useEffect, useState } from "react";
 
 export function Chat({className}: {className?: string}) {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useCopilotAction({
     name: "contactInfo",
@@ -16,6 +22,11 @@ export function Chat({className}: {className?: string}) {
       return <ContactInfo onSubmit={(form) => respond?.(form)} />;
     },
   });
+
+  if (!isMounted) {
+    // Defer rendering until after hydration so client-only styling stays in sync
+    return null;
+  }
 
   return (
     <div>

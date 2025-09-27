@@ -51,9 +51,15 @@ Transform your data visualization experience with an AI-powered dashboard assist
      ```
    </details>
 
-3. Create a `.env` file in the project root and add your [OpenAI API Key](https://platform.openai.com/api-keys) and [Tavily API Key](https://tavily.com/api-key):
+3. Create a `.env` file in the project root and add your [Azure OpenAI](https://learn.microsoft.com/azure/ai-services/openai/overview) and [Tavily](https://tavily.com/api-key) credentials:
    ```
-   OPENAI_API_KEY=your_openai_api_key
+   AZURE_OPENAI_API_KEY=your_azure_openai_key
+   # Provide either the resource endpoint (preferred) or instance name.
+   AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com
+   # AZURE_OPENAI_INSTANCE=your_resource_instance
+   AZURE_OPENAI_DEPLOYMENT=your_deployment_name
+   # Optional: override the default API version (defaults to 2024-04-01-preview)
+   # AZURE_OPENAI_API_VERSION=2024-02-15-preview
    TAVILY_API_KEY=your_tavily_api_key
    ```
 

@@ -5,8 +5,40 @@ import {
 } from '@copilotkit/runtime';
 import { tavily } from '@tavily/core';
 import { NextRequest } from 'next/server';
+import OpenAI from 'openai';
 
-const serviceAdapter = new OpenAIAdapter({});
+const azureOpenAIApiKey = process.env.AZURE_OPENAI_API_KEY;
+const azureOpenAIInstance = process.env.AZURE_OPENAI_INSTANCE;
+const azureOpenAIDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+const azureOpenAIEndpoint =
+  process.env.AZURE_OPENAI_ENDPOINT ??
+  (azureOpenAIInstance ? `https://${azureOpenAIInstance}.openai.azure.com` : undefined);
+const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-04-01-preview';
+
+if (!azureOpenAIApiKey) {
+  throw new Error('Missing AZURE_OPENAI_API_KEY environment variable.');
+}
+
+if (!azureOpenAIEndpoint) {
+  throw new Error('Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_INSTANCE environment variable.');
+}
+
+if (!azureOpenAIDeployment) {
+  throw new Error('Missing AZURE_OPENAI_DEPLOYMENT environment variable.');
+}
+
+const normalizedAzureEndpoint = azureOpenAIEndpoint.replace(/\/+$/, '');
+
+const openai = new OpenAI({
+  apiKey: azureOpenAIApiKey,
+  baseURL: `${normalizedAzureEndpoint}/openai/deployments/${azureOpenAIDeployment}`,
+  defaultQuery: { 'api-version': azureOpenAIApiVersion },
+  defaultHeaders: { 'api-key': azureOpenAIApiKey },
+});
+const serviceAdapter = new OpenAIAdapter({
+  openai,
+  model: azureOpenAIDeployment,
+});
 const runtime = new CopilotRuntime({
   actions: () => {
     return [

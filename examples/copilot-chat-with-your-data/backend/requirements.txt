@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+copilotkit
+openai==1.58.1
+tavily-python==0.5.0
+python-multipart==0.0.19
+python-dotenv==1.0.1
+pydantic-ai[openai]

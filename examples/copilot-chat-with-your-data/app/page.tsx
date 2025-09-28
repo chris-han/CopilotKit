@@ -38,7 +38,7 @@ export default function Home() {
   useCopilotReadable({
     description: "Current time",
     value: new Date().toLocaleTimeString(),
-  })
+  });
 
   const layoutClasses = `min-h-screen bg-gray-50 flex flex-col transition-[padding] duration-300 ${
     shouldOffsetLayout ? "pr-[28rem]" : ""
@@ -73,3 +73,4 @@ export default function Home() {
     </div>
   );
 }
+

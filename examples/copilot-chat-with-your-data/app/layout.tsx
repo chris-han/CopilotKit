@@ -24,11 +24,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const runtimeUrl = process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL || "/api/copilotkit";
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <CopilotKit 
-          runtimeUrl="/api/copilotkit"
+        <CopilotKit
+          runtimeUrl={runtimeUrl}
           showDevConsole={false}
         >
           {children}

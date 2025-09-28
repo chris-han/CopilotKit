@@ -5,9 +5,10 @@ import {
   OpenAIAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
+import { HttpAgent } from "@ag-ui/client";
 import OpenAI from "openai";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 const {
   AZURE_OPENAI_API_KEY,
@@ -36,6 +37,9 @@ const serviceAdapter = new OpenAIAdapter({
     defaultHeaders: { "api-key": AZURE_OPENAI_API_KEY },
   }),
   model: AZURE_OPENAI_DEPLOYMENT,
+  // Azure OpenAI still expects the traditional `system` role. Keeping the
+  // original role ensures the model consistently honors the forced tool calls.
+  keepSystemRole: true,
 });
 
 export const POST = async (req: NextRequest) => {
@@ -271,14 +275,129 @@ Example PR data:
             console.log(uniqueTesterNames, "uniqueTesterNames");            
             return uniqueTesterNames;
           }
+        },
+        {
+          name: "fetchData_AverageReviewTimeByStatus",
+          description: `Aggregates PR review durations by status. The review duration is the time difference between createdAt and updatedAt for each PR. Returns an object with an overall summary and optional repository-level breakdown.
+
+Response format:
+{
+  "overall": [
+    {
+      "status": "approved",
+      "averageReviewTimeHours": 26.5,
+      "averageReviewTimeDays": 1.1,
+      "prCount": 4
+    }
+  ],
+  "byRepository": [
+    {
+      "repository": "frontend",
+      "status": "approved",
+      "averageReviewTimeHours": 24.2,
+      "averageReviewTimeDays": 1.0,
+      "prCount": 2
+    }
+  ]
+}
+
+Use the "overall" array to render quick comparisons by status. Include "byRepository" when deeper analysis is needed.`,
+          parameters: [],
+          handler: async () => {
+            const millisecondsToHours = (ms: number) => ms / (1000 * 60 * 60);
+            const hoursToDays = (hours: number) => hours / 24;
+
+            const prByStatus = prData.reduce<Record<string, typeof prData>>((acc, pr) => {
+              const statusKey = pr.status?.toLowerCase() ?? "unknown";
+              if (!acc[statusKey]) {
+                acc[statusKey] = [];
+              }
+              acc[statusKey].push(pr);
+              return acc;
+            }, {});
+
+            const computeAverage = (prs: typeof prData) => {
+              if (!prs.length) {
+                return {
+                  averageReviewTimeHours: 0,
+                  averageReviewTimeDays: 0,
+                };
+              }
+
+              const totalHours = prs.reduce((sum, pr) => {
+                const created = new Date(pr.createdAt).getTime();
+                const updated = new Date(pr.updatedAt).getTime();
+                const durationMs = Math.max(updated - created, 0);
+                return sum + millisecondsToHours(durationMs);
+              }, 0);
+
+              const averageHours = totalHours / prs.length;
+
+              return {
+                averageReviewTimeHours: Number(averageHours.toFixed(2)),
+                averageReviewTimeDays: Number(hoursToDays(averageHours).toFixed(2)),
+              };
+            };
+
+            const overall = Object.entries(prByStatus).map(([status, prs]) => {
+              const averages = computeAverage(prs);
+              return {
+                status,
+                prCount: prs.length,
+                ...averages,
+              };
+            });
+
+            overall.sort((a, b) => a.status.localeCompare(b.status));
+
+            const byRepository: Array<{
+              repository: string;
+              status: string;
+              prCount: number;
+              averageReviewTimeHours: number;
+              averageReviewTimeDays: number;
+            }> = [];
+
+            for (const [status, prs] of Object.entries(prByStatus)) {
+              const groupedByRepo = prs.reduce<Record<string, typeof prData>>((acc, pr) => {
+                const repoKey = pr.repository ?? "unknown";
+                if (!acc[repoKey]) {
+                  acc[repoKey] = [];
+                }
+                acc[repoKey].push(pr);
+                return acc;
+              }, {});
+
+              for (const [repository, repoPrs] of Object.entries(groupedByRepo)) {
+                const averages = computeAverage(repoPrs);
+                byRepository.push({
+                  repository,
+                  status,
+                  prCount: repoPrs.length,
+                  ...averages,
+                });
+              }
+            }
+
+            byRepository.sort((a, b) => {
+              const statusCompare = a.status.localeCompare(b.status);
+              return statusCompare === 0 ? a.repository.localeCompare(b.repository) : statusCompare;
+            });
+
+            return {
+              generatedAt: new Date().toISOString(),
+              overall,
+              byRepository,
+            };
+          },
         }
       ] as any
     },
-    remoteEndpoints : [
-      {
-        url : process.env.REMOTE_ACTION_URL || "http://localhost:8006/copilotkit",
-      }
-    ]
+    agents: {
+      testing_agent: new HttpAgent({
+        url: process.env.REMOTE_AGENT_URL || "http://localhost:8006/",
+      }),
+    },
   });
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
@@ -286,36 +405,5 @@ Example PR data:
     endpoint: "/api/copilotkit",
   });
 
-  try {
-    return await handleRequest(req);
-  } catch (error) {
-    console.error("[CopilotRuntime] Request handling failed", error);
-    const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
-    const message = (error as any)?.message ?? "Copilot runtime request failed";
-
-    if (status === 429) {
-      return NextResponse.json(
-        {
-          errors: [
-            {
-              message:
-                "Azure OpenAI rate limit hit. Please wait a bit and retry, or increase the deployment quota.",
-            },
-          ],
-        },
-        { status: 200 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        errors: [
-          {
-            message,
-          },
-        ],
-      },
-      { status: 500 }
-    );
-  }
+  return handleRequest(req);
 };

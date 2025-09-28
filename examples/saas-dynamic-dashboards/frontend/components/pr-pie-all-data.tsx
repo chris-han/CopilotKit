@@ -48,8 +48,8 @@ export function PRPieData({ args }: PieDataProps) {
                     >
                         {chartData.map((entry, index: number) => (
                             <Cell
-                                key={`cell-${index}`}
-                                fill={chartData[index].color}
+                                key={entry.name || `cell-${index}`}
+                                fill={entry.color}
                             />
                         ))}
                     </Pie>
@@ -62,8 +62,8 @@ export function PRPieData({ args }: PieDataProps) {
                         key={rowIdx}
                         className="flex flex-row justify-center items-center gap-x-6 gap-y-2 w-full"
                     >
-                        {row.map((entry: PieDataItem) => (
-                            <div key={entry.name} className="flex items-center gap-1 min-w-[110px]">
+                        {row.map((entry: PieDataItem, colIdx) => (
+                            <div key={`${entry.name}-${rowIdx}-${colIdx}`} className="flex items-center gap-1 min-w-[110px]">
                                 <span style={{ backgroundColor: entry.color }}
                                     className={`inline-block w-4 h-4 rounded-full`}
                                 />

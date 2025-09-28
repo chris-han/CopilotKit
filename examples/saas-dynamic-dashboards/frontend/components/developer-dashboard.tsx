@@ -104,12 +104,7 @@ export function DeveloperDashboard() {
       }
     ],
     render: ({ args }: any) => {
-      useEffect(() => {
-        console.log(args, "args")
-      }, [args])
       return <PRPieData args={args} />
-
-
     }
   })
 
@@ -387,5 +382,4 @@ export function DeveloperDashboard() {
     </div>
   )
 }
-
 

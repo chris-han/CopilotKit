@@ -1,5 +1,8 @@
 # Generated from pyproject.toml (requires Python >=3.12,<3.13)
 copilotkit
+pydantic-ai-slim[ag-ui]>=0.0.16
+openai>=1.58.1
+python-dotenv>=1.0.1
 langchain>=0.1.0
 langchain-core>=0.1.5
 langchain-community>=0.0.1

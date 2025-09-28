@@ -21,12 +21,76 @@ import { devSuggestions, generalSuggestions, testerPersonaSuggestions } from "@/
 import { useSharedContext } from "@/lib/shared-context"
 import { useCopilotChatSuggestions } from "@copilotkit/react-ui"
 import { useSharedTestsContext } from "@/lib/shared-tests-context"
-import { useEffect } from "react"
+import { useEffect, useMemo, useRef } from "react"
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { prData } = useSharedContext()
   const { testsData } = useSharedTestsContext()
   const pathname = usePathname()
-  const { setMessages } = useCopilotChat()
+  const { reset } = useCopilotChat()
+  const lastPathnameRef = useRef(pathname)
+  const lastInstructionsRef = useRef<string | null>(null)
+  const lastDataSignatureRef = useRef<{ pr: string; tests: string }>({ pr: "", tests: "" })
+
+  const prDataSignature = useMemo(() => JSON.stringify(prData ?? []), [prData])
+  const testsDataSignature = useMemo(() => JSON.stringify(testsData ?? []), [testsData])
+
+  useCopilotReadable(
+    {
+      description: "PR_DATASET",
+      value: prData,
+    },
+    [prData]
+  )
+
+  useCopilotReadable(
+    {
+      description: "TEST_SUITE_DATASET",
+      value: testsData,
+    },
+    [testsData]
+  )
+
+  const suggestionInstructions = useMemo(() => {
+    const baseInstructions =
+      pathname === "/tester"
+        ? testerPersonaSuggestions
+        : pathname === "/developer" || pathname === "/"
+          ? devSuggestions
+          : generalSuggestions
+
+    const dataHint =
+      pathname === "/tester"
+        ? "Use the Copilot readable named \"TEST_SUITE_DATASET\" for the latest generated or selected QA test suites."
+        : "Use the Copilot readable named \"PR_DATASET\" for the current pull request portfolio."
+
+    return `${baseInstructions}\n\nCURRENT_PATHNAME: ${pathname}\n${dataHint}`
+  }, [pathname])
+
+  useEffect(() => {
+    const instructionsChanged = lastInstructionsRef.current !== suggestionInstructions
+    const pathnameChanged = lastPathnameRef.current !== pathname
+    const prChanged = lastDataSignatureRef.current.pr !== prDataSignature
+    const testsChanged = lastDataSignatureRef.current.tests !== testsDataSignature
+    const dataChanged = prChanged || testsChanged
+
+    if (pathnameChanged) {
+      reset()
+    }
+    if (pathnameChanged || instructionsChanged || dataChanged) {
+      if (pathnameChanged) {
+        lastPathnameRef.current = pathname
+      }
+      if (instructionsChanged) {
+        lastInstructionsRef.current = suggestionInstructions
+      }
+      if (prChanged) {
+        lastDataSignatureRef.current.pr = prDataSignature
+      }
+      if (testsChanged) {
+        lastDataSignatureRef.current.tests = testsDataSignature
+      }
+    }
+  }, [pathname, suggestionInstructions, prDataSignature, testsDataSignature, reset])
   const routes = [
     {
       title: "Developer",
@@ -54,11 +118,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     },
   ]
 
-  useCopilotChatSuggestions({
-    instructions: devSuggestions,
-    maxSuggestions: 3,
-  },
-    [pathname]
+  useCopilotChatSuggestions(
+    {
+      instructions: suggestionInstructions,
+      maxSuggestions: pathname === "/tester" ? 4 : 3,
+      minSuggestions: 3,
+    },
+    [pathname, suggestionInstructions]
   )
 
   useCopilotReadable({
@@ -80,7 +146,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             {routes.map((route) => (
               <SidebarMenuItem key={route.href} className="p-3 px-6" >
                 <SidebarMenuButton asChild isActive={route.isActive}>
-                  <Link onClick={() => setMessages([])} href={route.href}>
+                  <Link href={route.href}>
                     <route.icon className="mr-2 h-5 w-5" />
                     <span>{route.title}</span>
                   </Link>

@@ -64,6 +64,7 @@ export function ChatGrid({ status, state, testSuite, setTestSuite, testCaseStatu
                                 disabled={disabled}
                                 className="rounded-md border-gray-300 dark:border-gray-600"
                                 onCheckedChange={handleSelectAll}
+                                aria-label="Select all test suites"
                             />
                         </TableHead>
                         <TableHead>Test Suite</TableHead>
@@ -87,6 +88,7 @@ export function ChatGrid({ status, state, testSuite, setTestSuite, testCaseStatu
                                             event?.stopPropagation();
                                         }}
                                         onClick={(e) => e.stopPropagation()}
+                                        aria-label={`Select test suite ${script?.title || index + 1}`}
                                     />
                                 </TableCell>
                                 <TableCell>{script?.title}</TableCell>

@@ -39,6 +39,7 @@ export function DataTable({ columns, data }: DataTableProps) {
                 onCheckedChange={(checked) => {
                   // Handle select all logic here
                 }}
+                aria-label="Select all rows"
               />
             </TableHead>
             <TableHead>Test Id</TableHead>
@@ -70,6 +71,7 @@ export function DataTable({ columns, data }: DataTableProps) {
                         event?.stopPropagation(); // Prevent row click when clicking checkbox
                       }}
                       onClick={(e) => e.stopPropagation()} // Prevent row click when clicking checkbox
+                      aria-label={`Select row for test ${row.testId || rowIndex + 1}`}
                     />
                   </TableCell>
                   {columns.map((column) => (

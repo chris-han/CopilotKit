@@ -1,13 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CopilotChat } from "@copilotkit/react-ui";
 import "@copilotkit/react-ui/styles.css";
 import { useSharedContext } from "@/lib/shared-context";
 import { instructions } from "@/lib/prompts";
+import { usePathname } from "next/navigation";
 export function ChatInterface() {
   const { prData } = useSharedContext();
   const [isMounted, setIsMounted] = useState(false);
+  const pathname = usePathname();
+
+  const chatInstructions = useMemo(
+    () => instructions.replace("{prData}", JSON.stringify(prData)),
+    [prData]
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -28,8 +35,9 @@ export function ChatInterface() {
         <h2 className="font-semibold">EnterpriseX Assistant</h2>
       </div>
       <CopilotChat
+        key={pathname}
         className="flex-1 min-h-0 py-4"
-        instructions={instructions.replace("{prData}", JSON.stringify(prData))}
+        instructions={chatInstructions}
       />
     </div>
   );

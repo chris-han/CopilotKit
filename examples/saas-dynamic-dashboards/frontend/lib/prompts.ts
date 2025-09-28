@@ -111,4 +111,16 @@ EXAMPLES:
 Remember: These suggestions should be extremely straightforward prompts that encourage testers to focus on specific PRs that need testing attention.`
 
 
-export const generalSuggestions = `Suggest with relevant suggestions based on the pathname state which is accessible in copilotReadables. If pathname points to tester, suggest testing related suggestions like Generate test cases for PR01 authentication flow. Generate test cases for PR02 Product flow, etc. If pathname points to dev, suggest dev related suggestions like Show PR status distribution across repositories. Show PRs created over last month in weekly trend, etc. Strictly follow the pathname state and generate suggestions based on examples provided. `
+export const generalSuggestions = `You are generating contextual suggestion buttons that must adapt to the active persona. The CURRENT_USER_ROLE Copilot readable tells you which persona is active.
+
+Guidance by role:
+- If CURRENT_USER_ROLE === "tester": follow the tester guidance—focus on direct testing actions for specific PR IDs (e.g., "Test PR01 login flow").
+- If CURRENT_USER_ROLE === "developer": follow the developer guidance—produce analytics-focused prompts that yield charts (e.g., "Show PR status distribution").
+- If CURRENT_USER_ROLE is "lab-admin" or "executive": craft higher-level operational or strategic insights (e.g., "Compare lab throughput by team" or "Visualize release readiness this quarter").
+- For any other value, provide concise PR analytics that help orient the user.
+
+General rules:
+- Keep suggestions short and action oriented.
+- Prefer prompts that will generate visualizations over plain lists.
+- Use PR IDs, authors, repositories, or time frames when they sharpen the analysis.
+- Never fallback to generic instructions—always tailor to CURRENT_USER_ROLE.`

@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import type { ReactNode } from "react"
 
 import { usePathname } from "next/navigation"
 import {
@@ -21,15 +21,66 @@ import { devSuggestions, generalSuggestions, testerPersonaSuggestions } from "@/
 import { useSharedContext } from "@/lib/shared-context"
 import { useCopilotChatSuggestions } from "@copilotkit/react-ui"
 import { useSharedTestsContext } from "@/lib/shared-tests-context"
-import { useEffect, useMemo, useRef } from "react"
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+import { useEffect, useMemo, useRef, useState } from "react"
+
+type UserRole = "developer" | "tester" | "lab-admin" | "executive" | "general"
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  developer: "Developer",
+  tester: "Tester",
+  "lab-admin": "Lab Admin",
+  executive: "Executive",
+  general: "General",
+}
+
+const deriveRoleFromTitle = (title: string): UserRole | null => {
+  const normalized = title.toLowerCase()
+
+  if (normalized.includes("tester")) return "tester"
+  if (normalized.includes("developer")) return "developer"
+  if (normalized.includes("lab admin") || normalized.includes("lab-admin")) return "lab-admin"
+  if (normalized.includes("executive")) return "executive"
+
+  return null
+}
+
+export function DashboardShell({ children }: { children: ReactNode }) {
   const { prData } = useSharedContext()
   const { testsData } = useSharedTestsContext()
   const pathname = usePathname()
+  const [userRole, setUserRole] = useState<UserRole>(() => {
+    if (typeof document !== "undefined") {
+      return deriveRoleFromTitle(document.title) ?? "general"
+    }
+    return "general"
+  })
   const { reset } = useCopilotChat()
-  const lastPathnameRef = useRef(pathname)
+  const lastRoleRef = useRef<UserRole>(userRole)
   const lastInstructionsRef = useRef<string | null>(null)
   const lastDataSignatureRef = useRef<{ pr: string; tests: string }>({ pr: "", tests: "" })
+
+  useEffect(() => {
+    if (typeof document === "undefined") return
+
+    const updateRoleFromTitle = () => {
+      const nextRole = deriveRoleFromTitle(document.title) ?? "general"
+      setUserRole((current) => (current === nextRole ? current : nextRole))
+    }
+
+    updateRoleFromTitle()
+
+    const titleElement = document.head?.querySelector("title")
+    if (!titleElement) {
+      return
+    }
+
+    const observer = new MutationObserver(updateRoleFromTitle)
+    observer.observe(titleElement, { subtree: true, characterData: true, childList: true })
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
 
   const prDataSignature = useMemo(() => JSON.stringify(prData ?? []), [prData])
   const testsDataSignature = useMemo(() => JSON.stringify(testsData ?? []), [testsData])
@@ -50,35 +101,51 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     [testsData]
   )
 
+  useCopilotReadable(
+    {
+      description: "CURRENT_USER_ROLE",
+      value: userRole,
+    },
+    [userRole]
+  )
+
+  const prCount = prData?.length ?? 0
+  const testsCount = testsData?.length ?? 0
+  const displayedRole = ROLE_LABELS[userRole]
+
   const suggestionInstructions = useMemo(() => {
     const baseInstructions =
-      pathname === "/tester"
+      userRole === "tester"
         ? testerPersonaSuggestions
-        : pathname === "/developer" || pathname === "/"
+        : userRole === "developer"
           ? devSuggestions
           : generalSuggestions
 
     const dataHint =
-      pathname === "/tester"
+      userRole === "tester"
         ? "Use the Copilot readable named \"TEST_SUITE_DATASET\" for the latest generated or selected QA test suites."
         : "Use the Copilot readable named \"PR_DATASET\" for the current pull request portfolio."
 
-    return `${baseInstructions}\n\nCURRENT_PATHNAME: ${pathname}\n${dataHint}`
-  }, [pathname])
+    const datasetSummary =
+      userRole === "tester"
+        ? `There are ${testsCount} QA test suites currently in context.`
+        : `There are ${prCount} pull request records currently in context.`
+    return `${baseInstructions}\n\nCURRENT_USER_ROLE: ${userRole}\n${dataHint}\n${datasetSummary}`
+  }, [userRole, prCount, testsCount])
 
   useEffect(() => {
     const instructionsChanged = lastInstructionsRef.current !== suggestionInstructions
-    const pathnameChanged = lastPathnameRef.current !== pathname
+    const roleChanged = lastRoleRef.current !== userRole
     const prChanged = lastDataSignatureRef.current.pr !== prDataSignature
     const testsChanged = lastDataSignatureRef.current.tests !== testsDataSignature
     const dataChanged = prChanged || testsChanged
 
-    if (pathnameChanged) {
+    if (roleChanged) {
       reset()
     }
-    if (pathnameChanged || instructionsChanged || dataChanged) {
-      if (pathnameChanged) {
-        lastPathnameRef.current = pathname
+    if (roleChanged || instructionsChanged || dataChanged) {
+      if (roleChanged) {
+        lastRoleRef.current = userRole
       }
       if (instructionsChanged) {
         lastInstructionsRef.current = suggestionInstructions
@@ -90,7 +157,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         lastDataSignatureRef.current.tests = testsDataSignature
       }
     }
-  }, [pathname, suggestionInstructions, prDataSignature, testsDataSignature, reset])
+  }, [userRole, suggestionInstructions, prDataSignature, testsDataSignature, reset])
   const routes = [
     {
       title: "Developer",
@@ -121,16 +188,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   useCopilotChatSuggestions(
     {
       instructions: suggestionInstructions,
-      maxSuggestions: pathname === "/tester" ? 4 : 3,
+      maxSuggestions: userRole === "tester" ? 4 : 3,
       minSuggestions: 3,
     },
-    [pathname, suggestionInstructions]
+    [userRole, suggestionInstructions]
   )
-
-  useCopilotReadable({
-    description: "Current pathname",
-    value: pathname,
-  })
 
   return (
     <div className="flex h-full flex-1">
@@ -179,6 +241,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 items-center gap-4 border-b bg-background px-6">
           <div className="ml-auto flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">Role: {displayedRole}</span>
             {/* <ModeToggle /> */}
             <Avatar>
               <AvatarImage src="/abstract-geometric-shapes.png" />

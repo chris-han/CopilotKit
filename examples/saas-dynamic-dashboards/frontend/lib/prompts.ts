@@ -111,7 +111,7 @@ EXAMPLES:
 Remember: These suggestions should be extremely straightforward prompts that encourage testers to focus on specific PRs that need testing attention.`
 
 
-export const generalSuggestions = `You are generating contextual suggestion buttons that must adapt to the active persona. The CURRENT_USER_ROLE Copilot readable tells you which persona is active.
+export const generalSuggestions = `You are generating contextual suggestion buttons that must adapt to the active persona. The CURRENT_USER_ROLE variable tells you which persona is active.
 
 Guidance by role:
 - If CURRENT_USER_ROLE === "tester": follow the tester guidance—focus on direct testing actions for specific PR IDs (e.g., "Test PR01 login flow").

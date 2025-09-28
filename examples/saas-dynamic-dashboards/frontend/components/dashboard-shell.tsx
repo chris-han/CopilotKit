@@ -33,6 +33,17 @@ const ROLE_LABELS: Record<UserRole, string> = {
   general: "General",
 }
 
+const deriveRoleFromPathname = (pathname: string | null | undefined): UserRole | null => {
+  if (!pathname) return null
+
+  if (pathname === "/" || pathname.startsWith("/developer")) return "developer"
+  if (pathname.startsWith("/tester")) return "tester"
+  if (pathname.startsWith("/lab-admin")) return "lab-admin"
+  if (pathname.startsWith("/executive")) return "executive"
+
+  return null
+}
+
 const deriveRoleFromTitle = (title: string): UserRole | null => {
   const normalized = title.toLowerCase()
 
@@ -45,10 +56,14 @@ const deriveRoleFromTitle = (title: string): UserRole | null => {
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { prData } = useSharedContext()
+  const { prData, setSuggestionInstructions } = useSharedContext()
   const { testsData } = useSharedTestsContext()
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<UserRole>(() => {
+    const roleFromPath = deriveRoleFromPathname(pathname)
+    if (roleFromPath) {
+      return roleFromPath
+    }
     if (typeof document !== "undefined") {
       return deriveRoleFromTitle(document.title) ?? "general"
     }
@@ -60,6 +75,12 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const lastDataSignatureRef = useRef<{ pr: string; tests: string }>({ pr: "", tests: "" })
 
   useEffect(() => {
+    const roleFromPath = deriveRoleFromPathname(pathname)
+    if (roleFromPath) {
+      setUserRole((current) => (current === roleFromPath ? current : roleFromPath))
+      return
+    }
+
     if (typeof document === "undefined") return
 
     const updateRoleFromTitle = () => {
@@ -69,18 +90,18 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
     updateRoleFromTitle()
 
-    const titleElement = document.head?.querySelector("title")
-    if (!titleElement) {
+    const head = document.head
+    if (!head) {
       return
     }
 
     const observer = new MutationObserver(updateRoleFromTitle)
-    observer.observe(titleElement, { subtree: true, characterData: true, childList: true })
+    observer.observe(head, { subtree: true, characterData: true, childList: true })
 
     return () => {
       observer.disconnect()
     }
-  }, [])
+  }, [pathname])
 
   const prDataSignature = useMemo(() => JSON.stringify(prData ?? []), [prData])
   const testsDataSignature = useMemo(() => JSON.stringify(testsData ?? []), [testsData])
@@ -130,8 +151,23 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       userRole === "tester"
         ? `There are ${testsCount} QA test suites currently in context.`
         : `There are ${prCount} pull request records currently in context.`
-    return `${baseInstructions}\n\nCURRENT_USER_ROLE: ${userRole}\n${dataHint}\n${datasetSummary}`
-  }, [userRole, prCount, testsCount])
+        
+    const finalPrompt = `${baseInstructions}\n\nCURRENT_USER_ROLE: ${userRole}\n${dataHint}\n${datasetSummary}`
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[DashboardShell] Suggestion prompt payload", {
+        userRole,
+        finalPrompt,
+        pathname,
+      })
+    }
+
+    return finalPrompt
+  }, [userRole, prCount, testsCount, pathname])
+
+  useEffect(() => {
+    setSuggestionInstructions(suggestionInstructions)
+  }, [suggestionInstructions, setSuggestionInstructions])
 
   useEffect(() => {
     const instructionsChanged = lastInstructionsRef.current !== suggestionInstructions

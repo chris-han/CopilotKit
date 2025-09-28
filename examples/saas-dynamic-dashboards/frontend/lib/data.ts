@@ -500,7 +500,7 @@ const prData = [
 
 export { prData };
 
-console.log(prData);
+// console.log(prData);
 
 
 

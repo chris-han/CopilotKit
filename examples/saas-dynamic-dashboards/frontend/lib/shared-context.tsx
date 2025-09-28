@@ -5,15 +5,18 @@ import { PRData } from '@/app/Interfaces/interface'
 type SharedContextType = {
     prData: PRData[]
     setPrData: (data: PRData[]) => void
+    suggestionInstructions: string
+    setSuggestionInstructions: (value: string) => void
 }
 
 const SharedContext = createContext<SharedContextType | undefined>(undefined)
 
 export function SharedProvider({ children }: { children: ReactNode }) {
     const [prData, setPrData] = useState<PRData[]>([])
+    const [suggestionInstructions, setSuggestionInstructions] = useState<string>("")
 
     return (
-        <SharedContext.Provider value={{ prData, setPrData }}>
+        <SharedContext.Provider value={{ prData, setPrData, suggestionInstructions, setSuggestionInstructions }}>
             {children}
         </SharedContext.Provider>
     )

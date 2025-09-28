@@ -7,7 +7,8 @@ This document describes the end-to-end architecture of the **Copilot Chat with Y
 - **CopilotKit bridge (`app/layout.tsx`)**: Wraps the application tree in the `CopilotKit` provider and points it at `process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL` (default `http://localhost:8004/copilotkit`) so all children share a single chat session with the FastAPI runtime.
 - **Chat experience (`app/page.tsx`, `components/AssistantMessage.tsx`)**: Dynamically imports the `CopilotSidebar`, customises message rendering, and manages responsive layout offsets when the sidebar opens.
 - **Structured data + generative UI (`components/Dashboard.tsx`)**: Exposes dashboard metrics through `useCopilotReadable` and registers a render-only `useCopilotAction` that drives the `SearchResults` component for action status updates.
-- **FastAPI Copilot runtime (`backend/main.py`)**: Serves the CopilotKit remote endpoint on `/copilotkit`, wires Tavily search and a PydanticAI dashboard analysis agent, and brokers all Azure OpenAI requests.
+- **FastAPI Copilot runtime (`backend/main.py`)**: Serves the CopilotKit remote endpoint on `/copilotkit`, normalises allowed origins for CORS enforcement, wires Tavily search alongside a PydanticAI dashboard analysis agent, and brokers all Azure OpenAI requests.
+- **Runtime GraphQL models (`backend/copilotkit_interfaces.py`)**: Defines dataclasses mirroring CopilotKit's GraphQL schema so responses are serialised consistently across the runtime.
 - **External AI services**: Azure OpenAI handles LLM completions for both the Copilot runtime and the PydanticAI agent; Tavily Search API provides optional real-time search augmentation when the runtime triggers the action.
 
 ## Runtime Components
@@ -18,11 +19,80 @@ This document describes the end-to-end architecture of the **Copilot Chat with Y
 - **Runtime Actions**: `searchInternet` executes Tavily queries server-side, while `analyzeDashboard` runs a PydanticAI agent over the dashboard dataset to produce markdown insights.
 - **External Services**: Azure OpenAI performs completion streaming and powers the PydanticAI agent; Tavily responds to internet search requests initiated by the runtime action.
 
+## Class Diagrams
+
+### Frontend relationship diagram
+```mermaid
+classDiagram
+    class CopilotKitProvider {
+        file: app/layout.tsx
+        props: runtimeUrl
+    }
+    class CopilotSidebar {
+        library: @copilotkit/react-ui
+        dynamic import
+    }
+    class CustomAssistantMessage {
+        file: components/AssistantMessage.tsx
+    }
+    class Dashboard {
+        file: components/Dashboard.tsx
+        hook: useCopilotReadable
+    }
+    class SearchResults {
+        file: components/generative-ui/SearchResults.tsx
+    }
+    class DashboardData {
+        source: data/dashboard-data.ts
+    }
+
+    CopilotKitProvider --> CopilotSidebar : shares context
+    CopilotSidebar --> CustomAssistantMessage : render delegate
+    CopilotSidebar --> SearchResults : action status props
+    Dashboard --> CopilotKitProvider : readable registration
+    Dashboard --> DashboardData : derives metrics
+    Dashboard --> SearchResults : layout composition
+```
+
+### Backend relationship diagram
+```mermaid
+classDiagram
+    class FastAPIApp {
+        module: backend/main.py
+    }
+    class CopilotEndpoints {
+        routes: /copilotkit,*
+        actions: searchInternet, analyzeDashboard
+    }
+    class CopilotResponseModel {
+        file: backend/copilotkit_interfaces.py
+    }
+    class TextMessageOutputModel {
+        dataclass
+    }
+    class SuccessMessageStatusModel {
+        dataclass
+    }
+    class TavilyClient {
+        sdk: tavily.Client
+    }
+    class PydanticAIAgent {
+        model: OpenAIModel
+    }
+
+    FastAPIApp --> CopilotEndpoints : registers
+    CopilotEndpoints --> CopilotResponseModel : serialises
+    CopilotResponseModel --> TextMessageOutputModel : contains
+    TextMessageOutputModel --> SuccessMessageStatusModel : uses
+    CopilotEndpoints --> TavilyClient : invokes action
+    CopilotEndpoints --> PydanticAIAgent : runs analysis
+```
+
 ## Data Flow
 1. When `app/page.tsx` mounts, the dashboard loads static datasets from `data/dashboard-data.ts` and derives summary metrics.
 2. `useCopilotReadable` serialises the datasets and metrics so CopilotKit can inject them into prompts and tool calls.
 3. The user sends a message from the `CopilotSidebar`. The provider packages the message, conversation history, and readable context and posts it to the FastAPI runtime (`/copilotkit`).
-4. FastAPI receives the CopilotKit request, assembles the prompt, merges readable data, and streams the request to Azure OpenAI through the configured PydanticAI agent.
+4. FastAPI receives the CopilotKit request, validates the origin against the normalised allow-list, assembles the prompt, merges readable data, and streams the request to Azure OpenAI through the configured PydanticAI agent.
 5. If the agent invokes `searchInternet`, the Tavily client runs server-side and its markdown output is supplied back to the LLM. Otherwise, the agent answers directly using the dashboard dataset.
 6. The CopilotKit runtime streams the response back to the browser, including any action results.
 7. The `CopilotSidebar` renders streamed tokens as assistant messages while `SearchResults` visualises action status updates.
@@ -99,6 +169,6 @@ sequenceDiagram
 
 ## Cross-Cutting Concerns
 - **Configuration**: The frontend targets the FastAPI runtime via `NEXT_PUBLIC_COPILOT_RUNTIME_URL` (default `http://localhost:8004/copilotkit`). The backend requires Azure OpenAI credentials and optionally `TAVILY_API_KEY`; it validates these at startup and exposes `/health` for monitoring.
-- **Security**: Secrets and Tavily credentials stay entirely within the FastAPI runtime. The frontend communicates over HTTPS and never handles sensitive keys.
+- **Security**: Secrets and Tavily credentials stay entirely within the FastAPI runtime. Requests must originate from the normalised `FRONTEND_ORIGINS` allow-list before CORS headers are set, and the frontend communicates over HTTPS without handling sensitive keys.
 - **Local development**: Run `bun run dev` for Next.js (port 3000) and `uvicorn main:app --port 8004 --reload` for the FastAPI runtime. Both share the same Azure OpenAI project via environment variables.
-- **Extensibility**: Extend `backend/dashboard_data.py` to enrich the PydanticAI agent context and register additional actions within the FastAPI runtime without altering the frontend chat interface.
+- **Extensibility**: Extend `backend/dashboard_data.py` to enrich the PydanticAI agent context, register additional actions within the FastAPI runtime, or augment the shared dataclasses in `backend/copilotkit_interfaces.py` without altering the frontend chat interface.

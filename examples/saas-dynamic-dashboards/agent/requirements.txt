@@ -1,0 +1,11 @@
+# Generated from pyproject.toml (requires Python >=3.12,<3.13)
+copilotkit
+langchain>=0.1.0
+langchain-core>=0.1.5
+langchain-community>=0.0.1
+langchain-experimental>=0.0.11
+langchain-openai>=0.0.1
+langgraph>=0.3.25,<0.4.0
+dotenv>=0.9.9,<0.10.0
+uvicorn>=0.34.0,<0.35.0
+fastapi==0.115.12

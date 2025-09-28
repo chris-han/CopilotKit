@@ -13,6 +13,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-04-01-preview")
+
+if not AZURE_OPENAI_API_KEY:
+    raise ValueError("Missing AZURE_OPENAI_API_KEY environment variable")
+if not AZURE_OPENAI_ENDPOINT:
+    raise ValueError("Missing AZURE_OPENAI_ENDPOINT environment variable")
+if not AZURE_OPENAI_DEPLOYMENT:
+    raise ValueError("Missing AZURE_OPENAI_DEPLOYMENT environment variable")
+
+AZURE_OPENAI_ENDPOINT = AZURE_OPENAI_ENDPOINT.rstrip("/")
+
 # LangGraph imports
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END, START
@@ -24,7 +38,7 @@ from copilotkit import CopilotKitState
 from copilotkit.langgraph import copilotkit_customize_config, copilotkit_emit_state, copilotkit_interrupt
 
 # LLM imports
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage
 from copilotkit.langgraph import (copilotkit_exit)
 
@@ -179,13 +193,13 @@ async def chat_node(state: Dict[str, Any], config: RunnableConfig):
     When generating or reasoning about test scripts, always use this schema and ensure your output is relevant to the PR and test context provided by the user.
     """
 
-    # Define the model
-    
-    try:
-        model = ChatOpenAI(model="gpt-4o-mini")
-    except Exception as e:
-        print(e)
-        model = ChatOpenAI(model="gpt-4o")
+    # Define the Azure OpenAI-backed model
+    model = AzureChatOpenAI(
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        azure_deployment=AZURE_OPENAI_DEPLOYMENT,
+        api_version=AZURE_OPENAI_API_VERSION,
+        api_key=AZURE_OPENAI_API_KEY,
+    )
     
     # Define config for the model
     if config is None:
@@ -418,7 +432,7 @@ add_fastapi_endpoint(app, sdk, "/copilotkit")
 
 def main():
     """Run the uvicorn server."""
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "8006"))
     uvicorn.run(
         "agent:app",
         host="0.0.0.0",

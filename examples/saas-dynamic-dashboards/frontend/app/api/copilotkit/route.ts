@@ -5,10 +5,38 @@ import {
   OpenAIAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
 } from "@copilotkit/runtime";
+import OpenAI from "openai";
 
 import { NextRequest } from "next/server";
 
-const serviceAdapter = new OpenAIAdapter();
+const {
+  AZURE_OPENAI_API_KEY,
+  AZURE_OPENAI_ENDPOINT,
+  AZURE_OPENAI_DEPLOYMENT,
+  AZURE_OPENAI_API_VERSION = "2024-04-01-preview",
+} = process.env;
+
+if (!AZURE_OPENAI_API_KEY) {
+  throw new Error("Missing AZURE_OPENAI_API_KEY environment variable");
+}
+if (!AZURE_OPENAI_ENDPOINT) {
+  throw new Error("Missing AZURE_OPENAI_ENDPOINT environment variable");
+}
+if (!AZURE_OPENAI_DEPLOYMENT) {
+  throw new Error("Missing AZURE_OPENAI_DEPLOYMENT environment variable");
+}
+
+const normalizedAzureEndpoint = AZURE_OPENAI_ENDPOINT.replace(/\/+$/, "");
+
+const serviceAdapter = new OpenAIAdapter({
+  openai: new OpenAI({
+    apiKey: AZURE_OPENAI_API_KEY,
+    baseURL: `${normalizedAzureEndpoint}/openai/deployments/${AZURE_OPENAI_DEPLOYMENT}`,
+    defaultQuery: { "api-version": AZURE_OPENAI_API_VERSION },
+    defaultHeaders: { "api-key": AZURE_OPENAI_API_KEY },
+  }),
+  model: AZURE_OPENAI_DEPLOYMENT,
+});
 
 export const POST = async (req: NextRequest) => {
   // console.log("req", req);
@@ -248,7 +276,7 @@ Example PR data:
     },
     remoteEndpoints : [
       {
-        url : process.env.REMOTE_ACTION_URL || "http://localhost:8000/copilotkit",
+        url : process.env.REMOTE_ACTION_URL || "http://localhost:8006/copilotkit",
       }
     ]
   });

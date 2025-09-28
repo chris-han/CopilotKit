@@ -24,7 +24,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const runtimeUrl = process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL || "/api/copilotkit";
+  const runtimeUrl =
+    process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL || "http://localhost:8004/copilotkit";
 
   return (
     <html lang="en">

@@ -1,6 +1,11 @@
 const HIGHLIGHT_CLASS = "chart-card-highlight";
 const highlights = new Map<HTMLElement, number>();
 
+export type HighlightOptions = {
+  durationMs?: number;
+  persistent?: boolean;
+};
+
 function escapeChartId(id: string): string {
   if (typeof window !== "undefined" && typeof window.CSS?.escape === "function") {
     return window.CSS.escape(id);
@@ -23,7 +28,7 @@ export function clearAllHighlights() {
   cards.forEach((card) => clearHighlight(card));
 }
 
-export function applyHighlights(chartIds: string[], durationMs = 6000) {
+export function applyHighlights(chartIds: string[], options?: HighlightOptions) {
   if (typeof window === "undefined") {
     return;
   }
@@ -41,6 +46,9 @@ export function applyHighlights(chartIds: string[], durationMs = 6000) {
     }
   });
 
+  const { persistent = false } = options ?? {};
+  const durationMs = options?.durationMs ?? 6000;
+
   uniqueIds.forEach((rawId, index) => {
     const selector = `[data-chart-id="${escapeChartId(rawId)}"]`;
     const element = document.querySelector<HTMLElement>(selector);
@@ -56,9 +64,11 @@ export function applyHighlights(chartIds: string[], durationMs = 6000) {
       element.scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
-    const timeoutId = window.setTimeout(() => {
-      clearHighlight(element);
-    }, durationMs);
-    highlights.set(element, timeoutId);
+    if (!persistent && Number.isFinite(durationMs) && durationMs > 0) {
+      const timeoutId = window.setTimeout(() => {
+        clearHighlight(element);
+      }, durationMs);
+      highlights.set(element, timeoutId);
+    }
   });
 }

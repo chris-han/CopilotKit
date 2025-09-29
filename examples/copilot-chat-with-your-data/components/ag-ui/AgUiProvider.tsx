@@ -13,10 +13,15 @@ import {
   useState,
 } from "react";
 
-import { applyHighlights, clearAllHighlights } from "../../lib/chart-highlighting";
+import {
+  type HighlightOptions,
+  applyHighlights,
+  clearAllHighlights,
+} from "../../lib/chart-highlighting";
 import { prompt as defaultPrompt } from "../../lib/prompt";
 import {
   DataStoryContext,
+  type DataStoryAudioSegment,
   type DataStoryState,
   type DataStorySuggestion,
   type DataStoryStep,
@@ -65,6 +70,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     audioUrl: undefined,
     audioEnabled: AUDIO_NARRATION_ENABLED,
     audioContentType: undefined,
+    audioSegments: undefined,
   });
 
   const agentRef = useRef<HttpAgent | null>(null);
@@ -105,10 +111,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     }));
   }, []);
 
-  const replayHighlight = useCallback((stepId: string) => {
+  const replayHighlight = useCallback((stepId: string, options?: HighlightOptions) => {
     const chartIds = highlightRegistryRef.current[stepId] ?? [];
     if (chartIds.length > 0) {
-      applyHighlights(chartIds);
+      applyHighlights(chartIds, options);
     }
     setDataStoryState((prev) => ({
       ...prev,
@@ -159,6 +165,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       audioUrl: undefined,
       audioEnabled: AUDIO_NARRATION_ENABLED,
       audioContentType: undefined,
+      audioSegments: undefined,
     }));
     highlightRegistryRef.current = {};
     storyStepsRef.current = [];
@@ -191,6 +198,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       let audioUrl: string | undefined;
       let hasAudio = false;
       let audioContentType: string | undefined;
+      let audioSegments: DataStoryAudioSegment[] | undefined;
 
       if (AUDIO_NARRATION_ENABLED && steps.length > 0) {
         try {
@@ -201,7 +209,33 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           });
           if (audioResponse.ok) {
             const audioPayload = await audioResponse.json();
-            if (audioPayload?.audio) {
+            const payloadSegments = Array.isArray(audioPayload?.segments)
+              ? audioPayload.segments
+              : [];
+            const normalizedSegments: DataStoryAudioSegment[] = payloadSegments
+              .map((segment: { stepId?: unknown; audio?: unknown; contentType?: unknown }) => {
+                const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
+                const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
+                if (!stepId || !audioData) {
+                  return null;
+                }
+                const contentType =
+                  typeof segment?.contentType === "string" && segment.contentType.includes("audio")
+                    ? segment.contentType
+                    : "audio/mpeg";
+                return {
+                  stepId,
+                  url: `data:${contentType};base64,${audioData}`,
+                  contentType,
+                } satisfies DataStoryAudioSegment;
+              })
+              .filter((segment: DataStoryAudioSegment | null): segment is DataStoryAudioSegment => Boolean(segment));
+
+            if (normalizedSegments.length > 0) {
+              audioSegments = normalizedSegments;
+              audioContentType = normalizedSegments[0]?.contentType;
+              hasAudio = true;
+            } else if (audioPayload?.audio) {
               const contentType = typeof audioPayload?.contentType === "string" ? audioPayload.contentType : undefined;
               audioContentType = contentType && contentType.includes("audio") ? contentType : "audio/mpeg";
               audioUrl = `data:${audioContentType};base64,${audioPayload.audio}`;
@@ -228,6 +262,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         audioUrl: hasAudio ? audioUrl : undefined,
         audioEnabled: hasAudio,
         audioContentType: hasAudio ? audioContentType : undefined,
+        audioSegments: hasAudio ? audioSegments : undefined,
       });
 
       if (steps.length > 0) {
@@ -239,7 +274,13 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           scheduleManualStepProgression(steps);
         }
       } else {
-        setDataStoryState((prev) => ({ ...prev, status: "completed", audioEnabled: false, audioContentType: undefined }));
+        setDataStoryState((prev) => ({
+          ...prev,
+          status: "completed",
+          audioEnabled: false,
+          audioContentType: undefined,
+          audioSegments: undefined,
+        }));
         storyStepsRef.current = [];
       }
     } catch (err) {
@@ -250,6 +291,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         error: err instanceof Error ? err.message : String(err),
         audioEnabled: false,
         audioContentType: undefined,
+        audioSegments: undefined,
       }));
       storyStepsRef.current = [];
     }
@@ -263,7 +305,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
   const handleAudioProgress = useCallback(
     (stepId: string) => {
-      replayHighlight(stepId);
+      replayHighlight(stepId, { persistent: true });
     },
     [replayHighlight],
   );
@@ -288,7 +330,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
     const firstStep = steps[0];
     if (firstStep) {
-      replayHighlight(firstStep.id);
+      replayHighlight(firstStep.id, { persistent: true });
     }
   }, [replayHighlight]);
 

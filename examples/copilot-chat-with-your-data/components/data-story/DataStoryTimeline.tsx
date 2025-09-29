@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { normalizeMarkdownTables } from "../../lib/markdown";
-import type { DataStoryStep, DataStoryStatus } from "../../hooks/useDataStory";
+import type {
+  DataStoryAudioSegment,
+  DataStoryStep,
+  DataStoryStatus,
+} from "../../hooks/useDataStory";
 
 interface DataStoryTimelineProps {
   steps: DataStoryStep[];
@@ -14,19 +18,83 @@ interface DataStoryTimelineProps {
   audioUrl?: string;
   audioEnabled?: boolean;
   audioContentType?: string;
+  audioSegments?: DataStoryAudioSegment[];
   onAudioStep?: (stepId: string) => void;
   onAudioComplete?: () => void;
   onAudioAutoplayFailure?: () => void;
   onAudioReady?: () => void;
 }
-
-export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady }: DataStoryTimelineProps) {
+export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, audioSegments, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady }: DataStoryTimelineProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
   const lastStepIndexRef = useRef<number>(-1);
   const audioReadyNotifiedRef = useRef<boolean>(false);
+  const segmentIndexRef = useRef<number>(0);
+  const [segmentIndex, setSegmentIndex] = useState<number>(0);
+  const [playbackState, setPlaybackState] = useState<"idle" | "playing" | "paused" | "completed">("idle");
   const hasSteps = steps.length > 0;
+  const segments = useMemo(
+    () => (Array.isArray(audioSegments) ? audioSegments : []),
+    [audioSegments],
+  );
+  const hasSegments = segments.length > 0;
+  const segmentMap = useMemo(() => {
+    const map = new Map<string, DataStoryAudioSegment>();
+    segments.forEach((segment) => {
+      if (segment?.stepId) {
+        map.set(segment.stepId, segment);
+      }
+    });
+    return map;
+  }, [segments]);
+  const hasAnyAudio = hasSegments || Boolean(audioUrl);
+
+  const notifyAudioReady = useCallback(() => {
+    if (audioReadyNotifiedRef.current) {
+      return;
+    }
+    audioReadyNotifiedRef.current = true;
+    onAudioReady?.();
+  }, [onAudioReady]);
 
   useEffect(() => {
+    segmentIndexRef.current = segmentIndex;
+  }, [segmentIndex]);
+
+  useEffect(() => {
+    setPlaybackState("idle");
+  }, [hasSegments, audioUrl, steps.length]);
+
+  useEffect(() => {
+    if (status === "completed") {
+      setPlaybackState("completed");
+    } else if (status === "loading" || status === "awaiting-audio") {
+      setPlaybackState("idle");
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (!hasSegments) {
+      return;
+    }
+    segmentIndexRef.current = 0;
+    setSegmentIndex(0);
+    lastStepIndexRef.current = -1;
+    audioReadyNotifiedRef.current = false;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.load();
+    }
+  }, [hasSegments, segments.length, steps.length]);
+
+  useEffect(() => {
+    if (hasSegments) {
+      return;
+    }
+    segmentIndexRef.current = 0;
+    setSegmentIndex(0);
     lastStepIndexRef.current = -1;
     audioReadyNotifiedRef.current = false;
     const audio = audioRef.current;
@@ -34,9 +102,12 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       audio.pause();
       audio.currentTime = 0;
     }
-  }, [audioUrl, steps.length]);
+  }, [audioUrl, steps.length, hasSegments]);
 
   useEffect(() => {
+    if (hasSegments) {
+      return;
+    }
     if (!audioUrl || !hasSteps) {
       return;
     }
@@ -45,23 +116,23 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       return;
     }
 
-    const notifyAudioReady = () => {
-      if (audioReadyNotifiedRef.current) {
-        return;
-      }
-      audioReadyNotifiedRef.current = true;
-      onAudioReady?.();
-    };
-
     const handlePlay = () => {
       if (!hasSteps) {
         return;
       }
+      setPlaybackState("playing");
       notifyAudioReady();
-      if (lastStepIndexRef.current === -1) {
+      if (lastStepIndexRef.current === -1 && steps[0]) {
         lastStepIndexRef.current = 0;
         onAudioStep?.(steps[0].id);
       }
+    };
+
+    const handlePause = () => {
+      if (audio.ended) {
+        return;
+      }
+      setPlaybackState("paused");
     };
 
     const handleTimeUpdate = () => {
@@ -84,10 +155,12 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         lastStepIndexRef.current = steps.length - 1;
         onAudioStep?.(steps[steps.length - 1].id);
       }
+      setPlaybackState("completed");
       onAudioComplete?.();
     };
 
     audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
 
@@ -96,10 +169,12 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       if (!audioEnabled) {
         return;
       }
+      setPlaybackState("playing");
       notifyAudioReady();
       audio
         .play()
         .catch(() => {
+          setPlaybackState("paused");
           onAudioAutoplayFailure?.();
         });
     };
@@ -120,6 +195,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
 
     return () => {
       audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
       if (readyHandler) {
@@ -127,7 +203,280 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         audio.removeEventListener("loadeddata", readyHandler);
       }
     };
-  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady, hasSteps]);
+  }, [
+    hasSegments,
+    audioEnabled,
+    audioUrl,
+    steps,
+    hasSteps,
+    notifyAudioReady,
+    onAudioStep,
+    onAudioComplete,
+    onAudioAutoplayFailure,
+  ]);
+
+  const getSegmentForIndex = useCallback(
+    (index: number) => {
+      if (!hasSegments || steps.length === 0) {
+        return undefined;
+      }
+      const clamped = Math.min(Math.max(index, 0), steps.length - 1);
+      const targetStepId = steps[clamped]?.id;
+      if (!targetStepId) {
+        return undefined;
+      }
+      return segmentMap.get(targetStepId);
+    },
+    [hasSegments, segmentMap, steps],
+  );
+
+  const findNextSegmentIndex = useCallback(
+    (startIndex: number) => {
+      if (!hasSegments) {
+        return -1;
+      }
+      for (let idx = Math.max(startIndex, 0); idx < steps.length; idx += 1) {
+        const stepId = steps[idx]?.id;
+        if (stepId && segmentMap.has(stepId)) {
+          return idx;
+        }
+      }
+      return -1;
+    },
+    [hasSegments, steps, segmentMap],
+  );
+
+  const pauseOtherSegments = useCallback((activeStepId: string) => {
+    Object.entries(audioRefs.current).forEach(([stepId, element]) => {
+      if (!element || stepId === activeStepId) {
+        return;
+      }
+      element.pause();
+      element.currentTime = 0;
+    });
+  }, []);
+
+  const playSegment = useCallback(
+    (index: number, options?: { userInitiated?: boolean }) => {
+      if (!hasSegments) {
+        return;
+      }
+      const nextIndex = findNextSegmentIndex(index);
+      if (nextIndex === -1) {
+        return;
+      }
+      const targetSegment = getSegmentForIndex(nextIndex);
+      const targetId = targetSegment?.stepId;
+      if (!targetId) {
+        return;
+      }
+      const targetAudio = audioRefs.current[targetId];
+      if (!targetAudio) {
+        return;
+      }
+
+      segmentIndexRef.current = nextIndex;
+      setSegmentIndex(nextIndex);
+      lastStepIndexRef.current = nextIndex;
+      setPlaybackState("playing");
+
+      pauseOtherSegments(targetId);
+
+      const playPromise = targetAudio.play();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {
+          if (!options?.userInitiated) {
+            onAudioAutoplayFailure?.();
+          }
+        });
+      }
+    },
+    [findNextSegmentIndex, getSegmentForIndex, hasSegments, onAudioAutoplayFailure, pauseOtherSegments],
+  );
+
+  const handleSegmentPlay = useCallback(
+    (stepId: string, index: number) => {
+      pauseOtherSegments(stepId);
+      segmentIndexRef.current = index;
+      setSegmentIndex(index);
+      lastStepIndexRef.current = index;
+      setPlaybackState("playing");
+      notifyAudioReady();
+      onAudioStep?.(stepId);
+    },
+    [notifyAudioReady, onAudioStep, pauseOtherSegments],
+  );
+
+  const handleSegmentPause = useCallback(
+    (index: number, element: HTMLAudioElement) => {
+      if (segmentIndexRef.current !== index) {
+        return;
+      }
+      if (element.ended) {
+        return;
+      }
+      setPlaybackState("paused");
+    },
+    [],
+  );
+
+  const handleSegmentLoaded = useCallback(
+    (stepId: string, index: number) => {
+      if (!hasSegments || !audioEnabled) {
+        return;
+      }
+      if (segmentIndexRef.current !== index) {
+        return;
+      }
+      const audio = audioRefs.current[stepId];
+      if (!audio) {
+        return;
+      }
+      if (!audio.paused && audio.currentTime > 0) {
+        return;
+      }
+      const playPromise = audio.play();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {
+          onAudioAutoplayFailure?.();
+        });
+      }
+    },
+    [hasSegments, audioEnabled, onAudioAutoplayFailure],
+  );
+
+  const handleSegmentEnded = useCallback(
+    (index: number) => {
+      if (!hasSegments) {
+        setPlaybackState("completed");
+        onAudioComplete?.();
+        return;
+      }
+      const nextIndex = findNextSegmentIndex(index + 1);
+      if (audioEnabled && nextIndex !== -1) {
+        playSegment(nextIndex);
+      } else {
+        setPlaybackState("completed");
+        onAudioComplete?.();
+      }
+    },
+    [hasSegments, findNextSegmentIndex, audioEnabled, playSegment, onAudioComplete],
+  );
+
+  useEffect(() => {
+    if (!hasSegments || !audioEnabled || audioReadyNotifiedRef.current) {
+      return;
+    }
+    playSegment(segmentIndexRef.current);
+  }, [hasSegments, audioEnabled, playSegment]);
+
+  const handleReviewClick = useCallback(
+    (stepId: string, index: number) => {
+      onReview(stepId);
+      if (hasSegments) {
+        if (!segmentMap.has(stepId)) {
+          return;
+        }
+        const segmentAudio = audioRefs.current[stepId];
+        const isCurrent = segmentIndexRef.current === index && playbackState === "playing";
+        if (isCurrent && segmentAudio && !segmentAudio.paused) {
+          segmentAudio.pause();
+          setPlaybackState("paused");
+          return;
+        }
+        playSegment(index, { userInitiated: true });
+      }
+      if (!hasSegments && audioUrl) {
+        const audio = audioRef.current;
+        if (!audio) {
+          return;
+        }
+        const isCurrent = lastStepIndexRef.current === index && playbackState === "playing";
+        if (isCurrent && !audio.paused) {
+          audio.pause();
+          setPlaybackState("paused");
+        }
+      }
+    },
+    [
+      onReview,
+      hasSegments,
+      segmentMap,
+      playbackState,
+      playSegment,
+      audioUrl,
+    ],
+  );
+
+  const handleGlobalControlClick = useCallback(() => {
+    if (!hasAnyAudio) {
+      return;
+    }
+
+    if (playbackState === "playing") {
+      if (hasSegments) {
+        const currentSegment = getSegmentForIndex(segmentIndexRef.current);
+        const stepId = currentSegment?.stepId;
+        if (stepId) {
+          const element = audioRefs.current[stepId];
+          element?.pause();
+        }
+      } else {
+        const audio = audioRef.current;
+        audio?.pause();
+      }
+      setPlaybackState("paused");
+      return;
+    }
+
+    if (hasSegments) {
+      const targetIndex = playbackState === "completed" ? 0 : segmentIndexRef.current;
+      if (playbackState === "completed") {
+        lastStepIndexRef.current = -1;
+      }
+      playSegment(targetIndex, { userInitiated: true });
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (!audio || !audioUrl) {
+      return;
+    }
+    if (playbackState === "completed") {
+      audio.currentTime = 0;
+      lastStepIndexRef.current = -1;
+    }
+    const playPromise = audio.play();
+    if (playPromise?.then) {
+      playPromise
+        .then(() => {
+          setPlaybackState("playing");
+          notifyAudioReady();
+          if (lastStepIndexRef.current === -1 && steps[0]) {
+            lastStepIndexRef.current = 0;
+            onAudioStep?.(steps[0].id);
+          }
+        })
+        .catch(() => {
+          setPlaybackState("paused");
+          onAudioAutoplayFailure?.();
+        });
+    }
+  }, [
+    hasAnyAudio,
+    playbackState,
+    hasSegments,
+    getSegmentForIndex,
+    playSegment,
+    audioUrl,
+    notifyAudioReady,
+    onAudioStep,
+    onAudioAutoplayFailure,
+    steps,
+  ]);
+
+  const controlLabel = playbackState === "playing" ? "Pause" : playbackState === "completed" ? "Replay" : "Play";
+  const isGlobalControlDisabled = !hasAnyAudio || status === "loading" || status === "awaiting-audio";
 
   if (!hasSteps) {
     return null;
@@ -135,11 +484,25 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
 
   return (
     <div className="mt-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-gray-900">Data Story Timeline</h4>
-        <span className="text-xs text-gray-500 capitalize">{status}</span>
+        {hasAnyAudio ? (
+          <button
+            type="button"
+            onClick={handleGlobalControlClick}
+            disabled={isGlobalControlDisabled}
+            className={`w-16 rounded-full border border-blue-200 px-3 py-1 text-xs font-medium transition ${
+              isGlobalControlDisabled
+                ? "cursor-not-allowed bg-blue-50 text-blue-300"
+                : "cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100"
+            }`}
+            aria-label={`${controlLabel} narration`}
+          >
+            {controlLabel}
+          </button>
+        ) : null}
       </div>
-      {audioUrl ? (
+      {audioUrl && !hasSegments ? (
         <div className="mb-4">
           <audio ref={audioRef} controls className="w-full" preload="auto">
             <source src={audioUrl} type={audioContentType ?? "audio/mpeg"} />
@@ -150,6 +513,21 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       <ol className="space-y-4 border-l border-gray-200 pl-4">
         {steps.map((step, index) => {
           const isActive = step.id === activeStepId;
+          const segment = hasSegments ? segmentMap.get(step.id) : undefined;
+          const isCurrentSegment = hasSegments && segmentIndex === index;
+          const stepControlLabel =
+            hasSegments
+              ? isCurrentSegment && playbackState === "playing"
+                ? "Pause"
+                : "Play"
+              : playbackState === "playing"
+                ? "Pause"
+                : "Play";
+          const stepButtonClasses = `cursor-pointer text-xs transition ${
+            isCurrentSegment && playbackState === "playing"
+              ? "text-blue-700"
+              : "text-blue-600 hover:text-blue-700"
+          }`;
           return (
             <li key={step.id} className="relative">
               <span
@@ -165,10 +543,10 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                   </div>
                   <button
                     type="button"
-                    onClick={() => onReview(step.id)}
-                    className="text-xs text-blue-600 hover:text-blue-700"
-                  >
-                    Review
+                    onClick={() => handleReviewClick(step.id, index)}
+                    className={stepButtonClasses}
+                    >
+                    {stepControlLabel}
                   </button>
                 </div>
                 <div className="prose prose-sm mt-2 text-gray-700">
@@ -185,6 +563,28 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                         <p className="text-sm font-semibold text-gray-800">{kpi.value}</p>
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                {segment ? (
+                  <div className="mt-3">
+                    <audio
+                      controls
+                      preload="auto"
+                      ref={(element) => {
+                        if (element) {
+                          audioRefs.current[step.id] = element;
+                        } else {
+                          delete audioRefs.current[step.id];
+                        }
+                      }}
+                      onPlay={() => handleSegmentPlay(step.id, index)}
+                      onPause={(event) => handleSegmentPause(index, event.currentTarget)}
+                      onLoadedData={() => handleSegmentLoaded(step.id, index)}
+                      onEnded={() => handleSegmentEnded(index)}
+                    >
+                      <source src={segment.url} type={segment.contentType ?? "audio/mpeg"} />
+                      Your browser does not support the audio element.
+                    </audio>
                   </div>
                 ) : null}
               </div>

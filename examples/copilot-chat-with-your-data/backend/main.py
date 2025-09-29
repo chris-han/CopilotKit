@@ -279,16 +279,18 @@ def _markdown_to_text(markdown: str) -> str:
     return text.strip()
 
 
-def _story_steps_to_script(steps: Sequence[Dict[str, Any]]) -> str:
-    segments: List[str] = []
+def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
+    segments: List[Dict[str, str]] = []
     for index, step in enumerate(steps, start=1):
+        step_id = step.get("id") or f"step-{index}"
         title = step.get("title") or f"Section {index}"
         body = _markdown_to_text(step.get("markdown", ""))
         if body:
-            segments.append(f"Section {index}. {title}. {body}")
+            script = f"Section {index}. {title}. {body}"
         else:
-            segments.append(f"Section {index}. {title}.")
-    return " ".join(segments)
+            script = f"Section {index}. {title}."
+        segments.append({"stepId": step_id, "script": script})
+    return segments
 
 
 def _chunk_text(text: str, max_len: int = 800) -> Iterable[str]:
@@ -505,61 +507,90 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
     if not isinstance(steps, list) or not steps:
         steps = generate_data_story_steps()
 
-    script = _story_steps_to_script(steps)
-    if not script:
+    script_segments = _story_steps_to_audio_segments(steps)
+    if not script_segments:
         raise HTTPException(status_code=400, detail="Story steps are empty")
-
-    narration = script
 
     tts_url = (
         f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{AZURE_OPENAI_TTS_DEPLOYMENT}/audio/speech"
         f"?api-version={AZURE_OPENAI_TTS_API_VERSION}"
     )
-    tts_payload = {
-        "model": AZURE_OPENAI_TTS_DEPLOYMENT,
-        "voice": "alloy",
-        "response_format": "mp3",
-        "input": narration,
-        "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
-    }
+    audio_segments: List[Dict[str, Any]] = []
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-            rest_response = await client.post(
-                tts_url,
-                headers={
-                    "api-key": AZURE_OPENAI_API_KEY,
-                    "Content-Type": "application/json",
-                    "Accept": "audio/mpeg",
-                },
-                json=tts_payload,
-            )
-            rest_response.raise_for_status()
-            audio_bytes = await rest_response.aread()
-    except httpx.HTTPStatusError as exc:  # pragma: no cover
-        body_preview = exc.response.text[:200] if exc.response.text else ""
-        logger.warning(
-            "generateDataStoryAudio HTTP %s: %s",
-            exc.response.status_code,
-            body_preview,
-        )
-        if exc.response.status_code == 404:
-            return {"audio": None, "contentType": None, "error": "deployment_not_found"}
-        raise HTTPException(
-            status_code=exc.response.status_code,
-            detail=f"Audio generation failed: HTTP {exc.response.status_code}",
-        ) from exc
-    except httpx.HTTPError as exc:  # pragma: no cover
-        logger.exception("generateDataStoryAudio request failed")
-        raise HTTPException(status_code=502, detail=f"Audio generation request failed: {exc}") from exc
+            for segment in script_segments:
+                step_id = segment.get("stepId")
+                narration = segment.get("script") or ""
 
-    if not audio_bytes:
-        raise HTTPException(status_code=502, detail="Audio generation returned empty audio stream")
+                tts_payload = {
+                    "model": AZURE_OPENAI_TTS_DEPLOYMENT,
+                    "voice": "alloy",
+                    "response_format": "mp3",
+                    "input": narration,
+                    "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
+                }
 
-    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-    content_type = rest_response.headers.get("content-type")
-    if not content_type or "audio" not in content_type:
-        content_type = "audio/mpeg"
-    return {"audio": audio_b64, "contentType": content_type}
+                try:
+                    rest_response = await client.post(
+                        tts_url,
+                        headers={
+                            "api-key": AZURE_OPENAI_API_KEY,
+                            "Content-Type": "application/json",
+                            "Accept": "audio/mpeg",
+                        },
+                        json=tts_payload,
+                    )
+                    rest_response.raise_for_status()
+                except httpx.HTTPStatusError as exc:  # pragma: no cover
+                    body_preview = exc.response.text[:200] if exc.response.text else ""
+                    logger.warning(
+                        "generateDataStoryAudio step %s HTTP %s: %s",
+                        step_id,
+                        exc.response.status_code,
+                        body_preview,
+                    )
+                    if exc.response.status_code == 404:
+                        return {"audio": None, "segments": [], "contentType": None, "error": "deployment_not_found"}
+                    raise HTTPException(
+                        status_code=exc.response.status_code,
+                        detail=f"Audio generation failed for step {step_id}: HTTP {exc.response.status_code}",
+                    ) from exc
+                except httpx.HTTPError as exc:  # pragma: no cover
+                    logger.exception("generateDataStoryAudio request failed for step %s", step_id)
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Audio generation request failed for step {step_id}: {exc}",
+                    ) from exc
+
+                audio_bytes = await rest_response.aread()
+                if not audio_bytes:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Audio generation returned empty audio stream for step {step_id}",
+                    )
+
+                content_type = rest_response.headers.get("content-type")
+                if not content_type or "audio" not in content_type:
+                    content_type = "audio/mpeg"
+
+                audio_segments.append(
+                    {
+                        "stepId": step_id,
+                        "audio": base64.b64encode(audio_bytes).decode("utf-8"),
+                        "contentType": content_type,
+                    }
+                )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception("generateDataStoryAudio unexpected failure")
+        raise HTTPException(status_code=502, detail=f"Audio generation failed: {exc}") from exc
+
+    if not audio_segments:
+        raise HTTPException(status_code=502, detail="Audio generation produced no segments")
+
+    content_type = audio_segments[0].get("contentType") or "audio/mpeg"
+    return {"audio": None, "segments": audio_segments, "contentType": content_type}
 
 
 @app.get("/health")

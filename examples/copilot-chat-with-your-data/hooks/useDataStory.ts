@@ -17,6 +17,12 @@ export type DataStoryStep = {
   reviewPrompt?: string;
 };
 
+export type DataStoryAudioSegment = {
+  stepId: string;
+  url: string;
+  contentType?: string;
+};
+
 export type DataStoryStatus =
   | "idle"
   | "suggested"
@@ -35,6 +41,7 @@ export type DataStoryState = {
   audioUrl?: string;
   audioEnabled?: boolean;
   audioContentType?: string;
+  audioSegments?: DataStoryAudioSegment[];
 };
 
 export type DataStoryContextValue = {

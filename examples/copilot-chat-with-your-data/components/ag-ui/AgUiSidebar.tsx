@@ -84,6 +84,7 @@ export function AgUiSidebar() {
             audioUrl={dataStoryState.audioUrl}
             audioEnabled={Boolean(dataStoryState.audioEnabled)}
             audioContentType={dataStoryState.audioContentType}
+            audioSegments={dataStoryState.audioSegments}
             onAudioReady={onAudioReady}
             onAudioStep={onAudioProgress}
             onAudioComplete={onAudioComplete}

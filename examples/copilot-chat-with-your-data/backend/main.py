@@ -128,7 +128,7 @@ logger.info(
 logger.info("Allowed frontend origins: %s", ALLOWED_ORIGINS)
 
 
-HIGHLIGHT_LINE_REGEX = re.compile(r"^Highlight chart card:\s*(.+)$", re.MULTILINE)
+HIGHLIGHT_LINE_REGEX = re.compile(r"^Highlight chart cards?:\s*(.+)$", re.MULTILINE)
 
 
 @app.middleware("http")
@@ -215,22 +215,48 @@ async def _run_analysis(
 
 
 def _separate_highlight_directives(answer: str) -> Tuple[str, List[str]]:
-    matches = list(HIGHLIGHT_LINE_REGEX.finditer(answer))
     chart_ids: List[str] = []
-    for match in matches:
-        chart_id = match.group(1).strip().strip("`").rstrip(".,;:")
-        if chart_id:
-            chart_ids.append(chart_id)
+    used_lines = set()
 
-    sanitized = HIGHLIGHT_LINE_REGEX.sub("", answer)
-    sanitized_lines = []
-    for line in sanitized.splitlines():
-        if line.strip():
-            sanitized_lines.append(line)
-        elif sanitized_lines and sanitized_lines[-1] != "":
-            sanitized_lines.append("")
-    sanitized_answer = "\n".join(sanitized_lines).strip()
-    return sanitized_answer, chart_ids
+    for match in HIGHLIGHT_LINE_REGEX.finditer(answer):
+        start, end = match.span()
+        used_lines.update(range(start, end))
+        raw_ids = match.group(1).strip()
+        if raw_ids:
+            for part in re.split(r"[;,\s]+", raw_ids):
+                cleaned = part.strip().strip("`").rstrip(".,;:")
+                if cleaned:
+                    chart_ids.append(cleaned)
+
+    lines = answer.splitlines()
+    sanitized_lines: List[str] = []
+    skip_block = False
+
+    for line in lines:
+        original_line = line
+        stripped = line.strip()
+
+        if HIGHLIGHT_LINE_REGEX.match(line):
+            skip_block = True
+            continue
+
+        if skip_block:
+            if not stripped:
+                skip_block = False
+                continue
+
+            if " " not in stripped and stripped.lower() == stripped:
+                cleaned = stripped.strip("`").rstrip(".,;:")
+                if cleaned:
+                    chart_ids.append(cleaned)
+                continue
+
+        sanitized_lines.append(original_line)
+
+    unique_ids = list(dict.fromkeys(chart_ids))
+
+    sanitized_answer = "\n".join(line for line in sanitized_lines if line.strip() or line == "").strip()
+    return sanitized_answer, unique_ids
 
 
 def _chunk_text(text: str, max_len: int = 800) -> Iterable[str]:

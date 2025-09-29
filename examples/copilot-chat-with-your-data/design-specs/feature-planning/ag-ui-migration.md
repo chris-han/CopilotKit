@@ -1,49 +1,47 @@
-# AG-UI Protocol Migration Plan
+# AG-UI Protocol Migration
 
-## Objectives
-- Replace CopilotKit communication with the AG-UI protocol so the dashboard's chat, timeline, and highlight interactions all run on standardized agent events.
-- Keep the Pydantic AI FastAPI runtime but emit AG-UI compliant Server-Sent Events (SSE) using `ag-ui-protocol` Python SDK primitives.
-- Rebuild the Next.js sidebar experience on top of `@ag-ui/client` (and supporting packages) so user inputs, streaming assistant messages, tool calls, and state deltas conform to AG-UI's frontend contract.
+## Summary of Completed Work
+- Replaced the CopilotKit runtime with an AG-UI compliant FastAPI endpoint at `/ag-ui/run`, streaming `Run*`, `TextMessage*`, and `Custom` events via `ag_ui.encoder.EventEncoder`.
+- Kept the Pydantic AI agent; responses are partitioned into markdown chunks and highlight directives that emit `chart.highlight` custom events.
+- Added an AG-UI client shell for the Next.js app (`components/ag-ui/AgUiProvider.tsx`) that instantiates `HttpAgent`, manages thread/run state, subscribes to event streams, and dispatches highlights through a shared helper.
+- Implemented a new sidebar (`components/ag-ui/AgUiSidebar.tsx`) that renders the transcript, shows streaming state, and publishes user prompts.
+- Extracted chart highlighting logic into `lib/chart-highlighting.ts` so both markdown directives and AG-UI events reuse the same helper.
+- Updated the root layout and page entry (`app/layout.tsx`, `app/page.tsx`) to use the AG-UI provider, remove CopilotKit readables/actions, and stabilise hydration.
+- Refreshed dependencies (`package.json`, `backend/requirements.txt`) and project docs (`README.md`, `AGENTS.MD`) to describe the new protocol.
 
-## Architecture Shifts
-- **Frontend**
-  - Introduce an `AgUiAgentProvider` that wraps the dashboard layout, instantiates an `HttpAgent` pointed at the FastAPI endpoint, and manages the shared thread/run lifecycle.
-  - Build chat primitives (input composer, transcript, timeline surfaces) atop AG-UI event streams rather than CopilotKit message arrays.
-  - Translate timeline/tool specific outputs (e.g., "Highlight chart card" directives, data story steps) into AG-UI custom events so UI modules subscribe via discriminated unions.
-  - Use React context/hooks to share the current `threadId`, message history, and highlight controller across components.
+## Folder & File Changes
+```
+components/
+  ag-ui/
+    AgUiProvider.tsx      # AG-UI context + HttpAgent lifecycle
+    AgUiSidebar.tsx       # Chat UI powered by AG-UI events
+  AssistantMessage.tsx    # Markdown renderer with streaming indicator
+  Dashboard.tsx           # Metrics view (no CopilotKit hooks)
+lib/
+  chart-highlighting.ts   # Shared highlight utilities for AG-UI custom events
+app/
+  layout.tsx              # Wraps tree with <AgUiProvider>
+  page.tsx                # Uses AgUiSidebar and removes CopilotKit readables
+backend/
+  main.py                 # `/ag-ui/run` SSE endpoint + Tavily action
+  requirements.txt        # Adds ag-ui-protocol, removes CopilotKit
+```
 
-- **Backend**
-  - Replace GraphQL-style `/copilotkit` endpoint with `POST /ag-ui/run` that accepts `RunAgentInput` payloads (threadId, runId, messages, tools, context, forwardedProps) and streams encoded `BaseEvent` objects over SSE.
-  - Leverage `ag_ui.encoder.EventEncoder` to serialize Pydantic events and reuse Pydantic AI agent outputs by mapping them to `TextMessage*` events, tool call events, and custom application events (for timeline data story).
-  - Provide separate POST endpoints for agent-defined tools (e.g., `searchInternet`, `analyzeDashboard`, `generateDataStory`) that match AG-UI tool contract or embed as tool call responses within the SSE stream.
-  - Maintain dataset parity and adopt AG-UI message shapes in the Pydantic agent's state.
+## Updated Architecture Notes
+### Frontend
+- `AgUiProvider` owns the single `HttpAgent` instance, tracks messages/error state, and applies highlights when `chart.highlight` events arrive.
+- `AgUiSidebar` consumes the provider, renders user/assistant bubbles, and posts prompts while the provider orchestrates streaming state.
+- `AssistantMessage` now only handles markdown + spinner; highlight manipulation occurs via dedicated helper responding to custom events.
+- Legacy CopilotKit constructs (`CopilotSidebar`, `useCopilotReadable`, `useCopilotAction`) were removed. The prompt is still sourced from `lib/prompt.ts` but injected as the initial system message inside the provider.
 
-- **Shared Contracts**
-  - Define TypeScript + Python models for:
-    - `DashboardContext` (unchanged data, but referenced in AG-UI context array)
-    - `DataStorySuggestionEvent`, `DataStoryStepEvent` (custom event types conforming to AG-UI `CustomEvent` structure)
-    - Tool descriptors (chart highlight, Tavily search) expressed as AG-UI `Tool` definitions passed from frontend in each run input.
-  - Update highlight helpers to respond to AG-UI events rather than direct markdown directives.
+### Backend
+- `/ag-ui/run` accepts AG-UI `RunAgentInput` payloads and streams SSE; `/copilotkit` now returns HTTP 410 for compatibility.
+- Responses are split into message start/content/end events; highlight directives extracted with a regex drive `CustomEvent(name="chart.highlight")` notifications.
+- `/ag-ui/action/searchInternet` stays as a REST action returning structured Tavily results; integrating it as a streaming tool call remains future work.
 
-## Incremental Workstream
-1. **Backend foundation**
-   - Add `ag-ui-protocol` dependency, implement SSE encoder pipeline, and expose `/ag-ui/run` endpoint bridging Pydantic AI responses to AG-UI events.
-   - Provide compatibility shim (`/copilotkit` returning HTTP 410 + migration hint) until frontend switches over.
+## Outstanding Follow-Ups
+- AG-UI tool calls (e.g., Tavily search renders) are not yet surfaced in the sidebar; future iterations could emit custom events or adopt tool call events.
+- Data story feature is still planned; current implementation only handles highlight directives. Additional AG-UI custom events will be required when the timeline work lands.
+- Frontend/backend automated tests for the new event pipeline have not been added yet.
 
-2. **Frontend agent shell**
-   - Install `@ag-ui/client`, `@ag-ui/core`, optional `@ag-ui/react` (if available) plus `rxjs` dependencies.
-   - Create `lib/ag-ui/agent.ts` handling `HttpAgent` lifecycle, `runAgent` invocation, and event subscription.
-   - Replace `CopilotSidebar` usage with new `AgUiSidebar` implementing composer, transcript renderer, suggestion CTA, timeline mounting, and highlight dispatch.
-
-3. **Feature parity**
-   - Translate search + data story features into AG-UI tool calls/custom events, ensuring highlight logic and metrics readables remain accessible through AG-UI context/state events.
-   - Update prompt instructions and dataset exposures so the assistant's behavior is unchanged post migration.
-
-4. **Testing & docs**
-   - Refresh design docs (`tech-design-data-story.md`) to reference AG-UI events.
-   - Add backend unit tests around event encoding and SSE streaming, frontend tests for new hooks and components, and manual smoke instructions for AG-UI runs.
-
-## Open Decisions
-- Whether to keep separate endpoints for actions (`/action/*`) or model them as AG-UI tool executions embedded within the primary agent stream.
-- How to persist thread state between reloads (local storage vs server-managed thread store) while keeping the UI stateless enough for ephemeral sessions.
-- Strategy for gating AG-UI migration (feature flag vs hard switch).
+Use this document as the current snapshot of the migration; update it alongside any new AG-UI features.

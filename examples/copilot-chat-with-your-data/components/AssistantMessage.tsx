@@ -1,5 +1,6 @@
 import { Loader } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type AssistantMessageProps = {
   content: string;
@@ -11,7 +12,7 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
     <div className="pb-4">
       <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
-          <ReactMarkdown>{content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           {isStreaming && (
             <div className="flex items-center gap-2 text-xs text-blue-500 mt-2">
               <Loader className="h-3 w-3 animate-spin" />

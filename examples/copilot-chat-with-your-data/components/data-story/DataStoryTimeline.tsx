@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { normalizeMarkdownTables } from "../../lib/markdown";
 import type { DataStoryStep, DataStoryStatus } from "../../hooks/useDataStory";
 
 interface DataStoryTimelineProps {
@@ -12,11 +13,13 @@ interface DataStoryTimelineProps {
   onReview: (stepId: string) => void;
   audioUrl?: string;
   audioEnabled?: boolean;
+  audioContentType?: string;
   onAudioStep?: (stepId: string) => void;
   onAudioComplete?: () => void;
+  onAudioAutoplayFailure?: () => void;
 }
 
-export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, onAudioStep, onAudioComplete }: DataStoryTimelineProps) {
+export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, onAudioStep, onAudioComplete, onAudioAutoplayFailure }: DataStoryTimelineProps) {
   if (!steps.length) {
     return null;
   }
@@ -26,10 +29,15 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
 
   useEffect(() => {
     lastStepIndexRef.current = -1;
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
   }, [audioUrl, steps.length]);
 
   useEffect(() => {
-    if (!audioEnabled || !audioUrl) {
+    if (!audioUrl) {
       return;
     }
     const audio = audioRef.current;
@@ -74,18 +82,42 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
 
-    if (audio.paused) {
-      audio.play().catch(() => {});
-    } else {
-      handlePlay();
+    let readyHandler: (() => void) | null = null;
+    const attemptPlay = () => {
+      if (!audioEnabled) {
+        return;
+      }
+      audio
+        .play()
+        .catch(() => {
+          onAudioAutoplayFailure?.();
+        });
+    };
+
+    if (audioEnabled) {
+      if (audio.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+        attemptPlay();
+      } else {
+        readyHandler = () => {
+          audio.removeEventListener("canplaythrough", readyHandler!);
+          audio.removeEventListener("loadeddata", readyHandler!);
+          attemptPlay();
+        };
+        audio.addEventListener("canplaythrough", readyHandler);
+        audio.addEventListener("loadeddata", readyHandler);
+      }
     }
 
     return () => {
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("timeupdate", handleTimeUpdate);
       audio.removeEventListener("ended", handleEnded);
+      if (readyHandler) {
+        audio.removeEventListener("canplaythrough", readyHandler);
+        audio.removeEventListener("loadeddata", readyHandler);
+      }
     };
-  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete]);
+  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete, onAudioAutoplayFailure]);
 
   return (
     <div className="mt-4">
@@ -96,7 +128,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       {audioUrl ? (
         <div className="mb-4">
           <audio ref={audioRef} controls className="w-full" preload="auto">
-            <source src={audioUrl} type="audio/mpeg" />
+            <source src={audioUrl} type={audioContentType ?? "audio/mpeg"} />
             Your browser does not support the audio element.
           </audio>
         </div>
@@ -126,7 +158,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                   </button>
                 </div>
                 <div className="prose prose-sm mt-2 text-gray-700">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{step.markdown}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeMarkdownTables(step.markdown)}</ReactMarkdown>
                 </div>
                 {step.kpis?.length ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">

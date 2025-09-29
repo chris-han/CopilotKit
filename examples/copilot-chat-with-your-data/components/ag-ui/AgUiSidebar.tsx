@@ -16,6 +16,7 @@ export function AgUiSidebar() {
     replayHighlight,
     onAudioProgress,
     onAudioComplete,
+    onAudioAutoplayFailure,
   } = useDataStory();
   const [draft, setDraft] = useState("");
 
@@ -81,8 +82,10 @@ export function AgUiSidebar() {
             onReview={replayHighlight}
             audioUrl={dataStoryState.audioUrl}
             audioEnabled={Boolean(dataStoryState.audioEnabled)}
+            audioContentType={dataStoryState.audioContentType}
             onAudioStep={onAudioProgress}
             onAudioComplete={onAudioComplete}
+            onAudioAutoplayFailure={onAudioAutoplayFailure}
           />
         )}
         {messages.length === 0 && !error && (
@@ -99,6 +102,8 @@ export function AgUiSidebar() {
           className="w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
           rows={3}
           disabled={isRunning}
+          name="chat-prompt"
+          id="chat-prompt"
         />
         <div className="mt-3 flex justify-end">
           <button

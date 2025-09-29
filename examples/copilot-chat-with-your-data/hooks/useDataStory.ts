@@ -27,6 +27,7 @@ export type DataStoryState = {
   error?: string | null;
   audioUrl?: string;
   audioEnabled?: boolean;
+  audioContentType?: string;
 };
 
 export type DataStoryContextValue = {
@@ -36,6 +37,7 @@ export type DataStoryContextValue = {
   replayHighlight: (stepId: string) => void;
   onAudioProgress: (stepId: string) => void;
   onAudioComplete: () => void;
+  onAudioAutoplayFailure: () => void;
   audioNarrationEnabled: boolean;
 };
 

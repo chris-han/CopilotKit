@@ -518,26 +518,23 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
     tts_payload = {
         "model": AZURE_OPENAI_TTS_DEPLOYMENT,
         "voice": "alloy",
-        "response_format": "opus",
+        "response_format": "mp3",
         "input": narration,
         "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
     }
-    audio_chunks: List[bytes] = []
-
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-            async with client.stream(
-                "POST",
+            rest_response = await client.post(
                 tts_url,
                 headers={
                     "api-key": AZURE_OPENAI_API_KEY,
                     "Content-Type": "application/json",
-                    "Accept": "audio/ogg",
+                    "Accept": "audio/mpeg",
                 },
                 json=tts_payload,
-            ) as rest_response:
-                rest_response.raise_for_status()
-                audio_chunks = [chunk async for chunk in rest_response.aiter_bytes()]
+            )
+            rest_response.raise_for_status()
+            audio_bytes = await rest_response.aread()
     except httpx.HTTPStatusError as exc:  # pragma: no cover
         body_preview = exc.response.text[:200] if exc.response.text else ""
         logger.warning(
@@ -555,12 +552,13 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
         logger.exception("generateDataStoryAudio request failed")
         raise HTTPException(status_code=502, detail=f"Audio generation request failed: {exc}") from exc
 
-    audio_bytes = b"".join(audio_chunks)
     if not audio_bytes:
         raise HTTPException(status_code=502, detail="Audio generation returned empty audio stream")
 
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-    content_type = rest_response.headers.get("content-type", "audio/ogg")
+    content_type = rest_response.headers.get("content-type")
+    if not content_type or "audio" not in content_type:
+        content_type = "audio/mpeg"
     return {"audio": audio_b64, "contentType": content_type}
 
 

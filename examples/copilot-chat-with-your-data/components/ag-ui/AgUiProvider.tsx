@@ -64,12 +64,15 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     error: null,
     audioUrl: undefined,
     audioEnabled: AUDIO_NARRATION_ENABLED,
+    audioContentType: undefined,
   });
 
   const agentRef = useRef<HttpAgent | null>(null);
   const threadIdRef = useRef<string>(generateId("thread"));
   const historyRef = useRef<Message[]>([]);
   const highlightRegistryRef = useRef<Record<string, string[]>>({});
+  const storyStepsRef = useRef<DataStoryStep[]>([]);
+  const manualAdvanceTimeoutsRef = useRef<number[]>([]);
   const systemMessage = useMemo(() => systemPrompt || defaultPrompt, [systemPrompt]);
   const runtimeBaseUrl = useMemo(() => runtimeUrl.replace(/\/run\/?$/, ""), [runtimeUrl]);
 
@@ -113,6 +116,40 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     }));
   }, []);
 
+  const clearManualAdvanceTimeouts = useCallback(() => {
+    manualAdvanceTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    manualAdvanceTimeoutsRef.current = [];
+  }, []);
+
+  const scheduleManualStepProgression = useCallback(
+    (steps: DataStoryStep[]) => {
+      clearManualAdvanceTimeouts();
+      if (!steps.length) {
+        return;
+      }
+
+      steps.slice(1).forEach((step, index) => {
+        const delay = (index + 1) * 2000;
+        const timeoutId = window.setTimeout(() => {
+          if (step.chartIds?.length) {
+            applyHighlights(step.chartIds);
+          }
+          setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
+        }, delay);
+        manualAdvanceTimeoutsRef.current.push(timeoutId);
+      });
+
+      const completionDelay = steps.length > 1 ? steps.length * 2000 : 500;
+      const completionTimeoutId = window.setTimeout(() => {
+        setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+      }, completionDelay);
+      manualAdvanceTimeoutsRef.current.push(completionTimeoutId);
+    },
+    [clearManualAdvanceTimeouts],
+  );
+
   const startStory = useCallback(async () => {
     setDataStoryState((prev) => ({
       ...prev,
@@ -121,8 +158,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       error: null,
       audioUrl: undefined,
       audioEnabled: AUDIO_NARRATION_ENABLED,
+      audioContentType: undefined,
     }));
     highlightRegistryRef.current = {};
+    storyStepsRef.current = [];
+    clearManualAdvanceTimeouts();
 
     const currentSuggestion = dataStoryState.suggestion;
     if (!currentSuggestion) {
@@ -142,6 +182,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
       const payload = await response.json();
       const steps: DataStoryStep[] = Array.isArray(payload?.steps) ? payload.steps : [];
+      storyStepsRef.current = steps;
       highlightRegistryRef.current = steps.reduce<Record<string, string[]>>((acc, step) => {
         acc[step.id] = Array.isArray(step.chartIds) ? step.chartIds : [];
         return acc;
@@ -149,6 +190,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
       let audioUrl: string | undefined;
       let hasAudio = false;
+      let audioContentType: string | undefined;
 
       if (AUDIO_NARRATION_ENABLED && steps.length > 0) {
         try {
@@ -160,7 +202,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           if (audioResponse.ok) {
             const audioPayload = await audioResponse.json();
             if (audioPayload?.audio) {
-              audioUrl = `data:audio/mpeg;base64,${audioPayload.audio}`;
+              const contentType = typeof audioPayload?.contentType === "string" ? audioPayload.contentType : undefined;
+              audioContentType = contentType && contentType.includes("audio") ? contentType : "audio/mpeg";
+              audioUrl = `data:${audioContentType};base64,${audioPayload.audio}`;
               hasAudio = true;
             }
           }
@@ -179,6 +223,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         error: null,
         audioUrl: hasAudio ? audioUrl : undefined,
         audioEnabled: hasAudio,
+        audioContentType: hasAudio ? audioContentType : undefined,
       });
 
       if (steps.length > 0) {
@@ -188,24 +233,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         }
 
         if (!hasAudio) {
-          steps.slice(1).forEach((step, index) => {
-            if (!step.chartIds?.length) {
-              return;
-            }
-            const delay = (index + 1) * 2000;
-            window.setTimeout(() => {
-              applyHighlights(step.chartIds);
-              setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
-            }, delay);
-          });
-
-          const completionDelay = steps.length > 1 ? steps.length * 2000 : 500;
-          window.setTimeout(() => {
-            setDataStoryState((prev) => ({ ...prev, status: "completed" }));
-          }, completionDelay);
+          scheduleManualStepProgression(steps);
         }
       } else {
-        setDataStoryState((prev) => ({ ...prev, status: "completed", audioEnabled: false }));
+        setDataStoryState((prev) => ({ ...prev, status: "completed", audioEnabled: false, audioContentType: undefined }));
+        storyStepsRef.current = [];
       }
     } catch (err) {
       console.error("Data story generation failed", err);
@@ -214,9 +246,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         status: "error",
         error: err instanceof Error ? err.message : String(err),
         audioEnabled: false,
+        audioContentType: undefined,
       }));
+      storyStepsRef.current = [];
     }
-  }, [dataStoryState.suggestion, runtimeBaseUrl]);
+  }, [dataStoryState.suggestion, runtimeBaseUrl, clearManualAdvanceTimeouts, scheduleManualStepProgression]);
 
   const handleAudioProgress = useCallback(
     (stepId: string) => {
@@ -227,7 +261,21 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
   const handleAudioComplete = useCallback(() => {
     setDataStoryState((prev) => ({ ...prev, status: "completed" }));
-  }, []);
+    clearManualAdvanceTimeouts();
+  }, [clearManualAdvanceTimeouts]);
+
+  const handleAudioAutoplayFailure = useCallback(() => {
+    setDataStoryState((prev) => {
+      if (!prev.audioEnabled) {
+        return prev;
+      }
+      return {
+        ...prev,
+        audioEnabled: false,
+      };
+    });
+    clearManualAdvanceTimeouts();
+  }, [clearManualAdvanceTimeouts]);
 
   const ensureSystemMessage = useCallback(() => {
     if (!systemMessage) {
@@ -378,6 +426,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       replayHighlight,
       onAudioProgress: handleAudioProgress,
       onAudioComplete: handleAudioComplete,
+      onAudioAutoplayFailure: handleAudioAutoplayFailure,
       audioNarrationEnabled: AUDIO_NARRATION_ENABLED,
     }),
     [
@@ -387,6 +436,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       replayHighlight,
       handleAudioProgress,
       handleAudioComplete,
+      handleAudioAutoplayFailure,
     ],
   );
 

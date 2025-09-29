@@ -65,7 +65,7 @@ export function DeveloperDashboard() {
 
   useCopilotAction({
     name: "renderData_PieChart",
-    description: `Render a Pie-chart for labelled numeric data. Example input format: [{"name": "approved", "value": 25, "shortName": "Approved", "color": "rgb(134 239 172)"}, {"name": "in_review", "value": 15, "shortName": "In Review", "color": "rgb(216 180 254)"}, {"name": "needs_revision", "value": 10, "shortName": "Needs Revision", "color": "rgb(253 224 71)"}, {"name": "merged", "value": 5, "shortName": "Merged", "color": "rgb(147 197 253)"}] When assigning color, use the same colors if data is related to status otherwise generate random colors. Provide short name for the item in the input if the name is long. Keep it the same as the name if the name is short. For example, If the name is Jon.snow@got.com, then the short name is Jon`,
+    description: `Render a Pie-chart for labelled numeric data. Example input format: [{"name": "approved", "value": 25, "shortName": "Approved", "color": "rgb(134 239 172)"}, {"name": "in_review", "value": 15, "shortName": "In Review", "color": "rgb(216 180 254)"}, {"name": "needs_revision", "value": 10, "shortName": "Needs Revision", "color": "rgb(253 224 71)"}, {"name": "merged", "value": 5, "shortName": "Merged", "color": "rgb(147 197 253)"}] When assigning color, use the same colors if data is related to status otherwise generate random colors. Provide short name for the item in the input if the name is long. Keep it the same as the name if the name is short. For example, If the name is Jon.snow@got.com, then the short name is Jon. When the user asks to focus or highlight this chart, set the optional focus flag to true (and provide highlightChartId if needed).`,
     parameters: [
       {
         name: "items",
@@ -101,6 +101,18 @@ export function DeveloperDashboard() {
             }
           ]
         }
+      },
+      {
+        name: "focus",
+        type: "boolean",
+        description: "Set to true when the user wants to focus or highlight this chart.",
+        required: false,
+      },
+      {
+        name: "highlightChartId",
+        type: "string",
+        description: "Optional explicit chart identifier to highlight. Use \"renderData_PieChart\" for this chart.",
+        required: false,
       }
     ],
     render: ({ args }: any) => {
@@ -110,7 +122,7 @@ export function DeveloperDashboard() {
 
   useCopilotAction({
     name: "renderData_BarChart",
-    description: `Render a Bar-chart for labelled numeric data. Example input format: [{"name": "approved", "value": 25, "color": "rgb(134 239 172)"}, {"name": "in_review", "value": 15, "color": "rgb(216 180 254)"}, {"name": "needs_revision", "value": 10, "color": "rgb(253 224 71)"}, {"name": "merged", "value": 5, "color": "rgb(147 197 253)"}] When assigning color, use the same colors if data is related to status otherwise generate random colors. Provide short name for the item in the input if the name is long. Keep it the same as the name if the name is short. For example, If the name is Jon.snow@got.com, then the short name is Jon`,
+    description: `Render a Bar-chart for labelled numeric data. Example input format: [{"name": "approved", "value": 25, "color": "rgb(134 239 172)"}, {"name": "in_review", "value": 15, "color": "rgb(216 180 254)"}, {"name": "needs_revision", "value": 10, "color": "rgb(253 224 71)"}, {"name": "merged", "value": 5, "color": "rgb(147 197 253)"}] When assigning color, use the same colors if data is related to status otherwise generate random colors. Provide short name for the item in the input if the name is long. Keep it the same as the name if the name is short. For example, If the name is Jon.snow@got.com, then the short name is Jon. When the user asks to focus or highlight this chart, set the optional focus flag to true (and provide highlightChartId if needed).`,
     parameters: [
       {
         name: "items",
@@ -134,6 +146,18 @@ export function DeveloperDashboard() {
             }
           ]
         }
+      },
+      {
+        name: "focus",
+        type: "boolean",
+        description: "Set to true when the user wants to focus or highlight this chart.",
+        required: false,
+      },
+      {
+        name: "highlightChartId",
+        type: "string",
+        description: "Optional explicit chart identifier to highlight. Use \"renderData_BarChart\" for this chart.",
+        required: false,
       }
     ],
     render: ({ args }: any) => {
@@ -144,7 +168,7 @@ export function DeveloperDashboard() {
 
   useCopilotAction({
     name: "renderData_LineChart",
-    description: `Render a Line-chart based on the PR data which shows the trend of PR creation over time. Example input format: [[{"name": "12/25", "value": 10,accessorKey : "Jon"}, {"name": "7/22", "value": 20,accessorKey : "Jon"}, {"name": "12/18", "value": 30,accessorKey : "Jon"}],[{"name": "12/25", "value": 10,accessorKey : "Ned"}, {"name": "7/22", "value": 20,accessorKey : "Ned"}, {"name": "12/18", "value": 30,accessorKey : "Ned"}]]. If dates are present convert them to the format "MM/DD". Also if name length is long, provide short name for the item in the input. For example, If the name is Jon.snow@got.com, then the short name is Jon`,
+    description: `Render a Line-chart based on the PR data which shows the trend of PR creation over time. Example input format: [[{"name": "12/25", "value": 10,accessorKey : "Jon"}, {"name": "7/22", "value": 20,accessorKey : "Jon"}, {"name": "12/18", "value": 30,accessorKey : "Jon"}],[{"name": "12/25", "value": 10,accessorKey : "Ned"}, {"name": "7/22", "value": 20,accessorKey : "Ned"}, {"name": "12/18", "value": 30,accessorKey : "Ned"}]]. If dates are present convert them to the format "MM/DD". Also if name length is long, provide short name for the item in the input. For example, If the name is Jon.snow@got.com, then the short name is Jon. When the user asks to focus or highlight this chart, set the optional focus flag to true (and provide highlightChartId if needed).`,
     parameters: [
       {
         name: "items",
@@ -174,11 +198,21 @@ export function DeveloperDashboard() {
             }
           ]
         }
+      },
+      {
+        name: "focus",
+        type: "boolean",
+        description: "Set to true when the user wants to focus or highlight this chart.",
+        required: false,
+      },
+      {
+        name: "highlightChartId",
+        type: "string",
+        description: "Optional explicit chart identifier to highlight. Use \"renderData_LineChart\" for this chart.",
+        required: false,
       }
     ],
     render: ({ args }: any) => {
-      console.log(args, "args")
-      // return <div>Hello</div>
       return <PRLineChartData args={args} />
     }
   })
@@ -382,4 +416,3 @@ export function DeveloperDashboard() {
     </div>
   )
 }
-

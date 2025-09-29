@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -142,21 +142,64 @@ async def handle_options(request: Request, call_next):
     return _corsify(response, request)
 
 
-def _extract_prompt(messages: List[Dict[str, Any]]) -> str:
-    user_messages = []
+def _extract_prompt_details(
+    messages: List[Dict[str, Any]],
+) -> Tuple[str, List[str], List[Tuple[str, str]]]:
+    """Return latest user message, system messages, and chat transcript."""
+
+    latest_user = ""
+    system_messages: List[str] = []
+    transcript: List[Tuple[str, str]] = []
+
     for message in messages:
         text_message = message.get("textMessage")
-        if text_message and text_message.get("role") == "user":
-            user_messages.append(text_message.get("content", ""))
-    return user_messages[-1] if user_messages else ""
+        if not text_message:
+            continue
+
+        role = (text_message.get("role") or "").lower()
+        content = (text_message.get("content") or "").strip()
+        if not content:
+            continue
+
+        if role == "system":
+            system_messages.append(content)
+        else:
+            transcript.append((role, content))
+            if role == "user":
+                latest_user = content
+
+    return latest_user, system_messages, transcript
 
 
-async def _run_analysis(question: str) -> str:
-    prompt = (
-        f"{question}\n\n"
+async def _run_analysis(
+    latest_user: str,
+    system_messages: List[str],
+    transcript: List[Tuple[str, str]],
+) -> str:
+    prompt_sections: List[str] = []
+
+    if system_messages:
+        prompt_sections.append("\n\n".join(system_messages))
+
+    if transcript:
+        conversation_lines = []
+        for role, content in transcript:
+            role_label = {
+                "user": "User",
+                "assistant": "Assistant",
+                "system": "System",
+            }.get(role, role.title() if role else "Message")
+            conversation_lines.append(f"{role_label}: {content}")
+        prompt_sections.append("Conversation so far:\n" + "\n".join(conversation_lines))
+
+    prompt_sections.append(f"Latest user request:\n{latest_user}")
+
+    prompt_sections.append(
         "You have access to the following dashboard context as JSON. Use it to answer.\n"
         f"```json\n{json.dumps(DASHBOARD_CONTEXT)}\n```"
     )
+
+    prompt = "\n\n".join(part for part in prompt_sections if part.strip())
     try:
         result = await analysis_agent.run(prompt)
     except Exception as exc:  # pragma: no cover
@@ -277,11 +320,11 @@ async def copilot_runtime(request: Request) -> JSONResponse:
     run_id = data.get("runId") or str(uuid4())
     parent_id = messages[-1].get("id") if messages else None
 
-    question = _extract_prompt(messages)
-    if not question:
+    latest_user, system_messages, transcript = _extract_prompt_details(messages)
+    if not latest_user:
         raise HTTPException(status_code=400, detail="Question not found in prompt")
 
-    answer = await _run_analysis(question)
+    answer = await _run_analysis(latest_user, system_messages, transcript)
 
     response = _format_graphql_response(thread_id, run_id, answer, parent_id)
     return JSONResponse(response, media_type="application/graphql-response+json")

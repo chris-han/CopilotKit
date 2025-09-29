@@ -175,4 +175,11 @@
   margin-top: 15px;
 }
 
+[data-chart-id][data-highlighted="true"],
+.chart-card-highlight {
+  outline: 3px solid rgba(59, 130, 246, 0.65);
+  box-shadow: 0 15px 35px rgba(59, 130, 246, 0.18);
+  transform: translateY(-2px);
+  transition: outline 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
 

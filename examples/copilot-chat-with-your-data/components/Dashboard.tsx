@@ -109,7 +109,7 @@ export function Dashboard() {
       </div>
 
       {/* Charts */}
-      <Card className="col-span-1 md:col-span-2 lg:col-span-4">
+      <Card className="col-span-1 md:col-span-2 lg:col-span-4" data-chart-id="sales-overview">
         <CardHeader className="pb-1 pt-3">
           <CardTitle className="text-base font-medium">Sales Overview</CardTitle>
           <CardDescription className="text-xs">Monthly sales and profit data</CardDescription>
@@ -131,7 +131,7 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      <Card className="col-span-1 md:col-span-1 lg:col-span-2">
+      <Card className="col-span-1 md:col-span-1 lg:col-span-2" data-chart-id="product-performance">
         <CardHeader className="pb-1 pt-3">
           <CardTitle className="text-base font-medium">Product Performance</CardTitle>
           <CardDescription className="text-xs">Top selling products</CardDescription>
@@ -152,7 +152,7 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      <Card className="col-span-1 md:col-span-1 lg:col-span-2">
+      <Card className="col-span-1 md:col-span-1 lg:col-span-2" data-chart-id="sales-by-category">
         <CardHeader className="pb-1 pt-3">
           <CardTitle className="text-base font-medium">Sales by Category</CardTitle>
           <CardDescription className="text-xs">Distribution across categories</CardDescription>
@@ -176,7 +176,7 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      <Card className="col-span-1 md:col-span-1 lg:col-span-2">
+      <Card className="col-span-1 md:col-span-1 lg:col-span-2" data-chart-id="regional-sales">
         <CardHeader className="pb-1 pt-3">
           <CardTitle className="text-base font-medium">Regional Sales</CardTitle>
           <CardDescription className="text-xs">Sales by geographic region</CardDescription>
@@ -197,7 +197,7 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      <Card className="col-span-1 md:col-span-1 lg:col-span-2">
+      <Card className="col-span-1 md:col-span-1 lg:col-span-2" data-chart-id="customer-demographics">
         <CardHeader className="pb-1 pt-3">
           <CardTitle className="text-base font-medium">Customer Demographics</CardTitle>
           <CardDescription className="text-xs">Spending by age group</CardDescription>

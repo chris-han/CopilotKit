@@ -5,9 +5,9 @@ This document describes the end-to-end architecture of the **Copilot Chat with Y
 ## System Overview
 - **Next.js frontend (`app/`, `components/`)**: Renders the dashboard and chat shell in React 19 with Tailwind utility classes and Tremor/Recharts visualizations. All client components are hydrated in the browser.
 - **CopilotKit bridge (`app/layout.tsx`)**: Wraps the application tree in the `CopilotKit` provider and points it at `process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL` (default `http://localhost:8004/copilotkit`) so all children share a single chat session with the FastAPI runtime.
-- **Chat experience (`app/page.tsx`, `components/AssistantMessage.tsx`)**: Dynamically imports the `CopilotSidebar`, customises message rendering, and manages responsive layout offsets when the sidebar opens.
+- **Chat experience (`app/page.tsx`, `components/AssistantMessage.tsx`)**: Dynamically imports the `CopilotSidebar`, injects static assistant instructions from `lib/prompt.ts`, customises message rendering, and manages responsive layout offsets when the sidebar opens.
 - **Structured data + generative UI (`components/Dashboard.tsx`)**: Exposes dashboard metrics through `useCopilotReadable` and registers a render-only `useCopilotAction` that drives the `SearchResults` component for action status updates.
-- **FastAPI Copilot runtime (`backend/main.py`)**: Serves the CopilotKit remote endpoint on `/copilotkit`, normalises allowed origins for CORS enforcement, wires Tavily search alongside a PydanticAI dashboard analysis agent, and brokers all Azure OpenAI requests.
+- **FastAPI Copilot runtime (`backend/main.py`)**: Serves the CopilotKit remote endpoint on `/copilotkit`, normalises allowed origins for CORS enforcement, wires Tavily search alongside a PydanticAI dashboard analysis agent seeded with an inline system prompt, and brokers all Azure OpenAI requests.
 - **Runtime GraphQL models (`backend/copilotkit_interfaces.py`)**: Defines dataclasses mirroring CopilotKit's GraphQL schema so responses are serialised consistently across the runtime.
 - **External AI services**: Azure OpenAI handles LLM completions for both the Copilot runtime and the PydanticAI agent; Tavily Search API provides optional real-time search augmentation when the runtime triggers the action.
 
@@ -32,6 +32,10 @@ classDiagram
         library: @copilotkit/react-ui
         dynamic import
     }
+    class StaticPrompt {
+        file: lib/prompt.ts
+        role: instructions
+    }
     class CustomAssistantMessage {
         file: components/AssistantMessage.tsx
     }
@@ -47,6 +51,7 @@ classDiagram
     }
 
     CopilotKitProvider --> CopilotSidebar : shares context
+    StaticPrompt --> CopilotSidebar : instructions prop
     CopilotSidebar --> CustomAssistantMessage : render delegate
     CopilotSidebar --> SearchResults : action status props
     Dashboard --> CopilotKitProvider : readable registration
@@ -79,6 +84,10 @@ classDiagram
     class PydanticAIAgent {
         model: OpenAIModel
     }
+    class AnalysisSystemPrompt {
+        source: backend/main.py
+        attr: analysis_agent.system_prompt
+    }
 
     FastAPIApp --> CopilotEndpoints : registers
     CopilotEndpoints --> CopilotResponseModel : serialises
@@ -86,6 +95,7 @@ classDiagram
     TextMessageOutputModel --> SuccessMessageStatusModel : uses
     CopilotEndpoints --> TavilyClient : invokes action
     CopilotEndpoints --> PydanticAIAgent : runs analysis
+    AnalysisSystemPrompt --> PydanticAIAgent : seeds behaviour
 ```
 
 ## Data Flow
@@ -96,6 +106,42 @@ classDiagram
 5. If the agent invokes `searchInternet`, the Tavily client runs server-side and its markdown output is supplied back to the LLM. Otherwise, the agent answers directly using the dashboard dataset.
 6. The CopilotKit runtime streams the response back to the browser, including any action results.
 7. The `CopilotSidebar` renders streamed tokens as assistant messages while `SearchResults` visualises action status updates.
+
+## Context and Prompt Flow
+```mermaid
+flowchart TD
+    StaticPrompt["Static assistant instructions<br>lib/prompt.ts"]
+    Sidebar["CopilotSidebar<br>app/page.tsx"]
+    Provider["CopilotKit Provider<br>app/layout.tsx"]
+    Readables["Readable context registry<br>useCopilotReadable"]
+    DashboardData["Dashboard snapshot<br>components/Dashboard.tsx<br>via data/dashboard-data.ts"]
+    ClockReadable["Current time readable<br>app/page.tsx"]
+    ThreadMemory["Conversation memory<br>threadId/runId"]
+    FastAPI["FastAPI /copilotkit endpoint<br>backend/main.py"]
+    SystemPrompt["analysis_agent.system_prompt<br>backend/main.py"]
+    Agent["PydanticAI Agent.run"]
+    Azure["Azure OpenAI completion"]
+    User["User"]
+
+    StaticPrompt --> Sidebar
+    Sidebar --> Provider
+    Provider --> ThreadMemory
+    DashboardData --> Readables
+    ClockReadable --> Readables
+    Readables --> Provider
+    ThreadMemory --> FastAPI
+    Provider -->|"messages + readable context"| FastAPI
+    FastAPI --> SystemPrompt
+    SystemPrompt --> Agent
+    FastAPI -->|"question + JSON dataset"| Agent
+    Agent --> Azure
+    Azure --> Agent
+    Agent --> FastAPI
+    FastAPI --> ThreadMemory
+    ThreadMemory --> Provider
+    Provider --> Sidebar
+    Sidebar -->|"renders response"| User
+```
 
 ## Deployment View
 ```mermaid

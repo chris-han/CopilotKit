@@ -56,7 +56,7 @@ const deriveRoleFromTitle = (title: string): UserRole | null => {
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  const { prData, setSuggestionInstructions } = useSharedContext()
+  const { prData, setSuggestionInstructions, highlightedChartId, setHighlightedChartId } = useSharedContext()
   const { testsData } = useSharedTestsContext()
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<UserRole>(() => {
@@ -194,6 +194,24 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       }
     }
   }, [userRole, suggestionInstructions, prDataSignature, testsDataSignature, reset])
+
+  useEffect(() => {
+    if (!highlightedChartId) {
+      return
+    }
+
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const { style } = document.body
+    const originalOverflow = style.overflow
+    style.overflow = "hidden"
+
+    return () => {
+      style.overflow = originalOverflow
+    }
+  }, [highlightedChartId])
   const routes = [
     {
       title: "Developer",
@@ -232,6 +250,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full flex-1">
+      {highlightedChartId && (
+        <div
+          className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm transition-opacity duration-300"
+          onClick={() => setHighlightedChartId(null)}
+          aria-hidden="true"
+        />
+      )}
       <Sidebar side="left" className="border-r">
         <SidebarHeader className="flex justify-between px-4 py-2">
           <div className="flex items-center gap-2">
@@ -285,7 +310,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             </Avatar>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main className="relative z-0 flex-1 overflow-auto p-6">{children}</main>
       </div>
     </div>
   )

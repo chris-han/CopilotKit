@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { CopilotKit } from "@copilotkit/react-core";
-import "@copilotkit/react-ui/styles.css";
+import { AgUiProvider } from "../components/ag-ui/AgUiProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,17 +24,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const runtimeUrl =
-    process.env.NEXT_PUBLIC_COPILOT_RUNTIME_URL || "http://localhost:8004/copilotkit";
+    process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL || "http://localhost:8004/ag-ui/run";
 
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <CopilotKit
-          runtimeUrl={runtimeUrl}
-          showDevConsole={false}
-        >
+        <AgUiProvider runtimeUrl={runtimeUrl}>
           {children}
-        </CopilotKit>
+        </AgUiProvider>
       </body>
     </html>
   );

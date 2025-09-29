@@ -1,34 +1,38 @@
-"""FastAPI CopilotKit runtime powered by PydanticAI and Tavily."""
+"""FastAPI AG-UI runtime powered by Pydantic AI and Tavily."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+import re
+from typing import Any, AsyncIterator, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from openai import AsyncOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from tavily import Client as TavilyClient
 from urllib.parse import urlparse
 
-from dashboard_data import DASHBOARD_CONTEXT
-from copilotkit_interfaces import (
-    CopilotResponse,
-    MessageRole,
-    SuccessMessageStatus,
-    SuccessResponseStatus,
-    TextMessageOutput,
-    to_serializable,
+from ag_ui.core import (
+    CustomEvent,
+    EventType,
+    RunAgentInput,
+    RunErrorEvent,
+    RunFinishedEvent,
+    RunStartedEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+    TextMessageStartEvent,
 )
+from ag_ui.encoder import EventEncoder
+
+from dashboard_data import DASHBOARD_CONTEXT
 
 load_dotenv()
 
@@ -101,8 +105,10 @@ analysis_agent = Agent(
     ),
 )
 
+encoder = EventEncoder()
 
-app = FastAPI(title="CopilotKit FastAPI Runtime", version="1.0.0")
+
+app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -114,12 +120,23 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("copilotkit-backend")
 logger.info(
-    "Starting FastAPI Copilot runtime (Azure endpoint=%s deployment=%s, Tavily configured=%s)",
+    "Starting AG-UI FastAPI runtime (Azure endpoint=%s deployment=%s, Tavily configured=%s)",
     AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_DEPLOYMENT,
     bool(TAVILY_API_KEY),
 )
 logger.info("Allowed frontend origins: %s", ALLOWED_ORIGINS)
+
+
+HIGHLIGHT_LINE_REGEX = re.compile(r"^Highlight chart card:\s*(.+)$", re.MULTILINE)
+
+
+@app.middleware("http")
+async def handle_options(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return _corsify(Response(status_code=200), request)
+    response = await call_next(request)
+    return _corsify(response, request)
 
 
 def _corsify(response: Response, request: Request) -> Response:
@@ -134,17 +151,7 @@ def _corsify(response: Response, request: Request) -> Response:
     return response
 
 
-@app.middleware("http")
-async def handle_options(request: Request, call_next):
-    if request.method == "OPTIONS":
-        return _corsify(Response(status_code=200), request)
-    response = await call_next(request)
-    return _corsify(response, request)
-
-
-def _extract_prompt_details(
-    messages: List[Dict[str, Any]],
-) -> Tuple[str, List[str], List[Tuple[str, str]]]:
+def _extract_prompt_details(messages: Sequence[Any]) -> Tuple[str, List[str], List[Tuple[str, str]]]:
     """Return latest user message, system messages, and chat transcript."""
 
     latest_user = ""
@@ -152,12 +159,8 @@ def _extract_prompt_details(
     transcript: List[Tuple[str, str]] = []
 
     for message in messages:
-        text_message = message.get("textMessage")
-        if not text_message:
-            continue
-
-        role = (text_message.get("role") or "").lower()
-        content = (text_message.get("content") or "").strip()
+        role = getattr(message, "role", "") or ""
+        content = getattr(message, "content", "")
         if not content:
             continue
 
@@ -173,8 +176,8 @@ def _extract_prompt_details(
 
 async def _run_analysis(
     latest_user: str,
-    system_messages: List[str],
-    transcript: List[Tuple[str, str]],
+    system_messages: Sequence[str],
+    transcript: Sequence[Tuple[str, str]],
 ) -> str:
     prompt_sections: List[str] = []
 
@@ -188,6 +191,7 @@ async def _run_analysis(
                 "user": "User",
                 "assistant": "Assistant",
                 "system": "System",
+                "tool": "Tool",
             }.get(role, role.title() if role else "Message")
             conversation_lines.append(f"{role_label}: {content}")
         prompt_sections.append("Conversation so far:\n" + "\n".join(conversation_lines))
@@ -200,11 +204,7 @@ async def _run_analysis(
     )
 
     prompt = "\n\n".join(part for part in prompt_sections if part.strip())
-    try:
-        result = await analysis_agent.run(prompt)
-    except Exception as exc:  # pragma: no cover
-        logger.exception("PydanticAI agent failed")
-        raise HTTPException(status_code=500, detail=f"Analysis error: {exc}") from exc
+    result = await analysis_agent.run(prompt)
 
     answer = getattr(result, "data", None)
     if answer is None:
@@ -214,134 +214,162 @@ async def _run_analysis(
     return answer
 
 
-def _format_graphql_response(
-    thread_id: str,
-    run_id: str,
-    answer: str,
-    parent_message_id: Optional[str],
-) -> Dict[str, Any]:
+def _separate_highlight_directives(answer: str) -> Tuple[str, List[str]]:
+    matches = list(HIGHLIGHT_LINE_REGEX.finditer(answer))
+    chart_ids: List[str] = []
+    for match in matches:
+        chart_id = match.group(1).strip().strip("`").rstrip(".,;:")
+        if chart_id:
+            chart_ids.append(chart_id)
+
+    sanitized = HIGHLIGHT_LINE_REGEX.sub("", answer)
+    sanitized_lines = []
+    for line in sanitized.splitlines():
+        if line.strip():
+            sanitized_lines.append(line)
+        elif sanitized_lines and sanitized_lines[-1] != "":
+            sanitized_lines.append("")
+    sanitized_answer = "\n".join(sanitized_lines).strip()
+    return sanitized_answer, chart_ids
+
+
+def _chunk_text(text: str, max_len: int = 800) -> Iterable[str]:
+    if not text:
+        return []
+    lines = text.splitlines()
+    buffer: List[str] = []
+    current_len = 0
+    for line in lines:
+        line_with_newline = line + "\n"
+        if current_len + len(line_with_newline) > max_len and buffer:
+            yield "".join(buffer).rstrip("\n")
+            buffer = [line_with_newline]
+            current_len = len(line_with_newline)
+        else:
+            buffer.append(line_with_newline)
+            current_len += len(line_with_newline)
+    if buffer:
+        yield "".join(buffer).rstrip("\n")
+
+
+async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
+    thread_id = run_input.thread_id or f"thread-{uuid4()}"
+    run_id = run_input.run_id or f"run-{uuid4()}"
+    latest_user, system_messages, transcript = _extract_prompt_details(run_input.messages)
+
+    if not latest_user:
+        event = RunErrorEvent(
+            type=EventType.RUN_ERROR,
+            message="No user message provided",
+            code="400",
+        )
+        yield encoder.encode(event)
+        return
+
+    started_event = RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id)
+    yield encoder.encode(started_event)
+
     message_id = f"msg-{uuid4()}"
-    created_at = datetime.now(timezone.utc).isoformat()
-    message = TextMessageOutput(
-        id=message_id,
-        createdAt=created_at,
-        status=SuccessMessageStatus(),
-        content=[answer],
-        role=MessageRole.ASSISTANT,
-        parentMessageId=parent_message_id,
-    )
-    response = CopilotResponse(
-        threadId=thread_id,
-        runId=run_id,
-        status=SuccessResponseStatus(),
-        messages=[message],
-        extensions={"openaiAssistantAPI": None, "__typename": "CopilotResponseExtensions"},
-        metaEvents=[],
-    )
 
-    return {"data": {"generateCopilotResponse": to_serializable(response)}}
+    try:
+        answer = await _run_analysis(latest_user, system_messages, transcript)
+        sanitized_answer, chart_ids = _separate_highlight_directives(answer)
 
+        start_event = TextMessageStartEvent(
+            type=EventType.TEXT_MESSAGE_START,
+            message_id=message_id,
+            role="assistant",
+        )
+        yield encoder.encode(start_event)
 
-def _format_info_response() -> Dict[str, Any]:
-    return {
-        "actions": _available_actions(),
-        "agents": [],
-        "sdkVersion": "custom-fastapi-runtime",
-    }
+        for chunk in _chunk_text(sanitized_answer):
+            content_event = TextMessageContentEvent(
+                type=EventType.TEXT_MESSAGE_CONTENT,
+                message_id=message_id,
+                delta=chunk,
+            )
+            yield encoder.encode(content_event)
 
+        end_event = TextMessageEndEvent(
+            type=EventType.TEXT_MESSAGE_END,
+            message_id=message_id,
+        )
+        yield encoder.encode(end_event)
 
-def _available_actions() -> List[Dict[str, Any]]:
-    return [
-        {
-            "name": "searchInternet",
-            "description": "Searches the internet for current information using Tavily.",
-            "parameters": [
-                {
-                    "name": "query",
-                    "type": "string",
-                    "description": "The query to search the internet for.",
-                    "required": True,
-                }
-            ],
-        },
-        {
-            "name": "analyzeDashboard",
-            "description": "Analyzes the dashboard dataset with a PydanticAI agent.",
-            "parameters": [
-                {
-                    "name": "question",
-                    "type": "string",
-                    "description": "Analysis question to run against the dashboard dataset.",
-                    "required": True,
-                }
-            ],
-        },
-    ]
+        for chart_id in chart_ids:
+            custom_event = CustomEvent(
+                type=EventType.CUSTOM,
+                name="chart.highlight",
+                value={"chartId": chart_id, "messageId": message_id},
+            )
+            yield encoder.encode(custom_event)
 
-
-@app.get("/copilotkit")
-async def copilot_info() -> Dict[str, Any]:
-    return _format_info_response()
+        finished_event = RunFinishedEvent(
+            type=EventType.RUN_FINISHED,
+            thread_id=thread_id,
+            run_id=run_id,
+        )
+        yield encoder.encode(finished_event)
+    except HTTPException as http_exc:
+        error_event = RunErrorEvent(
+            type=EventType.RUN_ERROR,
+            message=str(http_exc.detail),
+            code=str(http_exc.status_code),
+        )
+        yield encoder.encode(error_event)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.exception("Analysis agent failed")
+        error_event = RunErrorEvent(
+            type=EventType.RUN_ERROR,
+            message=f"Analysis error: {exc}",
+            code="500",
+        )
+        yield encoder.encode(error_event)
 
 
-@app.get("/copilotkit/")
-async def copilot_info_trailing() -> Dict[str, Any]:
-    return await copilot_info()
-
-
-@app.post("/copilotkit")
-async def copilot_runtime(request: Request) -> JSONResponse:
+@app.post("/ag-ui/run")
+async def ag_ui_run(request: Request) -> StreamingResponse:
     try:
         payload = await request.json()
     except Exception as exc:  # pragma: no cover - guard against malformed JSON
         logger.exception("Failed to parse request body")
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
 
-    logger.info("Received copilot runtime request: %s", payload.keys())
-    operation = payload.get("operationName")
+    try:
+        run_input = RunAgentInput.model_validate(payload)
+    except Exception as exc:
+        logger.exception("Invalid AG-UI payload")
+        raise HTTPException(status_code=400, detail=f"Invalid AG-UI payload: {exc}") from exc
 
-    if operation is None:
-        logger.info("No operation supplied; returning runtime info")
-        return JSONResponse(_format_info_response())
+    async def event_iterator() -> AsyncIterator[str]:
+        async for event in _agent_event_stream(run_input):
+            yield event
 
-    if operation != "generateCopilotResponse":
-        if operation == "availableActions":
-            return JSONResponse({"data": {"availableActions": _available_actions()}})
-        if operation == "availableAgents":
-            return JSONResponse({"data": {"availableAgents": []}})
-        logger.warning("Unsupported operation: %s", operation)
-        raise HTTPException(status_code=400, detail="Unsupported operation")
+    return StreamingResponse(event_iterator(), media_type="text/event-stream")
 
-    variables = payload.get("variables") or {}
-    data = variables.get("data") or {}
-    messages: List[Dict[str, Any]] = data.get("messages") or []
 
-    thread_id = data.get("threadId") or str(uuid4())
-    run_id = data.get("runId") or str(uuid4())
-    parent_id = messages[-1].get("id") if messages else None
-
-    latest_user, system_messages, transcript = _extract_prompt_details(messages)
-    if not latest_user:
-        raise HTTPException(status_code=400, detail="Question not found in prompt")
-
-    answer = await _run_analysis(latest_user, system_messages, transcript)
-
-    response = _format_graphql_response(thread_id, run_id, answer, parent_id)
-    return JSONResponse(response, media_type="application/graphql-response+json")
+@app.post("/copilotkit")
+async def deprecated_copilot_endpoint() -> JSONResponse:
+    return JSONResponse(
+        status_code=410,
+        content={
+            "error": "The CopilotKit runtime has been replaced by the AG-UI protocol endpoint at /ag-ui/run.",
+        },
+    )
 
 
 @app.post("/copilotkit/")
-async def copilot_runtime_trailing(request: Request) -> JSONResponse:
-    return await copilot_runtime(request)
+async def deprecated_copilot_endpoint_trailing() -> JSONResponse:
+    return await deprecated_copilot_endpoint()
 
 
-@app.post("/copilotkit/action/searchInternet")
-async def action_search_internet(request: Request) -> Dict[str, Any]:
+@app.post("/ag-ui/action/searchInternet")
+async def action_search_internet(request: Request) -> dict[str, Any]:
     if not TAVILY_API_KEY:
         raise HTTPException(status_code=503, detail="Tavily search is not configured")
 
     payload = await request.json()
-    query = payload.get("arguments", {}).get("query")
+    query = payload.get("query")
     if not query:
         raise HTTPException(status_code=400, detail="Missing query argument")
 
@@ -355,33 +383,19 @@ async def action_search_internet(request: Request) -> Dict[str, Any]:
             title = result.get("title", "No title")
             content = (result.get("content", "No content") or "")[:200]
             url = result.get("url", "No URL")
-            formatted.append(f"**{title}**\n{content}...\nSource: {url}")
-        markdown = "\n\n".join(formatted) if formatted else f"No search results found for: {query}"
-        return {"result": markdown}
+            formatted.append({
+                "title": title,
+                "summary": f"{content}...",
+                "url": url,
+            })
+        return {"results": formatted}
     except Exception as exc:  # pragma: no cover
         logger.exception("searchInternet failed")
         raise HTTPException(status_code=500, detail=f"Search error: {exc}") from exc
 
 
-@app.post("/copilotkit/action/analyzeDashboard")
-async def action_analyze_dashboard(request: Request) -> Dict[str, Any]:
-    payload = await request.json()
-    question = payload.get("arguments", {}).get("question")
-    if not question:
-        raise HTTPException(status_code=400, detail="Missing question argument")
-
-    logger.info("analyzeDashboard action invoked (question=%s)", question)
-    answer = await _run_analysis(question)
-    return {"result": answer}
-
-
-@app.post("/copilotkit/action/analyzeDashboard/")
-async def action_analyze_dashboard_trailing(request: Request) -> Dict[str, Any]:
-    return await action_analyze_dashboard(request)
-
-
 @app.get("/health")
-async def health() -> Dict[str, Any]:
+async def health() -> dict[str, Any]:
     return {
         "status": "healthy",
         "service": "copilotkit-fastapi-runtime",

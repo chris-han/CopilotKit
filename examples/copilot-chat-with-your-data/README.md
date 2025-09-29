@@ -1,15 +1,11 @@
 # Chat with your data
 
-Transform your data visualization experience with an AI-powered dashboard assistant. Ask questions about your data in natural language, get insights, and interact with your metrics—all through a conversational interface powered by CopilotKit.
+Transform your data visualization experience with an AI-powered dashboard assistant. Ask questions about your data in natural language, get insights, and interact with your metrics—all through a conversational interface powered by the AG-UI protocol and a Pydantic AI backend.
 
 [Click here for a running example](https://chat-with-your-data.vercel.app/)
 
 <div align="center">
   <img src="./preview.gif" alt="Chat with your data"/>
-  
-  <a href="https://copilotkit.ai" target="_blank">
-    <img src="https://img.shields.io/badge/Built%20with-CopilotKit-6963ff" alt="Built with CopilotKit"/>
-  </a>
   <a href="https://nextjs.org" target="_blank">
     <img src="https://img.shields.io/badge/Built%20with-Next.js%2015-black" alt="Built with Next.js"/>
   </a>
@@ -61,9 +57,19 @@ Transform your data visualization experience with an AI-powered dashboard assist
    # Optional: override the default API version (defaults to 2024-04-01-preview)
    # AZURE_OPENAI_API_VERSION=2024-02-15-preview
    TAVILY_API_KEY=your_tavily_api_key
+   # Optional: override the AG-UI runtime URL consumed by the Next.js app
+   # NEXT_PUBLIC_AG_UI_RUNTIME_URL=http://localhost:8004/ag-ui/run
    ```
 
-4. Start the development server:
+4. Install backend dependencies and start the FastAPI runtime in a separate terminal:
+
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   uvicorn main:app --reload --port 8004
+   ```
+
+5. Start the Next.js development server:
 
    ```bash
    pnpm dev
@@ -81,192 +87,82 @@ Transform your data visualization experience with an AI-powered dashboard assist
      ```
    </details>
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
 
 ## 🧩 How It Works
 
-This demo showcases several powerful CopilotKit features:
-
-### CopilotKit Provider
-This provides the chat context to all of the children components.
+### AG-UI Provider
+`AgUiProvider` establishes a shared AG-UI `HttpAgent`, streams protocol events, and seeds the conversation with the system prompt. The provider wraps the entire Next.js layout so every client component can access the chat state.
 
 <em>[app/layout.tsx](./app/layout.tsx)</em>
 
 ```tsx
-export default function RootLayout({children}: Readonly<{children: React.ReactNode}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const runtimeUrl = process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL ?? "http://localhost:8004/ag-ui/run";
+
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <CopilotKit runtimeUrl="/api/copilotkit">
-          {children}
-        </CopilotKit>
+        <AgUiProvider runtimeUrl={runtimeUrl}>{children}</AgUiProvider>
       </body>
     </html>
   );
 }
 ```
 
-### CopilotReadable
-This makes your dashboard data available to the AI, allowing it to understand and analyze your metrics in real-time.
+### Sidebar Chat Interface
+`AgUiSidebar` renders the conversational UI, streams assistant responses, displays loading states, and reacts to custom highlight events to sync with the dashboard visualizations.
 
-<em>[components/Dashboard.tsx](./components/Dashboard.tsx)</em>
-
-```tsx
-useCopilotReadable({
-  description: "Dashboard data including sales trends, product performance, and category distribution",
-  value: {
-    salesData,
-    productData,
-    categoryData,
-    regionalData,
-    demographicsData,
-    metrics: {
-      totalRevenue,
-      totalProfit,
-      totalCustomers,
-      conversionRate,
-      averageOrderValue,
-      profitMargin
-    }
-  }
-});
-```
-
-### Backend Actions
-Backend actions are used to handle operations that require secure server-side processing. This allows you to
-still let the LLM talk to your data, even when it needs to be secured.
-
-<em>[app/api/copilotkit/route.ts](./app/api/copilotkit/route.ts)</em>
-
-```ts
-const runtime = new CopilotRuntime({
-  actions: ({properties, url}) => {
-    return [
-      {
-        name: "searchInternet",
-        description: "Searches the internet for information.",
-        parameters: [
-          {
-            name: "query",
-            type: "string",
-            description: "The query to search the internet for.",
-            required: true,
-          },
-        ],
-        handler: async ({query}: {query: string}) => {
-          // can safely reference sensitive information like environment variables
-          const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
-          return await tvly.search(query, {max_results: 5});
-        },
-      },
-    ]
-  }
-});
-```
-
-You can even render these backend actions safely in the frontend.
-
-<em>[components/Dashboard.tsx](./components/Dashboard.tsx)</em>
+<em>[components/ag-ui/AgUiSidebar.tsx](./components/ag-ui/AgUiSidebar.tsx)</em>
 
 ```tsx
-useCopilotAction({
-  name: "searchInternet",
-  available: "disabled",
-  description: "Searches the internet for information.",
-  parameters: [
-    {
-      name: "query",
-      type: "string",
-      description: "The query to search the internet for.",
-      required: true,
-    }
-  ],
-  render: ({args, status}) => {
-    return <SearchResults query={args.query || 'No query provided'} status={status} />;
-  }
-});
-```
+const { messages, sendMessage, isRunning } = useAgUiAgent();
 
-### CopilotSidebar
-The CopilotSidebar component provides a chat interface for users to interact with the AI assistant. It's customized with specific labels and instructions to provide a data-focused experience.
-
-<em>[app/page.tsx](./app/page.tsx)</em>
-
-```tsx
-<CopilotSidebar
-  instructions={prompt}
-  AssistantMessage={CustomAssistantMessage}
-  labels={{
-    title: "Data Assistant",
-    initial: "Hello, I'm here to help you understand your data. How can I help?",
-    placeholder: "Ask about sales, trends, or metrics...",
-  }}
-/>
-```
-
-### Custom Assistant Message
-The dashboard uses a custom assistant message component to style the AI responses to match the dashboard's design system.
-
-<em>[components/AssistantMessage.tsx](./components/AssistantMessage.tsx)</em>
-
-```tsx
-export const CustomAssistantMessage = (props: AssistantMessageProps) => {
-  const { message, isLoading, subComponent } = props;
-
-  return (
-    <div className="pb-4">
-      {(message || isLoading) && 
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="text-sm text-gray-700 dark:text-gray-300">
-            {message && <Markdown content={message} />}
-            {isLoading && (
-              <div className="flex items-center gap-2 text-xs text-blue-500">
-                <Loader className="h-3 w-3 animate-spin" />
-                <span>Thinking...</span>
-              </div>
-            )}
+return (
+  <aside className="fixed right-0 top-0 h-full w-full max-w-md bg-white">
+    {/* ... */}
+    <div className="flex-1 overflow-y-auto">
+      {messages.map((message) =>
+        message.role === "assistant" ? (
+          <AssistantMessage key={message.id} content={message.content} isStreaming={message.pending} />
+        ) : (
+          <div key={message.id} className="self-end ml-auto bg-blue-600 text-white px-3 py-2 rounded-lg">
+            {message.content}
           </div>
-        </div>
-      }
-      
-      {subComponent && <div className="mt-2">{subComponent}</div>}
+        ),
+      )}
     </div>
-  );
-};
+    <form onSubmit={handleSubmit}>{/* composer */}</form>
+  </aside>
+);
 ```
 
-### CSS Customization
-The dashboard uses CSS variables to customize the appearance of the CopilotKit components to match the dashboard's design system.
+### FastAPI Runtime
+The FastAPI backend bridges AG-UI events with a Pydantic AI agent. Each request to `/ag-ui/run` is validated against the AG-UI protocol, streamed as Server-Sent Events, and augmented with custom `chart.highlight` events so the frontend can coordinate card highlights.
 
-<em>[app/globals.css](./app/globals.css)</em>
+<em>[backend/main.py](./backend/main.py)</em>
 
-```css
-:root {
-  --copilot-kit-primary-color: #3b82f6;
-  --copilot-kit-contrast-color: white;
-  --copilot-kit-secondary-contrast-color: #1e293b;
-  --copilot-kit-background-color: white;
-  --copilot-kit-muted-color: #64748b;
-  --copilot-kit-separator-color: rgba(0, 0, 0, 0.08);
-  --copilot-kit-scrollbar-color: rgba(0, 0, 0, 0.2);
-  /* Additional variables... */
-}
+```py
+async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
+    thread_id = run_input.thread_id or f"thread-{uuid4()}"
+    run_id = run_input.run_id or f"run-{uuid4()}"
 
-/* Custom CopilotKit styling to match dashboard */
-.copilotKitSidebar .copilotKitWindow {
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-}
+    yield encoder.encode(RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id))
 
-.copilotKitButton {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
+    answer = await _run_analysis(latest_user, system_messages, transcript)
+    sanitized_answer, chart_ids = _separate_highlight_directives(answer)
+
+    yield encoder.encode(TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id, role="assistant"))
+    yield encoder.encode(TextMessageContentEvent(type=EventType.TEXT_MESSAGE_CONTENT, message_id=message_id, delta=sanitized_answer))
+    yield encoder.encode(TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id))
+
+    for chart_id in chart_ids:
+        yield encoder.encode(CustomEvent(type=EventType.CUSTOM, name="chart.highlight", value={"chartId": chart_id}))
+
+    yield encoder.encode(RunFinishedEvent(type=EventType.RUN_FINISHED, thread_id=thread_id, run_id=run_id))
 ```
-
 
 ## 📚 Learn More
 
-Ready to build your own AI-powered dashboard? Check out these resources:
-
-[CopilotKit Documentation](https://docs.copilotkit.ai) - Comprehensive guides and API references to help you build your own copilots.
-
-[CopilotKit Cloud](https://cloud.copilotkit.ai/) - Deploy your copilots with our managed cloud solution for production-ready AI assistants.
+- [AG-UI Protocol Documentation](https://github.com/ag-ui-protocol/ag-ui) – Protocol concepts, SDK usage, and reference integrations.
+- [Pydantic AI](https://ai.pydantic.dev/) – Build structured agents in Python with tool support and schema validation.

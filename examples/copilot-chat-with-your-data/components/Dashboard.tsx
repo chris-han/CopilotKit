@@ -1,11 +1,9 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { useCopilotAction, useCopilotReadable } from "@copilotkit/react-core";
 import { AreaChart } from "./ui/area-chart";
 import { BarChart } from "./ui/bar-chart";
 import { DonutChart } from "./ui/pie-chart";
-import { SearchResults } from "./generative-ui/SearchResults";
 import { 
   salesData, 
   productData, 
@@ -28,44 +26,6 @@ export function Dashboard() {
   const conversionRate = calculateConversionRate();
   const averageOrderValue = calculateAverageOrderValue();
   const profitMargin = calculateProfitMargin();
-
-  // Make data available to the Copilot
-  useCopilotReadable({
-    description: "Dashboard data including sales trends, product performance, and category distribution",
-    value: {
-      salesData,
-      productData,
-      categoryData,
-      regionalData,
-      demographicsData,
-      metrics: {
-        totalRevenue,
-        totalProfit,
-        totalCustomers,
-        conversionRate,
-        averageOrderValue,
-        profitMargin
-      }
-    }
-  });
-
-  // Define render only search action
-  useCopilotAction({
-    name: "searchInternet",
-    available: "disabled",
-    description: "Searches the internet for information.",
-    parameters: [
-      {
-        name: "query",
-        type: "string",
-        description: "The query to search the internet for.",
-        required: true,
-      }
-    ],
-    render: ({args, status}) => {
-      return <SearchResults query={args.query || 'No query provided'} status={status} />;
-    }
-  });
 
   // Color palettes for different charts
   const colors = {

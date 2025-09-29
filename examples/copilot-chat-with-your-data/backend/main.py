@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -516,6 +517,7 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
         f"?api-version={AZURE_OPENAI_TTS_API_VERSION}"
     )
     audio_segments: List[Dict[str, Any]] = []
+    encountered_error = False
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
             for segment in script_segments:
@@ -530,44 +532,60 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
                     "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
                 }
 
-                try:
-                    rest_response = await client.post(
-                        tts_url,
-                        headers={
-                            "api-key": AZURE_OPENAI_API_KEY,
-                            "Content-Type": "application/json",
-                            "Accept": "audio/mpeg",
-                        },
-                        json=tts_payload,
-                    )
-                    rest_response.raise_for_status()
-                except httpx.HTTPStatusError as exc:  # pragma: no cover
-                    body_preview = exc.response.text[:200] if exc.response.text else ""
-                    logger.warning(
-                        "generateDataStoryAudio step %s HTTP %s: %s",
-                        step_id,
-                        exc.response.status_code,
-                        body_preview,
-                    )
-                    if exc.response.status_code == 404:
-                        return {"audio": None, "segments": [], "contentType": None, "error": "deployment_not_found"}
-                    raise HTTPException(
-                        status_code=exc.response.status_code,
-                        detail=f"Audio generation failed for step {step_id}: HTTP {exc.response.status_code}",
-                    ) from exc
-                except httpx.HTTPError as exc:  # pragma: no cover
-                    logger.exception("generateDataStoryAudio request failed for step %s", step_id)
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Audio generation request failed for step {step_id}: {exc}",
-                    ) from exc
+                rest_response: httpx.Response | None = None
+                attempt = 0
+                while attempt < 3:
+                    attempt += 1
+                    try:
+                        rest_response = await client.post(
+                            tts_url,
+                            headers={
+                                "api-key": AZURE_OPENAI_API_KEY,
+                                "Content-Type": "application/json",
+                                "Accept": "audio/mpeg",
+                            },
+                            json=tts_payload,
+                        )
+                        rest_response.raise_for_status()
+                        break
+                    except httpx.HTTPStatusError as exc:  # pragma: no cover
+                        body_preview = exc.response.text[:200] if exc.response.text else ""
+                        logger.warning(
+                            "generateDataStoryAudio step %s attempt %s HTTP %s: %s",
+                            step_id,
+                            attempt,
+                            exc.response.status_code,
+                            body_preview,
+                        )
+                        if exc.response.status_code == 404:
+                            return {"audio": None, "segments": [], "contentType": None, "error": "deployment_not_found"}
+                        if attempt >= 3:
+                            raise HTTPException(
+                                status_code=exc.response.status_code,
+                                detail=f"Audio generation failed for step {step_id}: HTTP {exc.response.status_code}",
+                            ) from exc
+                    except httpx.HTTPError as exc:  # pragma: no cover
+                        logger.warning(
+                            "generateDataStoryAudio request failed for step %s (attempt %s): %s",
+                            step_id,
+                            attempt,
+                            exc,
+                        )
+                        if attempt >= 3:
+                            encountered_error = True
+                            rest_response = None
+                        else:
+                            await asyncio.sleep(0.5 * attempt)
+                        if rest_response is None and attempt >= 3:
+                            break
+                if rest_response is None:
+                    break
 
                 audio_bytes = await rest_response.aread()
                 if not audio_bytes:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Audio generation returned empty audio stream for step {step_id}",
-                    )
+                    logger.warning("Audio generation returned empty payload for step %s", step_id)
+                    encountered_error = True
+                    break
 
                 content_type = rest_response.headers.get("content-type")
                 if not content_type or "audio" not in content_type:
@@ -586,8 +604,10 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
         logger.exception("generateDataStoryAudio unexpected failure")
         raise HTTPException(status_code=502, detail=f"Audio generation failed: {exc}") from exc
 
-    if not audio_segments:
-        raise HTTPException(status_code=502, detail="Audio generation produced no segments")
+    if not audio_segments or encountered_error:
+        if encountered_error:
+            logger.warning("Audio generation encountered an error; returning without narration")
+        return {"audio": None, "segments": [], "contentType": None, "error": "audio_generation_failed"}
 
     content_type = audio_segments[0].get("contentType") or "audio/mpeg"
     return {"audio": None, "segments": audio_segments, "contentType": content_type}

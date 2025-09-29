@@ -71,6 +71,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     audioEnabled: AUDIO_NARRATION_ENABLED,
     audioContentType: undefined,
     audioSegments: undefined,
+    audioProgress: 0,
+    isAnalyzing: false,
+    hasTimeline: false,
   });
 
   const agentRef = useRef<HttpAgent | null>(null);
@@ -166,6 +169,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       audioEnabled: AUDIO_NARRATION_ENABLED,
       audioContentType: undefined,
       audioSegments: undefined,
+      audioProgress: 0,
+      isAnalyzing: true,
+      hasTimeline: false,
     }));
     highlightRegistryRef.current = {};
     storyStepsRef.current = [];
@@ -173,7 +179,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
     const currentSuggestion = dataStoryState.suggestion;
     if (!currentSuggestion) {
-      setDataStoryState((prev) => ({ ...prev, status: prev.status === "loading" ? "idle" : prev.status }));
+      setDataStoryState((prev) => ({
+        ...prev,
+        status: prev.status === "loading" ? "idle" : prev.status,
+        isAnalyzing: false,
+      }));
       return;
     }
     try {
@@ -263,6 +273,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         audioEnabled: hasAudio,
         audioContentType: hasAudio ? audioContentType : undefined,
         audioSegments: hasAudio ? audioSegments : undefined,
+        audioProgress: hasAudio ? 0 : 1,
+        isAnalyzing: false,
+        hasTimeline: steps.length > 0,
       });
 
       if (steps.length > 0) {
@@ -270,9 +283,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           replayHighlight(firstStepId);
         }
 
-        if (!hasAudio) {
+        if (!hasAudio && !AUDIO_NARRATION_ENABLED) {
           scheduleManualStepProgression(steps);
         }
+
       } else {
         setDataStoryState((prev) => ({
           ...prev,
@@ -280,6 +294,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           audioEnabled: false,
           audioContentType: undefined,
           audioSegments: undefined,
+          audioProgress: 0,
+          isAnalyzing: false,
+          hasTimeline: false,
         }));
         storyStepsRef.current = [];
       }
@@ -292,6 +309,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         audioEnabled: false,
         audioContentType: undefined,
         audioSegments: undefined,
+        audioProgress: 0,
+        isAnalyzing: false,
+        hasTimeline: false,
       }));
       storyStepsRef.current = [];
     }
@@ -306,6 +326,20 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   const handleAudioProgress = useCallback(
     (stepId: string) => {
       replayHighlight(stepId, { persistent: true });
+      const steps = storyStepsRef.current;
+      const total = steps.length;
+      if (!total) {
+        return;
+      }
+      const index = steps.findIndex((step) => step.id === stepId);
+      if (index === -1) {
+        return;
+      }
+      const progress = Math.min(1, (index + 1) / total);
+      setDataStoryState((prev) => ({
+        ...prev,
+        audioProgress: Math.max(prev.audioProgress ?? 0, progress),
+      }));
     },
     [replayHighlight],
   );
@@ -331,11 +365,12 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     const firstStep = steps[0];
     if (firstStep) {
       replayHighlight(firstStep.id, { persistent: true });
+      setDataStoryState((prev) => ({ ...prev, audioProgress: steps.length ? 1 / steps.length : 0 }));
     }
   }, [replayHighlight]);
 
   const handleAudioComplete = useCallback(() => {
-    setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+    setDataStoryState((prev) => ({ ...prev, status: "completed", audioProgress: 1 }));
     clearManualAdvanceTimeouts();
   }, [clearManualAdvanceTimeouts]);
 
@@ -354,6 +389,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         audioEnabled: false,
         status: steps.length ? "playing" : prev.status,
         activeStepId: nextActive,
+        audioProgress: 0,
       };
     });
     if (wasAlreadyDisabled || !steps.length) {
@@ -363,8 +399,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     if (firstStep) {
       replayHighlight(firstStep.id);
     }
-    scheduleManualStepProgression(steps);
-  }, [clearManualAdvanceTimeouts, replayHighlight, scheduleManualStepProgression]);
+  }, [clearManualAdvanceTimeouts, replayHighlight]);
 
   const ensureSystemMessage = useCallback(() => {
     if (!systemMessage) {

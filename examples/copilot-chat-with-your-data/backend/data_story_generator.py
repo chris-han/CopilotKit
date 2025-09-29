@@ -47,10 +47,26 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
     top_product = max(product_data, key=lambda item: item["sales"])
     lagging_product = min(product_data, key=lambda item: item["growth"])
     leading_category = max(category_data, key=lambda item: item["value"])
+    product_table_lines = [
+        "| Product | Sales | Growth (%) | Units Sold |",
+        "|---------|-------|------------|------------|",
+        *(
+            f"| {entry['name']} | {_format_currency(entry['sales'])} | {entry['growth']:.1f}% | {entry['units']} |"
+            for entry in product_data
+        ),
+    ]
 
     top_region = max(regional_data, key=lambda item: item["sales"])
     second_region = sorted(regional_data, key=lambda item: item["sales"], reverse=True)[1]
     top_demo = max(demographics_data, key=lambda item: item["spending"])
+    demographics_table_lines = [
+        "| Age Group | Percentage (%) | Spending ($) |",
+        "|-----------|----------------|--------------|",
+        *(
+            f"| {entry['ageGroup']} | {entry['percentage']}% | {_format_currency(entry['spending'])} |"
+            for entry in demographics_data
+        ),
+    ]
 
     steps: List[Dict[str, Any]] = [
         {
@@ -80,6 +96,8 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
                 f"**{top_product['name']}** continues to lead with {_format_currency(top_product['sales'])} in sales "
                 f"and {top_product['growth']:.1f}% growth. In contrast, **{lagging_product['name']}** is contracting "
                 f"at {lagging_product['growth']:.1f}% and is worth a closer look."
+                "\n\nProduct Performance:\n\n"
+                + "\n".join(product_table_lines)
             ),
             "chartIds": ["product-performance"],
             "kpis": [
@@ -123,9 +141,10 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "stepType": "change",
             "title": "Customer demographics keep spending concentrated",
             "markdown": (
-                f"The highest-spending segment remains **ages {top_demo['ageGroup']}**, generating "
-                f"{_format_currency(top_demo['spending'])}. Engagement from other age groups is steadier but smaller,"
-                " suggesting room for targeted campaigns."
+                f"The highest-spending segment remains **ages {top_demo['ageGroup']}**, generating {_format_currency(top_demo['spending'])}."
+                " Engagement from other age groups is steadier but smaller, suggesting room for targeted campaigns."
+                "\n\nCustomer Demographics:\n\n"
+                + "\n".join(demographics_table_lines)
             ),
             "chartIds": ["customer-demographics"],
             "kpis": [

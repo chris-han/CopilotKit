@@ -5,17 +5,64 @@ export function normalizeMarkdownTables(markdown: string): string {
     return markdown;
   }
 
-  const rowBoundaryPattern = /\|\s+\|/g;
-  const inlineRowPattern = /(^|[^|\n])\s(\|[^\n|]+(?:\|[^\n|]+)+\|?)/g;
+  let rebuilt = "";
+  let pipesInRow = 0;
 
-  let normalized = markdown.replace(rowBoundaryPattern, "|\n|");
-  normalized = normalized.replace(inlineRowPattern, (_match, prefix: string, row: string) => {
-    const trimmedRow = row.trim();
-    if (!prefix) {
-      return trimmedRow;
+  for (let index = 0; index < markdown.length; index += 1) {
+    const char = markdown[index];
+
+    if (char === "\n") {
+      pipesInRow = 0;
+      rebuilt += char;
+      continue;
     }
-    return `${prefix}\n${trimmedRow}`;
-  });
 
-  return normalized;
+    rebuilt += char;
+
+    if (char !== "|") {
+      continue;
+    }
+
+    pipesInRow += 1;
+
+    let lookahead = index + 1;
+    while (lookahead < markdown.length && (markdown[lookahead] === " " || markdown[lookahead] === "\t")) {
+      lookahead += 1;
+    }
+
+    const nextSignificantChar = markdown[lookahead];
+    const shouldBreakRow = pipesInRow >= 3 && nextSignificantChar === "|";
+
+    if (!shouldBreakRow) {
+      continue;
+    }
+
+    rebuilt += "\n";
+    pipesInRow = 0;
+    index = lookahead - 1;
+  }
+
+  const normalizedLines: string[] = [];
+
+  for (const line of rebuilt.split("\n")) {
+    if (!line.includes("|")) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const trimmedStart = line.trimStart();
+    if (!trimmedStart) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    if (trimmedStart.startsWith("|")) {
+      normalizedLines.push(trimmedStart.replace(/[ \t]+$/g, ""));
+      continue;
+    }
+
+    normalizedLines.push(line);
+  }
+
+  return normalizedLines.join("\n");
 }

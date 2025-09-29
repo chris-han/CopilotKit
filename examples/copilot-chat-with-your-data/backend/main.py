@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
 import re
-from typing import Any, AsyncIterator, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -24,11 +25,14 @@ from urllib.parse import urlparse
 
 from ag_ui.core import (
     CustomEvent,
+    Event,
     EventType,
     RunAgentInput,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    StepFinishedEvent,
+    StepStartedEvent,
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
@@ -313,6 +317,309 @@ def _chunk_text(text: str, max_len: int = 800) -> Iterable[str]:
         yield "".join(buffer).rstrip("\n")
 
 
+def _wants_event_stream(request: Request) -> bool:
+    accept = request.headers.get("accept")
+    if not accept:
+        return False
+    return "text/event-stream" in accept.lower()
+
+
+async def _synthesize_story_audio(
+    script_segments: Sequence[Dict[str, str]],
+    *,
+    streaming: bool,
+    send_event: Callable[[Event], Awaitable[None]] | None = None,
+) -> Tuple[List[Dict[str, Any]], str | None, bool, str | None]:
+    tts_url = (
+        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{AZURE_OPENAI_TTS_DEPLOYMENT}/audio/speech"
+        f"?api-version={AZURE_OPENAI_TTS_API_VERSION}"
+    )
+
+    audio_segments: List[Dict[str, Any]] = []
+    encountered_error = False
+    error_detail: str | None = None
+    resolved_content_type: str | None = None
+    total_segments = len(script_segments)
+
+    if total_segments == 0:
+        encountered_error = True
+        error_detail = "story_steps_empty"
+
+    async def emit(event: Event) -> None:
+        if send_event is not None:
+            await send_event(event)
+
+    if streaming and send_event is not None:
+        await emit(StepStartedEvent(stepName="dataStory.audio"))
+        await emit(
+            CustomEvent(
+                type=EventType.CUSTOM,
+                name="dataStory.audio.lifecycle",
+                value={"totalSegments": total_segments},
+            )
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+            for index, segment in enumerate(script_segments, start=1):
+                step_id = segment.get("stepId") or f"step-{index}"
+                narration = segment.get("script") or ""
+                segment_step_name = f"dataStory.audio.segment:{step_id}"
+
+                if streaming and send_event is not None:
+                    await emit(StepStartedEvent(stepName=segment_step_name))
+
+                tts_payload = {
+                    "model": AZURE_OPENAI_TTS_DEPLOYMENT,
+                    "voice": "alloy",
+                    "response_format": "mp3",
+                    "input": narration,
+                    "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
+                }
+
+                rest_response: httpx.Response | None = None
+                attempt = 0
+                while attempt < 3:
+                    attempt += 1
+                    try:
+                        rest_response = await client.post(
+                            tts_url,
+                            headers={
+                                "api-key": AZURE_OPENAI_API_KEY,
+                                "Content-Type": "application/json",
+                                "Accept": "audio/mpeg",
+                            },
+                            json=tts_payload,
+                        )
+                        rest_response.raise_for_status()
+                        break
+                    except httpx.HTTPStatusError as exc:  # pragma: no cover
+                        body_preview = exc.response.text[:200] if exc.response.text else ""
+                        logger.warning(
+                            "generateDataStoryAudio step %s attempt %s HTTP %s: %s",
+                            step_id,
+                            attempt,
+                            exc.response.status_code,
+                            body_preview,
+                        )
+                        if exc.response.status_code == 404:
+                            error_detail = "deployment_not_found"
+                            if streaming and send_event is not None:
+                                await emit(
+                                    CustomEvent(
+                                        type=EventType.CUSTOM,
+                                        name="dataStory.audio.error",
+                                        value={
+                                            "code": error_detail,
+                                            "stepId": step_id,
+                                            "status": exc.response.status_code,
+                                            "message": "TTS deployment not found",
+                                        },
+                                    )
+                                )
+                                encountered_error = True
+                                rest_response = None
+                                break
+                            return [], None, True, error_detail
+                        if attempt >= 3:
+                            detail_message = (
+                                f"Audio generation failed for step {step_id}: HTTP {exc.response.status_code}"
+                            )
+                            if streaming and send_event is not None:
+                                await emit(
+                                    CustomEvent(
+                                        type=EventType.CUSTOM,
+                                        name="dataStory.audio.error",
+                                        value={
+                                            "stepId": step_id,
+                                            "status": exc.response.status_code,
+                                            "message": detail_message,
+                                        },
+                                    )
+                                )
+                                encountered_error = True
+                                rest_response = None
+                                break
+                            raise HTTPException(
+                                status_code=exc.response.status_code,
+                                detail=detail_message,
+                            ) from exc
+                    except httpx.HTTPError as exc:  # pragma: no cover
+                        logger.warning(
+                            "generateDataStoryAudio request failed for step %s (attempt %s): %s",
+                            step_id,
+                            attempt,
+                            exc,
+                        )
+                        if attempt >= 3:
+                            encountered_error = True
+                            if streaming and send_event is not None:
+                                await emit(
+                                    CustomEvent(
+                                        type=EventType.CUSTOM,
+                                        name="dataStory.audio.error",
+                                        value={
+                                            "stepId": step_id,
+                                            "message": "Audio generation request failed",
+                                        },
+                                    )
+                                )
+                            rest_response = None
+                        else:
+                            await asyncio.sleep(0.5 * attempt)
+                        if rest_response is None and attempt >= 3:
+                            break
+
+                if rest_response is None:
+                    if streaming and send_event is not None:
+                        await emit(StepFinishedEvent(stepName=segment_step_name))
+                    break
+
+                audio_bytes = await rest_response.aread()
+                if not audio_bytes:
+                    logger.warning("Audio generation returned empty payload for step %s", step_id)
+                    encountered_error = True
+                    if streaming and send_event is not None:
+                        await emit(
+                            CustomEvent(
+                                type=EventType.CUSTOM,
+                                name="dataStory.audio.error",
+                                value={
+                                    "stepId": step_id,
+                                    "message": "Audio generation returned an empty payload",
+                                },
+                            )
+                        )
+                        await emit(StepFinishedEvent(stepName=segment_step_name))
+                    break
+
+                content_type = rest_response.headers.get("content-type")
+                if not content_type or "audio" not in content_type:
+                    content_type = "audio/mpeg"
+                resolved_content_type = resolved_content_type or content_type
+
+                audio_segments.append(
+                    {
+                        "stepId": step_id,
+                        "audio": base64.b64encode(audio_bytes).decode("utf-8"),
+                        "contentType": content_type,
+                    }
+                )
+
+                if streaming and send_event is not None:
+                    await emit(StepFinishedEvent(stepName=segment_step_name))
+                    await emit(
+                        CustomEvent(
+                            type=EventType.CUSTOM,
+                            name="dataStory.audio.progress",
+                            value={
+                                "stepId": step_id,
+                                "completed": index,
+                                "total": total_segments if total_segments else 1,
+                            },
+                        )
+                    )
+
+                if encountered_error:
+                    break
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception("generateDataStoryAudio unexpected failure")
+        encountered_error = True
+        error_detail = str(exc)
+        if streaming and send_event is not None:
+            await emit(
+                CustomEvent(
+                    type=EventType.CUSTOM,
+                    name="dataStory.audio.error",
+                    value={"message": error_detail},
+                )
+            )
+
+    if streaming and send_event is not None:
+        payload: Dict[str, Any]
+        if not audio_segments or encountered_error:
+            payload = {
+                "segments": [],
+                "contentType": resolved_content_type,
+                "error": error_detail or "audio_generation_failed",
+            }
+        else:
+            payload = {
+                "segments": audio_segments,
+                "contentType": resolved_content_type,
+            }
+        await emit(
+            CustomEvent(
+                type=EventType.CUSTOM,
+                name="dataStory.audio.complete",
+                value=payload,
+            )
+        )
+        await emit(StepFinishedEvent(stepName="dataStory.audio"))
+
+    return audio_segments, resolved_content_type, encountered_error, error_detail
+
+
+def _stream_story_audio(script_segments: Sequence[Dict[str, str]]) -> StreamingResponse:
+    event_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def enqueue(event: Event) -> None:
+        await event_queue.put(encoder.encode(event))
+
+    async def runner() -> None:
+        try:
+            await _synthesize_story_audio(script_segments, streaming=True, send_event=enqueue)
+        except HTTPException as exc:
+            await enqueue(
+                CustomEvent(
+                    type=EventType.CUSTOM,
+                    name="dataStory.audio.complete",
+                    value={
+                        "segments": [],
+                        "contentType": None,
+                        "error": getattr(exc, "detail", "audio_generation_failed"),
+                        "status": exc.status_code,
+                    },
+                )
+            )
+            await enqueue(StepFinishedEvent(stepName="dataStory.audio"))
+        except Exception as exc:  # pragma: no cover
+            logger.exception("generateDataStoryAudio unexpected failure during stream")
+            await enqueue(
+                CustomEvent(
+                    type=EventType.CUSTOM,
+                    name="dataStory.audio.complete",
+                    value={
+                        "segments": [],
+                        "contentType": None,
+                        "error": str(exc),
+                    },
+                )
+            )
+            await enqueue(StepFinishedEvent(stepName="dataStory.audio"))
+        finally:
+            await event_queue.put(None)
+
+    async def event_iterator() -> AsyncIterator[str]:
+        worker = asyncio.create_task(runner())
+        try:
+            while True:
+                item = await event_queue.get()
+                if item is None:
+                    break
+                yield item
+            await worker
+        finally:
+            if not worker.done():  # pragma: no branch - defensive cleanup
+                worker.cancel()
+                with contextlib.suppress(Exception):
+                    await worker
+
+    return StreamingResponse(event_iterator(), media_type="text/event-stream")
+
+
 async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
     thread_id = run_input.thread_id or f"thread-{uuid4()}"
     run_id = run_input.run_id or f"run-{uuid4()}"
@@ -499,7 +806,7 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
 
 
 @app.post("/ag-ui/action/generateDataStoryAudio")
-async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
+async def action_generate_data_story_audio(request: Request) -> Response:
     if not DATA_STORY_AUDIO_ENABLED:
         raise HTTPException(status_code=503, detail="Audio narration disabled")
 
@@ -508,109 +815,32 @@ async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
     if not isinstance(steps, list) or not steps:
         steps = generate_data_story_steps()
 
+    wants_stream = _wants_event_stream(request)
+
     script_segments = _story_steps_to_audio_segments(steps)
     if not script_segments:
+        if wants_stream:
+            return _stream_story_audio(script_segments)
         raise HTTPException(status_code=400, detail="Story steps are empty")
 
-    tts_url = (
-        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{AZURE_OPENAI_TTS_DEPLOYMENT}/audio/speech"
-        f"?api-version={AZURE_OPENAI_TTS_API_VERSION}"
+    if wants_stream:
+        return _stream_story_audio(script_segments)
+
+    audio_segments, content_type, encountered_error, error_detail = await _synthesize_story_audio(
+        script_segments,
+        streaming=False,
     )
-    audio_segments: List[Dict[str, Any]] = []
-    encountered_error = False
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
-            for segment in script_segments:
-                step_id = segment.get("stepId")
-                narration = segment.get("script") or ""
 
-                tts_payload = {
-                    "model": AZURE_OPENAI_TTS_DEPLOYMENT,
-                    "voice": "alloy",
-                    "response_format": "mp3",
-                    "input": narration,
-                    "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
-                }
+    if encountered_error or not audio_segments:
+        logger.warning("Audio generation encountered an error; returning without narration")
+        error_code = error_detail or "audio_generation_failed"
+        return JSONResponse(
+            {"audio": None, "segments": [], "contentType": None, "error": error_code},
+            status_code=200,
+        )
 
-                rest_response: httpx.Response | None = None
-                attempt = 0
-                while attempt < 3:
-                    attempt += 1
-                    try:
-                        rest_response = await client.post(
-                            tts_url,
-                            headers={
-                                "api-key": AZURE_OPENAI_API_KEY,
-                                "Content-Type": "application/json",
-                                "Accept": "audio/mpeg",
-                            },
-                            json=tts_payload,
-                        )
-                        rest_response.raise_for_status()
-                        break
-                    except httpx.HTTPStatusError as exc:  # pragma: no cover
-                        body_preview = exc.response.text[:200] if exc.response.text else ""
-                        logger.warning(
-                            "generateDataStoryAudio step %s attempt %s HTTP %s: %s",
-                            step_id,
-                            attempt,
-                            exc.response.status_code,
-                            body_preview,
-                        )
-                        if exc.response.status_code == 404:
-                            return {"audio": None, "segments": [], "contentType": None, "error": "deployment_not_found"}
-                        if attempt >= 3:
-                            raise HTTPException(
-                                status_code=exc.response.status_code,
-                                detail=f"Audio generation failed for step {step_id}: HTTP {exc.response.status_code}",
-                            ) from exc
-                    except httpx.HTTPError as exc:  # pragma: no cover
-                        logger.warning(
-                            "generateDataStoryAudio request failed for step %s (attempt %s): %s",
-                            step_id,
-                            attempt,
-                            exc,
-                        )
-                        if attempt >= 3:
-                            encountered_error = True
-                            rest_response = None
-                        else:
-                            await asyncio.sleep(0.5 * attempt)
-                        if rest_response is None and attempt >= 3:
-                            break
-                if rest_response is None:
-                    break
-
-                audio_bytes = await rest_response.aread()
-                if not audio_bytes:
-                    logger.warning("Audio generation returned empty payload for step %s", step_id)
-                    encountered_error = True
-                    break
-
-                content_type = rest_response.headers.get("content-type")
-                if not content_type or "audio" not in content_type:
-                    content_type = "audio/mpeg"
-
-                audio_segments.append(
-                    {
-                        "stepId": step_id,
-                        "audio": base64.b64encode(audio_bytes).decode("utf-8"),
-                        "contentType": content_type,
-                    }
-                )
-    except HTTPException:
-        raise
-    except Exception as exc:  # pragma: no cover
-        logger.exception("generateDataStoryAudio unexpected failure")
-        raise HTTPException(status_code=502, detail=f"Audio generation failed: {exc}") from exc
-
-    if not audio_segments or encountered_error:
-        if encountered_error:
-            logger.warning("Audio generation encountered an error; returning without narration")
-        return {"audio": None, "segments": [], "contentType": None, "error": "audio_generation_failed"}
-
-    content_type = audio_segments[0].get("contentType") or "audio/mpeg"
-    return {"audio": None, "segments": audio_segments, "contentType": content_type}
+    resolved_type = content_type or audio_segments[0].get("contentType") or "audio/mpeg"
+    return JSONResponse({"audio": None, "segments": audio_segments, "contentType": resolved_type})
 
 
 @app.get("/health")

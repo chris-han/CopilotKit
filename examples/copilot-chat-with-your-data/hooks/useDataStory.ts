@@ -43,6 +43,8 @@ export type DataStoryState = {
   audioContentType?: string;
   audioSegments?: DataStoryAudioSegment[];
   audioProgress?: number;
+  audioGenerationProgress?: number;
+  audioGenerationTotalSegments?: number;
   isAnalyzing?: boolean;
   hasTimeline?: boolean;
 };

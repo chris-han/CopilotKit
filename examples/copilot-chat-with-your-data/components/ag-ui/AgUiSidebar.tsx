@@ -84,7 +84,7 @@ export function AgUiSidebar() {
               : "Synthesizing narration";
             const determinate = !showAnalyzing;
             const progress = determinate
-              ? Math.max(0, Math.min(1, dataStoryState.audioProgress ?? 0))
+              ? Math.max(0, Math.min(1, dataStoryState.audioGenerationProgress ?? 0))
               : 0;
             return (
               <div className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700 shadow-sm">

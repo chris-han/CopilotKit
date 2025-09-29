@@ -72,6 +72,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     audioContentType: undefined,
     audioSegments: undefined,
     audioProgress: 0,
+    audioGenerationProgress: 0,
+    audioGenerationTotalSegments: 0,
     isAnalyzing: false,
     hasTimeline: false,
   });
@@ -170,6 +172,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       audioContentType: undefined,
       audioSegments: undefined,
       audioProgress: 0,
+      audioGenerationProgress: 0,
+      audioGenerationTotalSegments: 0,
       isAnalyzing: true,
       hasTimeline: false,
     }));
@@ -205,100 +209,307 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         return acc;
       }, {});
 
-      let audioUrl: string | undefined;
-      let hasAudio = false;
-      let audioContentType: string | undefined;
-      let audioSegments: DataStoryAudioSegment[] | undefined;
-
-      if (AUDIO_NARRATION_ENABLED && steps.length > 0) {
-        try {
-          const audioResponse = await fetch(`${runtimeBaseUrl}/action/generateDataStoryAudio`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ steps }),
-          });
-          if (audioResponse.ok) {
-            const audioPayload = await audioResponse.json();
-            const payloadSegments = Array.isArray(audioPayload?.segments)
-              ? audioPayload.segments
-              : [];
-            const normalizedSegments: DataStoryAudioSegment[] = payloadSegments
-              .map((segment: { stepId?: unknown; audio?: unknown; contentType?: unknown }) => {
-                const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
-                const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
-                if (!stepId || !audioData) {
-                  return null;
-                }
-                const contentType =
-                  typeof segment?.contentType === "string" && segment.contentType.includes("audio")
-                    ? segment.contentType
-                    : "audio/mpeg";
-                return {
-                  stepId,
-                  url: `data:${contentType};base64,${audioData}`,
-                  contentType,
-                } satisfies DataStoryAudioSegment;
-              })
-              .filter((segment: DataStoryAudioSegment | null): segment is DataStoryAudioSegment => Boolean(segment));
-
-            if (normalizedSegments.length > 0) {
-              audioSegments = normalizedSegments;
-              audioContentType = normalizedSegments[0]?.contentType;
-              hasAudio = true;
-            } else if (audioPayload?.audio) {
-              const contentType = typeof audioPayload?.contentType === "string" ? audioPayload.contentType : undefined;
-              audioContentType = contentType && contentType.includes("audio") ? contentType : "audio/mpeg";
-              audioUrl = `data:${audioContentType};base64,${audioPayload.audio}`;
-              hasAudio = true;
-            }
-          }
-        } catch (audioErr) {
-          console.error("Data story audio generation failed", audioErr);
-        }
-      }
-
-      const firstStepId = steps[0]?.id;
-
-      setDataStoryState({
-        status: steps.length
-          ? hasAudio
-            ? "awaiting-audio"
-            : "playing"
-          : "completed",
-        suggestion: undefined,
-        steps,
-        activeStepId: hasAudio ? undefined : firstStepId,
-        error: null,
-        audioUrl: hasAudio ? audioUrl : undefined,
-        audioEnabled: hasAudio,
-        audioContentType: hasAudio ? audioContentType : undefined,
-        audioSegments: hasAudio ? audioSegments : undefined,
-        audioProgress: hasAudio ? 0 : 1,
-        isAnalyzing: false,
-        hasTimeline: steps.length > 0,
-      });
-
-      if (steps.length > 0) {
-        if (!hasAudio && firstStepId) {
-          replayHighlight(firstStepId);
-        }
-
-        if (!hasAudio && !AUDIO_NARRATION_ENABLED) {
-          scheduleManualStepProgression(steps);
-        }
-
-      } else {
+      if (steps.length === 0) {
         setDataStoryState((prev) => ({
           ...prev,
           status: "completed",
+          suggestion: undefined,
+          steps: [],
+          activeStepId: undefined,
+          error: null,
+          audioUrl: undefined,
           audioEnabled: false,
           audioContentType: undefined,
           audioSegments: undefined,
           audioProgress: 0,
+          audioGenerationProgress: 0,
+          audioGenerationTotalSegments: 0,
           isAnalyzing: false,
           hasTimeline: false,
         }));
         storyStepsRef.current = [];
+        return;
+      }
+
+      setDataStoryState((prev) => ({
+        ...prev,
+        status: AUDIO_NARRATION_ENABLED ? "awaiting-audio" : "playing",
+        suggestion: undefined,
+        steps,
+        activeStepId: AUDIO_NARRATION_ENABLED ? prev.activeStepId : steps[0]?.id,
+        error: null,
+        audioUrl: undefined,
+        audioEnabled: AUDIO_NARRATION_ENABLED && steps.length > 0,
+        audioContentType: undefined,
+        audioSegments: undefined,
+        audioProgress: 0,
+        audioGenerationProgress: AUDIO_NARRATION_ENABLED ? 0 : prev.audioGenerationProgress ?? 0,
+        audioGenerationTotalSegments: AUDIO_NARRATION_ENABLED ? 0 : prev.audioGenerationTotalSegments ?? 0,
+        isAnalyzing: false,
+        hasTimeline: true,
+      }));
+
+      const normalizeSegments = (
+        payloadSegments: Array<{ stepId?: unknown; audio?: unknown; contentType?: unknown }>,
+      ): DataStoryAudioSegment[] =>
+        payloadSegments
+          .map((segment) => {
+            const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
+            const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
+            if (!stepId || !audioData) {
+              return null;
+            }
+            const contentType =
+              typeof segment?.contentType === "string" && segment.contentType.includes("audio")
+                ? segment.contentType
+                : "audio/mpeg";
+            return {
+              stepId,
+              url: `data:${contentType};base64,${audioData}`,
+              contentType,
+            } satisfies DataStoryAudioSegment;
+          })
+          .filter((segment: DataStoryAudioSegment | null): segment is DataStoryAudioSegment => Boolean(segment));
+
+      const requestAudio = async (): Promise<{
+        segments?: DataStoryAudioSegment[];
+        audioUrl?: string;
+        contentType?: string;
+        error?: string | null;
+      }> => {
+        if (!AUDIO_NARRATION_ENABLED) {
+          return {};
+        }
+
+        try {
+          const audioResponse = await fetch(`${runtimeBaseUrl}/action/generateDataStoryAudio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+            body: JSON.stringify({ steps }),
+          });
+
+          if (!audioResponse.ok) {
+            return {
+              error: `Failed to generate audio (status ${audioResponse.status})`,
+            };
+          }
+
+          const responseContentType = audioResponse.headers.get("content-type") ?? "";
+          if (responseContentType.includes("text/event-stream") && audioResponse.body) {
+            const reader = audioResponse.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let finalSegments: Array<{ stepId?: unknown; audio?: unknown; contentType?: unknown }> = [];
+            let finalAudioBase64: string | undefined;
+            let finalContentType: string | undefined;
+            let generationError: string | null = null;
+
+            const processEventData = (data: string) => {
+              try {
+                const event = JSON.parse(data);
+                if (!event?.type) {
+                  return;
+                }
+
+                if (event.type === "STEP_STARTED" && event.stepName === "dataStory.audio") {
+                  setDataStoryState((prev) => ({
+                    ...prev,
+                    status: "awaiting-audio",
+                    isAnalyzing: false,
+                    audioGenerationProgress: 0,
+                  }));
+                  return;
+                }
+
+                if (event.type === "STEP_FINISHED" && event.stepName === "dataStory.audio") {
+                  setDataStoryState((prev) => ({
+                    ...prev,
+                    audioGenerationProgress: Math.max(prev.audioGenerationProgress ?? 0, 1),
+                  }));
+                  return;
+                }
+
+                if (event.type === "CUSTOM") {
+                  if (event.name === "dataStory.audio.lifecycle") {
+                    const total = typeof event.value?.totalSegments === "number" ? event.value.totalSegments : 0;
+                    setDataStoryState((prev) => ({
+                      ...prev,
+                      audioGenerationTotalSegments: total,
+                    }));
+                    return;
+                  }
+
+                  if (event.name === "dataStory.audio.progress") {
+                    const completed = Number(event.value?.completed ?? 0);
+                    const total = Number(event.value?.total ?? 0) || (completed || 1);
+                    const progress = total ? Math.min(1, completed / total) : 0;
+                    setDataStoryState((prev) => ({
+                      ...prev,
+                      audioGenerationProgress: Math.max(prev.audioGenerationProgress ?? 0, progress),
+                      audioGenerationTotalSegments: total,
+                    }));
+                    return;
+                  }
+
+                  if (event.name === "dataStory.audio.error") {
+                    if (!generationError) {
+                      const value = event.value ?? {};
+                      const candidate =
+                        typeof value?.message === "string"
+                          ? value.message
+                          : typeof value?.code === "string"
+                            ? value.code
+                            : null;
+                      if (candidate) {
+                        generationError = candidate;
+                      }
+                    }
+                    return;
+                  }
+
+                  if (event.name === "dataStory.audio.complete") {
+                    const value = event.value ?? {};
+                    if (Array.isArray(value.segments)) {
+                      finalSegments = value.segments;
+                    }
+                    if (typeof value.contentType === "string") {
+                      finalContentType = value.contentType;
+                    }
+                    if (typeof value.audio === "string") {
+                      finalAudioBase64 = value.audio;
+                    }
+                    if (typeof value.error === "string") {
+                      generationError = value.error;
+                    }
+                  }
+                }
+              } catch (streamErr) {
+                console.warn("Failed to parse audio stream event", streamErr);
+              }
+            };
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) {
+                break;
+              }
+              buffer += decoder.decode(value, { stream: true });
+              let separatorIndex = buffer.indexOf("\n\n");
+              while (separatorIndex !== -1) {
+                const rawEvent = buffer.slice(0, separatorIndex);
+                buffer = buffer.slice(separatorIndex + 2);
+                const dataLines = rawEvent
+                  .split("\n")
+                  .filter((line) => line.startsWith("data:"))
+                  .map((line) => line.slice(5).trim());
+                if (dataLines.length) {
+                  processEventData(dataLines.join(""));
+                }
+                separatorIndex = buffer.indexOf("\n\n");
+              }
+            }
+            buffer += decoder.decode(new Uint8Array(), { stream: false });
+            if (buffer.trim()) {
+              const dataLines = buffer
+                .split("\n")
+                .filter((line) => line.startsWith("data:"))
+                .map((line) => line.slice(5).trim());
+              if (dataLines.length) {
+                processEventData(dataLines.join(""));
+              }
+            }
+            reader.releaseLock();
+
+            const normalizedSegments = normalizeSegments(finalSegments);
+            let finalUrl: string | undefined;
+            let contentType = finalContentType;
+
+            if ((!contentType || !contentType.includes("audio")) && normalizedSegments[0]?.contentType) {
+              contentType = normalizedSegments[0].contentType;
+            }
+
+            if (!normalizedSegments.length && finalAudioBase64) {
+              const fallbackType = contentType && contentType.includes("audio") ? contentType : "audio/mpeg";
+              contentType = fallbackType;
+              finalUrl = `data:${fallbackType};base64,${finalAudioBase64}`;
+            }
+
+            return {
+              segments: normalizedSegments.length ? normalizedSegments : undefined,
+              audioUrl: finalUrl,
+              contentType,
+              error: generationError,
+            };
+          }
+
+          const audioPayload = await audioResponse.json();
+          const payloadSegments = Array.isArray(audioPayload?.segments) ? audioPayload.segments : [];
+          const normalizedSegments = normalizeSegments(payloadSegments);
+
+          let audioUrl: string | undefined;
+          let contentType =
+            typeof audioPayload?.contentType === "string" && audioPayload.contentType.includes("audio")
+              ? audioPayload.contentType
+              : normalizedSegments[0]?.contentType;
+
+          if (normalizedSegments.length === 0 && typeof audioPayload?.audio === "string") {
+            const fallbackType = contentType && contentType.includes("audio") ? contentType : "audio/mpeg";
+            contentType = fallbackType;
+            audioUrl = `data:${fallbackType};base64,${audioPayload.audio}`;
+          }
+
+          return {
+            segments: normalizedSegments.length ? normalizedSegments : undefined,
+            audioUrl,
+            contentType,
+            error: typeof audioPayload?.error === "string" ? audioPayload.error : null,
+          };
+        } catch (audioErr) {
+          console.error("Data story audio generation failed", audioErr);
+          return {
+            error: audioErr instanceof Error ? audioErr.message : String(audioErr),
+          };
+        }
+      };
+
+      const audioResult = await requestAudio();
+      const audioSegments = audioResult.segments;
+      const audioUrl = audioResult.audioUrl;
+      const audioContentType = audioResult.contentType;
+      const audioError = audioResult.error;
+      const hasAudio = Boolean((audioSegments && audioSegments.length > 0) || audioUrl);
+
+      if (audioError && !hasAudio) {
+        console.error("Data story audio generation returned an error", audioError);
+      }
+
+      const firstStepId = steps[0]?.id;
+      setDataStoryState((prev) => ({
+        ...prev,
+        status: hasAudio ? "awaiting-audio" : "playing",
+        steps,
+        suggestion: undefined,
+        activeStepId: hasAudio ? prev.activeStepId ?? firstStepId : firstStepId,
+        audioUrl: hasAudio && audioUrl ? audioUrl : undefined,
+        audioEnabled: hasAudio,
+        audioContentType: hasAudio ? audioContentType : undefined,
+        audioSegments: hasAudio ? audioSegments : undefined,
+        audioProgress: hasAudio ? 0 : 1,
+        audioGenerationProgress: hasAudio ? Math.max(prev.audioGenerationProgress ?? 0, 1) : 0,
+        audioGenerationTotalSegments: hasAudio ? prev.audioGenerationTotalSegments : 0,
+        isAnalyzing: false,
+        hasTimeline: true,
+      }));
+
+      if (hasAudio) {
+        // Audio playback handlers will take over progression once narration loads.
+      } else {
+        if (firstStepId) {
+          replayHighlight(firstStepId);
+        }
+        if (!AUDIO_NARRATION_ENABLED) {
+          scheduleManualStepProgression(steps);
+        }
       }
     } catch (err) {
       console.error("Data story generation failed", err);
@@ -310,6 +521,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         audioContentType: undefined,
         audioSegments: undefined,
         audioProgress: 0,
+        audioGenerationProgress: 0,
+        audioGenerationTotalSegments: 0,
         isAnalyzing: false,
         hasTimeline: false,
       }));

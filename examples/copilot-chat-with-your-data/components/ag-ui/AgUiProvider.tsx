@@ -15,6 +15,12 @@ import {
 
 import { applyHighlights, clearAllHighlights } from "../../lib/chart-highlighting";
 import { prompt as defaultPrompt } from "../../lib/prompt";
+import {
+  DataStoryContext,
+  type DataStoryState,
+  type DataStorySuggestion,
+  type DataStoryStep,
+} from "../../hooks/useDataStory";
 
 export type ChatMessage = {
   id: string;
@@ -48,17 +54,125 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dataStoryState, setDataStoryState] = useState<DataStoryState>({
+    status: "idle",
+    steps: [],
+    error: null,
+  });
 
   const agentRef = useRef<HttpAgent | null>(null);
   const threadIdRef = useRef<string>(generateId("thread"));
   const historyRef = useRef<Message[]>([]);
+  const highlightRegistryRef = useRef<Record<string, string[]>>({});
   const systemMessage = useMemo(() => systemPrompt || defaultPrompt, [systemPrompt]);
+  const runtimeBaseUrl = useMemo(() => runtimeUrl.replace(/\/run\/?$/, ""), [runtimeUrl]);
 
   if (agentRef.current == null) {
     agentRef.current = new HttpAgent({
       url: runtimeUrl,
     });
   }
+
+  const enqueueSuggestion = useCallback((suggestion: DataStorySuggestion) => {
+    setDataStoryState((prev) => {
+      if (prev.status === "loading" || prev.status === "playing") {
+        return prev;
+      }
+      return {
+        ...prev,
+        status: "suggested",
+        suggestion,
+        error: null,
+      };
+    });
+  }, []);
+
+  const dismissSuggestion = useCallback(() => {
+    setDataStoryState((prev) => ({
+      ...prev,
+      status: prev.steps.length ? prev.status : "idle",
+      suggestion: undefined,
+      error: null,
+    }));
+  }, []);
+
+  const replayHighlight = useCallback((stepId: string) => {
+    const chartIds = highlightRegistryRef.current[stepId] ?? [];
+    if (chartIds.length > 0) {
+      applyHighlights(chartIds);
+    }
+    setDataStoryState((prev) => ({
+      ...prev,
+      activeStepId: stepId,
+    }));
+  }, []);
+
+  const startStory = useCallback(async () => {
+    setDataStoryState((prev) => ({
+      ...prev,
+      status: "loading",
+      steps: [],
+      error: null,
+    }));
+    highlightRegistryRef.current = {};
+
+    const currentSuggestion = dataStoryState.suggestion;
+    if (!currentSuggestion) {
+      setDataStoryState((prev) => ({ ...prev, status: prev.status === "loading" ? "idle" : prev.status }));
+      return;
+    }
+    try {
+      const response = await fetch(`${runtimeBaseUrl}/action/generateDataStory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intentId: currentSuggestion.intentId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate data story (status ${response.status})`);
+      }
+
+      const payload = await response.json();
+      const steps: DataStoryStep[] = Array.isArray(payload?.steps) ? payload.steps : [];
+      highlightRegistryRef.current = steps.reduce<Record<string, string[]>>((acc, step) => {
+        acc[step.id] = Array.isArray(step.chartIds) ? step.chartIds : [];
+        return acc;
+      }, {});
+
+      setDataStoryState({
+        status: steps.length ? "playing" : "completed",
+        suggestion: undefined,
+        steps,
+        activeStepId: steps[0]?.id,
+        error: null,
+      });
+
+      if (steps.length > 0) {
+        const firstIds = steps[0].chartIds ?? [];
+        if (firstIds.length > 0) {
+          applyHighlights(firstIds);
+        }
+        steps.slice(1).forEach((step, index) => {
+          if (!step.chartIds?.length) {
+            return;
+          }
+          window.setTimeout(() => {
+            applyHighlights(step.chartIds);
+            setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
+          }, (index + 1) * 2000);
+        });
+      }
+
+      setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+    } catch (err) {
+      console.error("Data story generation failed", err);
+      setDataStoryState((prev) => ({
+        ...prev,
+        status: "error",
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  }, [dataStoryState.suggestion, runtimeBaseUrl]);
 
   const ensureSystemMessage = useCallback(() => {
     if (!systemMessage) {
@@ -151,6 +265,19 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           );
         },
         onCustomEvent: ({ event }) => {
+          if (event.name === "dataStory.suggestion") {
+            const payload = (event.value ?? {}) as Partial<DataStorySuggestion> & { intentId?: string };
+            if (payload.intentId && payload.summary) {
+              enqueueSuggestion({
+                intentId: payload.intentId,
+                summary: payload.summary,
+                confidence: payload.confidence,
+                focusAreas: payload.focusAreas,
+              });
+            }
+            return;
+          }
+
           if (event.name === "chart.highlight") {
             const value = event.value ?? {};
             const ids = Array.isArray(value.chartIds)
@@ -188,9 +315,21 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     [ensureSystemMessage, isRunning],
   );
 
+  const dataStoryContextValue = useMemo(
+    () => ({
+      state: dataStoryState,
+      dismissSuggestion,
+      startStory,
+      replayHighlight,
+    }),
+    [dataStoryState, dismissSuggestion, startStory, replayHighlight],
+  );
+
   return (
     <AgUiContext.Provider value={{ messages, isRunning, error, sendMessage }}>
-      {children}
+      <DataStoryContext.Provider value={dataStoryContextValue}>
+        {children}
+      </DataStoryContext.Provider>
     </AgUiContext.Provider>
   );
 }

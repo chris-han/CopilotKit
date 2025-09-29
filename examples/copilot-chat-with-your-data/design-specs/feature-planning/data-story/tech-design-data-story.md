@@ -150,3 +150,10 @@ Introduce a guided "data story" experience that activates from the Copilot chat 
 3. Extract highlight helpers, build `useDataStory` hook, and integrate suggestion/timeline components on the frontend.
 4. Implement UI polish (animations, accessibility touches) and run automated/frontend-backend tests.
 5. Manual smoke test: trigger CTA, run story, verify timeline progression and highlight replay.
+
+## Implementation Notes (Current Build)
+- `backend/intent_detection.py` contains the heuristic detector that emits a `dataStory.suggestion` custom event when broad intents are detected. `backend/data_story_generator.py` returns deterministic steps consumed by `/ag-ui/action/generateDataStory`.
+- The AG-UI runtime sends the suggestion custom event before the textual response. The data story itself is fetched via REST (`/ag-ui/action/generateDataStory`) rather than streamed SSE, returning `steps` with chart mappings and KPIs.
+- `components/ag-ui/AgUiProvider.tsx` now owns the data story state and exposes it through `hooks/useDataStory.ts`. Custom events update the state, and the provider shares highlight registries so review buttons can replay spotlight animations.
+- UI components `components/data-story/DataStorySuggestion.tsx` and `components/data-story/DataStoryTimeline.tsx` render the CTA and vertical timeline. Each timeline block includes a **Review** button wired to `replayHighlight(stepId)`.
+- Suggestion and timeline elements render alongside chat messages in `components/ag-ui/AgUiSidebar.tsx`; `remark-gfm` is used to display markdown tables inside assistant replies and timeline steps.

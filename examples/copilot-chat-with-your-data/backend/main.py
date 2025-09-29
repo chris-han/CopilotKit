@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import re
-from typing import Any, AsyncIterator, Iterable, List, Sequence, Tuple
+from typing import Any, AsyncIterator, Dict, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -33,6 +33,8 @@ from ag_ui.core import (
 from ag_ui.encoder import EventEncoder
 
 from dashboard_data import DASHBOARD_CONTEXT
+from data_story_generator import generate_data_story_steps
+from intent_detection import detect_data_story_intent
 
 load_dotenv()
 
@@ -106,6 +108,8 @@ analysis_agent = Agent(
 )
 
 encoder = EventEncoder()
+
+DATA_STORY_INTENTS: Dict[str, Dict[str, Any]] = {}
 
 
 app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
@@ -292,8 +296,30 @@ async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
         yield encoder.encode(event)
         return
 
+    intent_result = detect_data_story_intent(latest_user)
+
     started_event = RunStartedEvent(type=EventType.RUN_STARTED, thread_id=thread_id, run_id=run_id)
     yield encoder.encode(started_event)
+
+    if intent_result:
+        intent_id = str(uuid4())
+        DATA_STORY_INTENTS[intent_id] = {
+            "threadId": thread_id,
+            "summary": intent_result.summary,
+            "confidence": intent_result.confidence,
+            "focusAreas": intent_result.focus_areas,
+        }
+        suggestion_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name="dataStory.suggestion",
+            value={
+                "intentId": intent_id,
+                "summary": intent_result.summary,
+                "confidence": intent_result.confidence,
+                "focusAreas": intent_result.focus_areas,
+            },
+        )
+        yield encoder.encode(suggestion_event)
 
     message_id = f"msg-{uuid4()}"
 
@@ -418,6 +444,26 @@ async def action_search_internet(request: Request) -> dict[str, Any]:
     except Exception as exc:  # pragma: no cover
         logger.exception("searchInternet failed")
         raise HTTPException(status_code=500, detail=f"Search error: {exc}") from exc
+
+
+@app.post("/ag-ui/action/generateDataStory")
+async def action_generate_data_story(request: Request) -> Dict[str, Any]:
+    payload = await request.json()
+    intent_id = payload.get("intentId")
+
+    steps = generate_data_story_steps()
+    info = DATA_STORY_INTENTS.get(intent_id or "")
+
+    response: Dict[str, Any] = {
+        "storyId": intent_id or f"story-{uuid4()}",
+        "steps": steps,
+    }
+
+    if info:
+        response["summary"] = info.get("summary")
+        response["focusAreas"] = info.get("focusAreas")
+
+    return response
 
 
 @app.get("/health")

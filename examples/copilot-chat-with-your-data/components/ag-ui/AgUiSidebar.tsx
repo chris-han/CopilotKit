@@ -2,10 +2,19 @@
 
 import { useState } from "react";
 import { AssistantMessage } from "../AssistantMessage";
+import { DataStorySuggestion } from "../data-story/DataStorySuggestion";
+import { DataStoryTimeline } from "../data-story/DataStoryTimeline";
+import { useDataStory } from "../../hooks/useDataStory";
 import { useAgUiAgent } from "./AgUiProvider";
 
 export function AgUiSidebar() {
   const { messages, sendMessage, isRunning, error } = useAgUiAgent();
+  const {
+    state: dataStoryState,
+    startStory,
+    dismissSuggestion,
+    replayHighlight,
+  } = useDataStory();
   const [draft, setDraft] = useState("");
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -50,6 +59,25 @@ export function AgUiSidebar() {
           <div className="text-red-600 text-sm">
             {error}
           </div>
+        )}
+        {dataStoryState.status === "suggested" && dataStoryState.suggestion && (
+          <DataStorySuggestion
+            suggestion={dataStoryState.suggestion}
+            status={dataStoryState.status}
+            onRun={() => startStory()}
+            onDismiss={dismissSuggestion}
+          />
+        )}
+        {dataStoryState.status === "error" && dataStoryState.error && (
+          <div className="text-sm text-red-600">{dataStoryState.error}</div>
+        )}
+        {dataStoryState.steps.length > 0 && (
+          <DataStoryTimeline
+            steps={dataStoryState.steps}
+            activeStepId={dataStoryState.activeStepId}
+            status={dataStoryState.status}
+            onReview={replayHighlight}
+          />
         )}
         {messages.length === 0 && !error && (
           <div className="text-sm text-gray-500">

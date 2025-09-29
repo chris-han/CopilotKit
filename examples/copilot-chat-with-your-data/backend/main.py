@@ -57,6 +57,9 @@ DATA_STORY_AUDIO_INSTRUCTIONS = os.getenv(
     "DATA_STORY_AUDIO_INSTRUCTIONS",
     "You are a professional financial analyst. Speak confidently and when attention need, use a brief pause before proceeding with your points.",
 )
+DATA_STORY_AUDIO_SUMMARY_PROMPT = (
+    "You are a professional financial analyst. Identify the most important insight from this section, explain the likely driver in one or two sentences, and cite only the essential numbers. Do not recite table headers or enumerate every row from the markdown table."
+)
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 if not AZURE_OPENAI_API_KEY:
@@ -284,16 +287,88 @@ def _markdown_to_text(markdown: str) -> str:
     return text.strip()
 
 
-def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
+async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
     segments: List[Dict[str, str]] = []
     for index, step in enumerate(steps, start=1):
         step_id = step.get("id") or f"step-{index}"
         title = step.get("title") or f"Section {index}"
-        body = _markdown_to_text(step.get("markdown", ""))
-        if body:
-            script = f"Section {index}. {title}. {body}"
-        else:
-            script = f"Section {index}. {title}."
+        body_markdown = step.get("markdown", "")
+        markdown_lines = body_markdown.splitlines()
+        table_lines = [line for line in markdown_lines if "|" in line]
+        non_table_markdown = "\n".join(line for line in markdown_lines if "|" not in line)
+        body_text = _markdown_to_text(non_table_markdown)
+        kpis = step.get("kpis")
+
+        kpi_lines: List[str] = []
+        if isinstance(kpis, list):
+            for kpi in kpis:
+                label = kpi.get("label")
+                value = kpi.get("value")
+                trend = kpi.get("trend")
+                if not label and not value:
+                    continue
+                trend_suffix = f" (trend: {trend})" if isinstance(trend, str) else ""
+                kpi_lines.append(f"- {label or 'Metric'}: {value or 'N/A'}{trend_suffix}")
+
+        default_script = f"Section {index}. {title}. {body_text}".strip()
+
+        summary_text = ""
+        try:
+            user_sections = [
+                f"Step number: {index}",
+                f"Step type: {step.get('stepType', 'unknown')}",
+                f"Step title: {title}",
+            ]
+            if body_text:
+                user_sections.append(f"Details:\n{body_text}")
+            if kpi_lines:
+                user_sections.append("Key KPIs:\n" + "\n".join(kpi_lines))
+            if table_lines:
+                table_rows: List[Dict[str, str]] = []
+                header: List[str] = []
+                for raw_line in table_lines:
+                    stripped_line = raw_line.strip()
+                    if not stripped_line:
+                        continue
+                    if set(stripped_line.replace("|", "").strip()) <= {"-", ":", " "}:
+                        continue
+                    columns = [col.strip() for col in stripped_line.strip("|").split("|")]
+                    if not header:
+                        header = [col or f"column_{idx+1}" for idx, col in enumerate(columns)]
+                        continue
+                    if len(header) == 0:
+                        continue
+                    row_data: Dict[str, str] = {}
+                    for idx, column_name in enumerate(header):
+                        row_data[column_name] = columns[idx] if idx < len(columns) else ""
+                    table_rows.append(row_data)
+                if table_rows:
+                    table_json = json.dumps(table_rows, ensure_ascii=False)
+                    user_sections.append(
+                        "Table data for analysis only (do not read row-by-row):\n" + table_json
+                    )
+            user_prompt = "\n\n".join(section for section in user_sections if section)
+
+            response = await azure_client.responses.create(
+                model=AZURE_OPENAI_DEPLOYMENT,
+                input=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": DATA_STORY_AUDIO_SUMMARY_PROMPT}],
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": user_prompt}],
+                    },
+                ],
+                temperature=0.3,
+                max_output_tokens=300,
+            )
+            summary_text = (response.output_text or "").strip()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to summarize story step %s for audio: %s", step_id, exc)
+
+        script = summary_text or default_script
         segments.append({"stepId": step_id, "script": script})
     return segments
 
@@ -817,7 +892,7 @@ async def action_generate_data_story_audio(request: Request) -> Response:
 
     wants_stream = _wants_event_stream(request)
 
-    script_segments = _story_steps_to_audio_segments(steps)
+    script_segments = await _story_steps_to_audio_segments(steps)
     if not script_segments:
         if wants_stream:
             return _stream_story_audio(script_segments)

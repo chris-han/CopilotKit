@@ -17,7 +17,14 @@ export type DataStoryStep = {
   reviewPrompt?: string;
 };
 
-export type DataStoryStatus = "idle" | "suggested" | "loading" | "playing" | "completed" | "error";
+export type DataStoryStatus =
+  | "idle"
+  | "suggested"
+  | "loading"
+  | "awaiting-audio"
+  | "playing"
+  | "completed"
+  | "error";
 
 export type DataStoryState = {
   status: DataStoryStatus;
@@ -38,6 +45,7 @@ export type DataStoryContextValue = {
   onAudioProgress: (stepId: string) => void;
   onAudioComplete: () => void;
   onAudioAutoplayFailure: () => void;
+  onAudioReady: () => void;
   audioNarrationEnabled: boolean;
 };
 

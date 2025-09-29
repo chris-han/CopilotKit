@@ -84,7 +84,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
   const enqueueSuggestion = useCallback((suggestion: DataStorySuggestion) => {
     setDataStoryState((prev) => {
-      if (prev.status === "loading" || prev.status === "playing") {
+      if (prev.status === "loading" || prev.status === "playing" || prev.status === "awaiting-audio") {
         return prev;
       }
       return {
@@ -216,10 +216,14 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       const firstStepId = steps[0]?.id;
 
       setDataStoryState({
-        status: steps.length ? "playing" : "completed",
+        status: steps.length
+          ? hasAudio
+            ? "awaiting-audio"
+            : "playing"
+          : "completed",
         suggestion: undefined,
         steps,
-        activeStepId: firstStepId,
+        activeStepId: hasAudio ? undefined : firstStepId,
         error: null,
         audioUrl: hasAudio ? audioUrl : undefined,
         audioEnabled: hasAudio,
@@ -227,9 +231,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       });
 
       if (steps.length > 0) {
-        const firstIds = steps[0].chartIds ?? [];
-        if (firstIds.length > 0) {
-          applyHighlights(firstIds);
+        if (!hasAudio && firstStepId) {
+          replayHighlight(firstStepId);
         }
 
         if (!hasAudio) {
@@ -250,7 +253,13 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       }));
       storyStepsRef.current = [];
     }
-  }, [dataStoryState.suggestion, runtimeBaseUrl, clearManualAdvanceTimeouts, scheduleManualStepProgression]);
+  }, [
+    dataStoryState.suggestion,
+    runtimeBaseUrl,
+    clearManualAdvanceTimeouts,
+    scheduleManualStepProgression,
+    replayHighlight,
+  ]);
 
   const handleAudioProgress = useCallback(
     (stepId: string) => {
@@ -259,23 +268,61 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     [replayHighlight],
   );
 
+  const handleAudioReady = useCallback(() => {
+    const steps = storyStepsRef.current;
+    if (!steps.length) {
+      return;
+    }
+
+    setDataStoryState((prev) => {
+      if (prev.status === "playing" && prev.activeStepId) {
+        return prev;
+      }
+      const nextActive = prev.activeStepId ?? steps[0]?.id;
+      return {
+        ...prev,
+        status: "playing",
+        activeStepId: nextActive,
+      };
+    });
+
+    const firstStep = steps[0];
+    if (firstStep) {
+      replayHighlight(firstStep.id);
+    }
+  }, [replayHighlight]);
+
   const handleAudioComplete = useCallback(() => {
     setDataStoryState((prev) => ({ ...prev, status: "completed" }));
     clearManualAdvanceTimeouts();
   }, [clearManualAdvanceTimeouts]);
 
   const handleAudioAutoplayFailure = useCallback(() => {
+    clearManualAdvanceTimeouts();
+    const steps = storyStepsRef.current;
+    let wasAlreadyDisabled = false;
     setDataStoryState((prev) => {
       if (!prev.audioEnabled) {
+        wasAlreadyDisabled = true;
         return prev;
       }
+      const nextActive = prev.activeStepId ?? steps[0]?.id;
       return {
         ...prev,
         audioEnabled: false,
+        status: steps.length ? "playing" : prev.status,
+        activeStepId: nextActive,
       };
     });
-    clearManualAdvanceTimeouts();
-  }, [clearManualAdvanceTimeouts]);
+    if (wasAlreadyDisabled || !steps.length) {
+      return;
+    }
+    const firstStep = steps[0];
+    if (firstStep) {
+      replayHighlight(firstStep.id);
+    }
+    scheduleManualStepProgression(steps);
+  }, [clearManualAdvanceTimeouts, replayHighlight, scheduleManualStepProgression]);
 
   const ensureSystemMessage = useCallback(() => {
     if (!systemMessage) {
@@ -415,7 +462,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           setError(err?.message ?? String(err));
         });
     },
-    [ensureSystemMessage, isRunning],
+    [ensureSystemMessage, isRunning, enqueueSuggestion],
   );
 
   const dataStoryContextValue = useMemo(
@@ -424,6 +471,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       dismissSuggestion,
       startStory,
       replayHighlight,
+      onAudioReady: handleAudioReady,
       onAudioProgress: handleAudioProgress,
       onAudioComplete: handleAudioComplete,
       onAudioAutoplayFailure: handleAudioAutoplayFailure,
@@ -434,6 +482,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       dismissSuggestion,
       startStory,
       replayHighlight,
+      handleAudioReady,
       handleAudioProgress,
       handleAudioComplete,
       handleAudioAutoplayFailure,

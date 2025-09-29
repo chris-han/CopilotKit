@@ -17,6 +17,7 @@ export function AgUiSidebar() {
     onAudioProgress,
     onAudioComplete,
     onAudioAutoplayFailure,
+    onAudioReady,
   } = useDataStory();
   const [draft, setDraft] = useState("");
 
@@ -83,6 +84,7 @@ export function AgUiSidebar() {
             audioUrl={dataStoryState.audioUrl}
             audioEnabled={Boolean(dataStoryState.audioEnabled)}
             audioContentType={dataStoryState.audioContentType}
+            onAudioReady={onAudioReady}
             onAudioStep={onAudioProgress}
             onAudioComplete={onAudioComplete}
             onAudioAutoplayFailure={onAudioAutoplayFailure}
@@ -90,7 +92,7 @@ export function AgUiSidebar() {
         )}
         {messages.length === 0 && !error && (
           <div className="text-sm text-gray-500">
-            Try "How are we doing this month?" or "Highlight regional sales." The assistant will respond with insights and highlight relevant dashboard cards.
+            Try &quot;How are we doing this month?&quot; or &quot;Highlight regional sales.&quot; The assistant will respond with insights and highlight relevant dashboard cards.
           </div>
         )}
       </div>

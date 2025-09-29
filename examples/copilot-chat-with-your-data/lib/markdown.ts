@@ -6,11 +6,15 @@ export function normalizeMarkdownTables(markdown: string): string {
   }
 
   const rowBoundaryPattern = /\|\s+\|/g;
-  const rowStartPattern = /([^\n])(\|[^\n|]+(?:\|[^\n|]+){2,}\|?)/g;
+  const inlineRowPattern = /(^|[^|\n])\s(\|[^\n|]+(?:\|[^\n|]+)+\|?)/g;
 
   let normalized = markdown.replace(rowBoundaryPattern, "|\n|");
-  normalized = normalized.replace(rowStartPattern, (_, prefix: string, row: string) => {
-    return `${prefix}\n${row.trimStart()}`;
+  normalized = normalized.replace(inlineRowPattern, (_match, prefix: string, row: string) => {
+    const trimmedRow = row.trim();
+    if (!prefix) {
+      return trimmedRow;
+    }
+    return `${prefix}\n${trimmedRow}`;
   });
 
   return normalized;

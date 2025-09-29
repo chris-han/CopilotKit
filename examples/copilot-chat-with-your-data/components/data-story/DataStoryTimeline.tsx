@@ -17,18 +17,18 @@ interface DataStoryTimelineProps {
   onAudioStep?: (stepId: string) => void;
   onAudioComplete?: () => void;
   onAudioAutoplayFailure?: () => void;
+  onAudioReady?: () => void;
 }
 
-export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, onAudioStep, onAudioComplete, onAudioAutoplayFailure }: DataStoryTimelineProps) {
-  if (!steps.length) {
-    return null;
-  }
-
+export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady }: DataStoryTimelineProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastStepIndexRef = useRef<number>(-1);
+  const audioReadyNotifiedRef = useRef<boolean>(false);
+  const hasSteps = steps.length > 0;
 
   useEffect(() => {
     lastStepIndexRef.current = -1;
+    audioReadyNotifiedRef.current = false;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -37,7 +37,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   }, [audioUrl, steps.length]);
 
   useEffect(() => {
-    if (!audioUrl) {
+    if (!audioUrl || !hasSteps) {
       return;
     }
     const audio = audioRef.current;
@@ -45,10 +45,19 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       return;
     }
 
-    const handlePlay = () => {
-      if (!steps.length) {
+    const notifyAudioReady = () => {
+      if (audioReadyNotifiedRef.current) {
         return;
       }
+      audioReadyNotifiedRef.current = true;
+      onAudioReady?.();
+    };
+
+    const handlePlay = () => {
+      if (!hasSteps) {
+        return;
+      }
+      notifyAudioReady();
       if (lastStepIndexRef.current === -1) {
         lastStepIndexRef.current = 0;
         onAudioStep?.(steps[0].id);
@@ -56,7 +65,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     };
 
     const handleTimeUpdate = () => {
-      if (!steps.length || !Number.isFinite(audio.duration) || audio.duration <= 0) {
+      if (!hasSteps || !Number.isFinite(audio.duration) || audio.duration <= 0) {
         return;
       }
       const ratio = Math.max(0, audio.currentTime / audio.duration);
@@ -71,7 +80,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     };
 
     const handleEnded = () => {
-      if (steps.length) {
+      if (hasSteps) {
         lastStepIndexRef.current = steps.length - 1;
         onAudioStep?.(steps[steps.length - 1].id);
       }
@@ -87,6 +96,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       if (!audioEnabled) {
         return;
       }
+      notifyAudioReady();
       audio
         .play()
         .catch(() => {
@@ -117,7 +127,11 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         audio.removeEventListener("loadeddata", readyHandler);
       }
     };
-  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete, onAudioAutoplayFailure]);
+  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady, hasSteps]);
+
+  if (!hasSteps) {
+    return null;
+  }
 
   return (
     <div className="mt-4">

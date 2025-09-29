@@ -7,12 +7,26 @@ from typing import Any, Dict, List
 from dashboard_data import DASHBOARD_CONTEXT
 
 
-def _format_currency(value: float) -> str:
-    return f"${value:,.0f}"
+def _to_number(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip().replace("%", "").replace(",", "")
+        try:
+            return float(cleaned)
+        except ValueError as exc:  # pragma: no cover - defensive guard
+            raise ValueError(f"Cannot parse numeric value from '{value}'") from exc
+    raise TypeError(f"Unsupported value type for numeric conversion: {type(value)!r}")
 
 
-def _format_percentage(value: float) -> str:
-    return f"{value:.1f}%"
+def _format_currency(value: Any, decimals: int = 0) -> str:
+    number = _to_number(value)
+    return f"${number:,.{decimals}f}"
+
+
+def _format_percentage(value: Any, decimals: int = 1) -> str:
+    number = _to_number(value)
+    return f"{number:.{decimals}f}%"
 
 
 def generate_data_story_steps() -> List[Dict[str, Any]]:
@@ -105,19 +119,40 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "reviewPrompt": "Review regional performance",
         },
         {
-            "id": "story-summary",
-            "stepType": "summary",
-            "title": "Next steps",
+            "id": "story-demographics",
+            "stepType": "change",
+            "title": "Customer demographics keep spending concentrated",
             "markdown": (
-                f"Focus expansion on **{second_region['region']}** to balance reliance on {top_region['region']}."
-                " Double down on **Home & Kitchen** momentum while fixing lagging products like"
-                f" **{lagging_product['name']}**. The core demographic (ages {top_demo['ageGroup']}) remains the most valuable segment."
+                f"The highest-spending segment remains **ages {top_demo['ageGroup']}**, generating "
+                f"{_format_currency(top_demo['spending'])}. Engagement from other age groups is steadier but smaller,"
+                " suggesting room for targeted campaigns."
             ),
             "chartIds": ["customer-demographics"],
             "kpis": [
                 {"label": top_demo["ageGroup"], "value": _format_currency(top_demo["spending"]), "trend": "up"},
+                {"label": "Conversion Rate", "value": _format_percentage(metrics["conversionRate"]), "trend": "neutral"},
             ],
-            "reviewPrompt": "Highlight customer demographics",
+            "reviewPrompt": "Review customer demographics",
+        },
+        {
+            "id": "story-summary",
+            "stepType": "summary",
+            "title": "Next steps",
+            "markdown": (
+                f"Double down on **{top_product['name']}** momentum while fixing lagging products like **{lagging_product['name']}**."
+                f" Diversify regional exposure by lifting **{second_region['region']}** so we are less dependent on {top_region['region']}."
+                " Keep electronics growth on track and invest in campaigns that broaden the customer mix."
+            ),
+            "chartIds": ["sales-overview"],
+            "kpis": [
+                {"label": "Profit Margin", "value": _format_percentage(metrics["profitMargin"]), "trend": "up"},
+                {
+                    "label": "Avg Order Value",
+                    "value": _format_currency(metrics["averageOrderValue"], decimals=2),
+                    "trend": "neutral",
+                },
+            ],
+            "reviewPrompt": "Revisit the overall summary",
         },
     ]
 

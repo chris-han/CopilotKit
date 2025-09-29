@@ -113,9 +113,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
   const replayHighlight = useCallback((stepId: string, options?: HighlightOptions) => {
     const chartIds = highlightRegistryRef.current[stepId] ?? [];
-    if (chartIds.length > 0) {
-      applyHighlights(chartIds, options);
-    }
+    applyHighlights(chartIds, options);
     setDataStoryState((prev) => ({
       ...prev,
       activeStepId: stepId,
@@ -141,6 +139,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         const timeoutId = window.setTimeout(() => {
           if (step.chartIds?.length) {
             applyHighlights(step.chartIds);
+          } else {
+            applyHighlights([]);
           }
           setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
         }, delay);

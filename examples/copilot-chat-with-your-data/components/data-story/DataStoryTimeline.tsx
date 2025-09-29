@@ -27,6 +27,7 @@ interface DataStoryTimelineProps {
 export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, audioSegments, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady }: DataStoryTimelineProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastStepIndexRef = useRef<number>(-1);
   const audioReadyNotifiedRef = useRef<boolean>(false);
   const segmentIndexRef = useRef<number>(0);
@@ -478,6 +479,25 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   const controlLabel = playbackState === "playing" ? "Pause" : playbackState === "completed" ? "Replay" : "Play";
   const isGlobalControlDisabled = !hasAnyAudio || status === "loading" || status === "awaiting-audio";
 
+  useEffect(() => {
+    if (!activeStepId) {
+      return;
+    }
+    const element = stepRefs.current[activeStepId];
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [activeStepId]);
+
+  useEffect(() => {
+    const existingIds = new Set(steps.map((step) => step.id));
+    Object.keys(stepRefs.current).forEach((key) => {
+      if (!existingIds.has(key)) {
+        delete stepRefs.current[key];
+      }
+    });
+  }, [steps]);
+
   if (!hasSteps) {
     return null;
   }
@@ -535,7 +555,16 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                   isActive ? "bg-blue-600" : "bg-gray-300"
                 }`}
               />
-              <div className="rounded-md border border-gray-200 bg-white p-4 shadow-sm">
+              <div
+                className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
+                ref={(element) => {
+                  if (element) {
+                    stepRefs.current[step.id] = element;
+                  } else {
+                    delete stepRefs.current[step.id];
+                  }
+                }}
+              >
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-500">Step {index + 1}</p>

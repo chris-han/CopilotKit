@@ -75,6 +75,19 @@ export function AgUiSidebar() {
         {dataStoryState.status === "error" && dataStoryState.error && (
           <div className="text-sm text-red-600">{dataStoryState.error}</div>
         )}
+        {(dataStoryState.status === "loading" || dataStoryState.status === "awaiting-audio") && (
+          <div className="rounded-md border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700 shadow-sm">
+            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-blue-600">
+              <span>Generating data story...</span>
+              <span>
+                {dataStoryState.status === "awaiting-audio" ? "Preparing narration" : "Analyzing dashboard"}
+              </span>
+            </div>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
+              <div className="h-full w-full animate-pulse rounded-full bg-blue-500" />
+            </div>
+          </div>
+        )}
         {dataStoryState.steps.length > 0 && (
           <DataStoryTimeline
             steps={dataStoryState.steps}

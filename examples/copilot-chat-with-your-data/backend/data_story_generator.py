@@ -143,7 +143,7 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
                 f" Diversify regional exposure by lifting **{second_region['region']}** so we are less dependent on {top_region['region']}."
                 " Keep electronics growth on track and invest in campaigns that broaden the customer mix."
             ),
-            "chartIds": ["sales-overview"],
+            "chartIds": [],
             "kpis": [
                 {"label": "Profit Margin", "value": _format_percentage(metrics["profitMargin"]), "trend": "up"},
                 {

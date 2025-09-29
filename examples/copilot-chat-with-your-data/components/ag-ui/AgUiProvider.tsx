@@ -22,6 +22,10 @@ import {
   type DataStoryStep,
 } from "../../hooks/useDataStory";
 
+const audioEnv = process.env.NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED;
+const AUDIO_NARRATION_ENABLED =
+  !audioEnv || !["false", "0", "no"].includes(audioEnv.toLowerCase());
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -58,6 +62,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     status: "idle",
     steps: [],
     error: null,
+    audioUrl: undefined,
+    audioEnabled: AUDIO_NARRATION_ENABLED,
   });
 
   const agentRef = useRef<HttpAgent | null>(null);
@@ -113,6 +119,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       status: "loading",
       steps: [],
       error: null,
+      audioUrl: undefined,
+      audioEnabled: AUDIO_NARRATION_ENABLED,
     }));
     highlightRegistryRef.current = {};
 
@@ -139,12 +147,38 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         return acc;
       }, {});
 
+      let audioUrl: string | undefined;
+      let hasAudio = false;
+
+      if (AUDIO_NARRATION_ENABLED && steps.length > 0) {
+        try {
+          const audioResponse = await fetch(`${runtimeBaseUrl}/action/generateDataStoryAudio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ steps }),
+          });
+          if (audioResponse.ok) {
+            const audioPayload = await audioResponse.json();
+            if (audioPayload?.audio) {
+              audioUrl = `data:audio/mpeg;base64,${audioPayload.audio}`;
+              hasAudio = true;
+            }
+          }
+        } catch (audioErr) {
+          console.error("Data story audio generation failed", audioErr);
+        }
+      }
+
+      const firstStepId = steps[0]?.id;
+
       setDataStoryState({
         status: steps.length ? "playing" : "completed",
         suggestion: undefined,
         steps,
-        activeStepId: steps[0]?.id,
+        activeStepId: firstStepId,
         error: null,
+        audioUrl: hasAudio ? audioUrl : undefined,
+        audioEnabled: hasAudio,
       });
 
       if (steps.length > 0) {
@@ -152,27 +186,48 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         if (firstIds.length > 0) {
           applyHighlights(firstIds);
         }
-        steps.slice(1).forEach((step, index) => {
-          if (!step.chartIds?.length) {
-            return;
-          }
-          window.setTimeout(() => {
-            applyHighlights(step.chartIds);
-            setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
-          }, (index + 1) * 2000);
-        });
-      }
 
-      setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+        if (!hasAudio) {
+          steps.slice(1).forEach((step, index) => {
+            if (!step.chartIds?.length) {
+              return;
+            }
+            const delay = (index + 1) * 2000;
+            window.setTimeout(() => {
+              applyHighlights(step.chartIds);
+              setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
+            }, delay);
+          });
+
+          const completionDelay = steps.length > 1 ? steps.length * 2000 : 500;
+          window.setTimeout(() => {
+            setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+          }, completionDelay);
+        }
+      } else {
+        setDataStoryState((prev) => ({ ...prev, status: "completed", audioEnabled: false }));
+      }
     } catch (err) {
       console.error("Data story generation failed", err);
       setDataStoryState((prev) => ({
         ...prev,
         status: "error",
         error: err instanceof Error ? err.message : String(err),
+        audioEnabled: false,
       }));
     }
   }, [dataStoryState.suggestion, runtimeBaseUrl]);
+
+  const handleAudioProgress = useCallback(
+    (stepId: string) => {
+      replayHighlight(stepId);
+    },
+    [replayHighlight],
+  );
+
+  const handleAudioComplete = useCallback(() => {
+    setDataStoryState((prev) => ({ ...prev, status: "completed" }));
+  }, []);
 
   const ensureSystemMessage = useCallback(() => {
     if (!systemMessage) {
@@ -321,8 +376,18 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       dismissSuggestion,
       startStory,
       replayHighlight,
+      onAudioProgress: handleAudioProgress,
+      onAudioComplete: handleAudioComplete,
+      audioNarrationEnabled: AUDIO_NARRATION_ENABLED,
     }),
-    [dataStoryState, dismissSuggestion, startStory, replayHighlight],
+    [
+      dataStoryState,
+      dismissSuggestion,
+      startStory,
+      replayHighlight,
+      handleAudioProgress,
+      handleAudioComplete,
+    ],
   );
 
   return (

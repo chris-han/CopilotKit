@@ -25,6 +25,8 @@ export type DataStoryState = {
   steps: DataStoryStep[];
   activeStepId?: string;
   error?: string | null;
+  audioUrl?: string;
+  audioEnabled?: boolean;
 };
 
 export type DataStoryContextValue = {
@@ -32,6 +34,9 @@ export type DataStoryContextValue = {
   dismissSuggestion: () => void;
   startStory: () => Promise<void> | void;
   replayHighlight: (stepId: string) => void;
+  onAudioProgress: (stepId: string) => void;
+  onAudioComplete: () => void;
+  audioNarrationEnabled: boolean;
 };
 
 export const DataStoryContext = createContext<DataStoryContextValue | null>(null);

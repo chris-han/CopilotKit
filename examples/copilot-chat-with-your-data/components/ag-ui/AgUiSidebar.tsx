@@ -14,6 +14,8 @@ export function AgUiSidebar() {
     startStory,
     dismissSuggestion,
     replayHighlight,
+    onAudioProgress,
+    onAudioComplete,
   } = useDataStory();
   const [draft, setDraft] = useState("");
 
@@ -77,6 +79,10 @@ export function AgUiSidebar() {
             activeStepId={dataStoryState.activeStepId}
             status={dataStoryState.status}
             onReview={replayHighlight}
+            audioUrl={dataStoryState.audioUrl}
+            audioEnabled={Boolean(dataStoryState.audioEnabled)}
+            onAudioStep={onAudioProgress}
+            onAudioComplete={onAudioComplete}
           />
         )}
         {messages.length === 0 && !error && (

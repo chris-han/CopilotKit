@@ -33,7 +33,7 @@
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.24.2",
-    "remark-gfm": "^3.0.1"
+    "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

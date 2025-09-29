@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { DataStoryStep, DataStoryStatus } from "../../hooks/useDataStory";
@@ -9,12 +10,82 @@ interface DataStoryTimelineProps {
   activeStepId?: string;
   status: DataStoryStatus;
   onReview: (stepId: string) => void;
+  audioUrl?: string;
+  audioEnabled?: boolean;
+  onAudioStep?: (stepId: string) => void;
+  onAudioComplete?: () => void;
 }
 
-export function DataStoryTimeline({ steps, activeStepId, status, onReview }: DataStoryTimelineProps) {
+export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, onAudioStep, onAudioComplete }: DataStoryTimelineProps) {
   if (!steps.length) {
     return null;
   }
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastStepIndexRef = useRef<number>(-1);
+
+  useEffect(() => {
+    lastStepIndexRef.current = -1;
+  }, [audioUrl, steps.length]);
+
+  useEffect(() => {
+    if (!audioEnabled || !audioUrl) {
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    const handlePlay = () => {
+      if (!steps.length) {
+        return;
+      }
+      if (lastStepIndexRef.current === -1) {
+        lastStepIndexRef.current = 0;
+        onAudioStep?.(steps[0].id);
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      if (!steps.length || !Number.isFinite(audio.duration) || audio.duration <= 0) {
+        return;
+      }
+      const ratio = Math.max(0, audio.currentTime / audio.duration);
+      let index = Math.floor(ratio * steps.length);
+      if (index >= steps.length) {
+        index = steps.length - 1;
+      }
+      if (index !== lastStepIndexRef.current && index >= 0) {
+        lastStepIndexRef.current = index;
+        onAudioStep?.(steps[index].id);
+      }
+    };
+
+    const handleEnded = () => {
+      if (steps.length) {
+        lastStepIndexRef.current = steps.length - 1;
+        onAudioStep?.(steps[steps.length - 1].id);
+      }
+      onAudioComplete?.();
+    };
+
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
+
+    if (audio.paused) {
+      audio.play().catch(() => {});
+    } else {
+      handlePlay();
+    }
+
+    return () => {
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, [audioEnabled, audioUrl, steps, onAudioStep, onAudioComplete]);
 
   return (
     <div className="mt-4">
@@ -22,6 +93,14 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview }: Dat
         <h4 className="text-sm font-semibold text-gray-900">Data Story Timeline</h4>
         <span className="text-xs text-gray-500 capitalize">{status}</span>
       </div>
+      {audioUrl ? (
+        <div className="mb-4">
+          <audio ref={audioRef} controls className="w-full" preload="auto">
+            <source src={audioUrl} type="audio/mpeg" />
+            Your browser does not support the audio element.
+          </audio>
+        </div>
+      ) : null}
       <ol className="space-y-4 border-l border-gray-200 pl-4">
         {steps.map((step, index) => {
           const isActive = step.id === activeStepId;

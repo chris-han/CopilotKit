@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -13,7 +14,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from openai import AsyncOpenAI
+import httpx
+from openai import AsyncAzureOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
 from tavily import Client as TavilyClient
@@ -43,6 +45,13 @@ AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-04-01-preview")
+AZURE_OPENAI_TTS_DEPLOYMENT = os.getenv("AZURE_OPENAI_TTS_DEPLOYMENT") or "gpt-4o-mini-tts"
+AZURE_OPENAI_TTS_API_VERSION = os.getenv("AZURE_OPENAI_TTS_API_VERSION", "2025-03-01-preview")
+DATA_STORY_AUDIO_ENABLED = (os.getenv("DATA_STORY_AUDIO_ENABLED", "true").lower() not in {"false", "0", "no"})
+DATA_STORY_AUDIO_INSTRUCTIONS = os.getenv(
+    "DATA_STORY_AUDIO_INSTRUCTIONS",
+    "You are a professional financial analyst. Speak confidently and when attention need, use a brief pause before proceeding with your points.",
+)
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 if not AZURE_OPENAI_API_KEY:
@@ -89,14 +98,10 @@ def _build_allowed_origins(frontend_origins: str) -> List[str]:
 
 
 ALLOWED_ORIGINS = _build_allowed_origins(FRONTEND_ORIGINS)
-
-
-normalized_endpoint = AZURE_OPENAI_ENDPOINT.rstrip("/")
-azure_client = AsyncOpenAI(
-    base_url=f"{normalized_endpoint}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}",
+azure_client = AsyncAzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
-    default_query={"api-version": AZURE_OPENAI_API_VERSION},
-    default_headers={"api-key": AZURE_OPENAI_API_KEY},
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    api_version=AZURE_OPENAI_API_VERSION,
 )
 
 analysis_agent = Agent(
@@ -261,6 +266,29 @@ def _separate_highlight_directives(answer: str) -> Tuple[str, List[str]]:
 
     sanitized_answer = "\n".join(line for line in sanitized_lines if line.strip() or line == "").strip()
     return sanitized_answer, unique_ids
+
+
+def _markdown_to_text(markdown: str) -> str:
+    if not markdown:
+        return ""
+    text = re.sub(r"`+", "", markdown)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"[_*]", "", text)
+    text = re.sub(r"[>#]", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _story_steps_to_script(steps: Sequence[Dict[str, Any]]) -> str:
+    segments: List[str] = []
+    for index, step in enumerate(steps, start=1):
+        title = step.get("title") or f"Section {index}"
+        body = _markdown_to_text(step.get("markdown", ""))
+        if body:
+            segments.append(f"Section {index}. {title}. {body}")
+        else:
+            segments.append(f"Section {index}. {title}.")
+    return " ".join(segments)
 
 
 def _chunk_text(text: str, max_len: int = 800) -> Iterable[str]:
@@ -462,8 +490,78 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
     if info:
         response["summary"] = info.get("summary")
         response["focusAreas"] = info.get("focusAreas")
+        DATA_STORY_INTENTS.pop(intent_id or "", None)
 
     return response
+
+
+@app.post("/ag-ui/action/generateDataStoryAudio")
+async def action_generate_data_story_audio(request: Request) -> Dict[str, Any]:
+    if not DATA_STORY_AUDIO_ENABLED:
+        raise HTTPException(status_code=503, detail="Audio narration disabled")
+
+    request_payload = await request.json()
+    steps = request_payload.get("steps")
+    if not isinstance(steps, list) or not steps:
+        steps = generate_data_story_steps()
+
+    script = _story_steps_to_script(steps)
+    if not script:
+        raise HTTPException(status_code=400, detail="Story steps are empty")
+
+    narration = script
+
+    tts_url = (
+        f"{AZURE_OPENAI_ENDPOINT.rstrip('/')}/openai/deployments/{AZURE_OPENAI_TTS_DEPLOYMENT}/audio/speech"
+        f"?api-version={AZURE_OPENAI_TTS_API_VERSION}"
+    )
+    tts_payload = {
+        "model": AZURE_OPENAI_TTS_DEPLOYMENT,
+        "voice": "alloy",
+        "response_format": "opus",
+        "input": narration,
+        "instructions": DATA_STORY_AUDIO_INSTRUCTIONS,
+    }
+    audio_chunks: List[bytes] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+            async with client.stream(
+                "POST",
+                tts_url,
+                headers={
+                    "api-key": AZURE_OPENAI_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/ogg",
+                },
+                json=tts_payload,
+            ) as rest_response:
+                rest_response.raise_for_status()
+                audio_chunks = [chunk async for chunk in rest_response.aiter_bytes()]
+    except httpx.HTTPStatusError as exc:  # pragma: no cover
+        body_preview = exc.response.text[:200] if exc.response.text else ""
+        logger.warning(
+            "generateDataStoryAudio HTTP %s: %s",
+            exc.response.status_code,
+            body_preview,
+        )
+        if exc.response.status_code == 404:
+            return {"audio": None, "contentType": None, "error": "deployment_not_found"}
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Audio generation failed: HTTP {exc.response.status_code}",
+        ) from exc
+    except httpx.HTTPError as exc:  # pragma: no cover
+        logger.exception("generateDataStoryAudio request failed")
+        raise HTTPException(status_code=502, detail=f"Audio generation request failed: {exc}") from exc
+
+    audio_bytes = b"".join(audio_chunks)
+    if not audio_bytes:
+        raise HTTPException(status_code=502, detail="Audio generation returned empty audio stream")
+
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    content_type = rest_response.headers.get("content-type", "audio/ogg")
+    return {"audio": audio_b64, "contentType": content_type}
 
 
 @app.get("/health")

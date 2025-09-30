@@ -105,7 +105,7 @@ This specification documents the full system design for the Copilot Chat with Yo
 - `python-multipart` to satisfy FastAPI's optional dependencies.
 
 ### Tooling
-- Bun (default), npm, or pnpm for package management; `bun.lock` is checked in.
+- Bun (default) or npm/yarn for package management; `bun.lock` is checked in.
 - Optional Python formatters/linting such as `ruff` or `black`.
 
 ## 8. Deployment Considerations

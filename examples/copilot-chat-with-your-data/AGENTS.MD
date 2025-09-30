@@ -6,20 +6,20 @@
 - Keep the experience responsive, secure, and easy to extend for teams experimenting with AG-UI integrations.
 
 ## System Architecture Snapshot
-- **Frontend**: Next.js 15 App Router with React 19 client components in `app/` and `components/`, styled via Tailwind, local UI primitives, and Recharts wrappers.
-- **AG-UI Bridge**: `app/layout.tsx` wraps the tree with `AgUiProvider` pointing at `NEXT_PUBLIC_AG_UI_RUNTIME_URL` (default `http://localhost:8004/ag-ui/run`). All children share the same runtime session.
-- **Chat Surface**: `app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, injects static assistant instructions from `lib/prompt.ts`, and streams assistant output through `components/AssistantMessage.tsx`.
-- **Highlight Integration**: `lib/chart-highlighting.ts` centralises chart highlighting so both AG-UI custom events and timeline components can toggle card focus.
+- **Frontend**: Next.js 15 App Router with React 19 client components in `frontend/app/` and `frontend/components/`, styled via Tailwind, local UI primitives, and Recharts wrappers.
+- **AG-UI Bridge**: `frontend/app/layout.tsx` wraps the tree with `AgUiProvider` pointing at `NEXT_PUBLIC_AG_UI_RUNTIME_URL` (default `http://localhost:8004/ag-ui/run`). All children share the same runtime session.
+- **Chat Surface**: `frontend/app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, injects static assistant instructions from `frontend/lib/prompt.ts`, and streams assistant output through `frontend/components/AssistantMessage.tsx`.
+- **Highlight Integration**: `frontend/lib/chart-highlighting.ts` centralises chart highlighting so both AG-UI custom events and timeline components can toggle card focus.
 - **Backend Runtime**: FastAPI app in `backend/main.py` hosts `/ag-ui/run`, handles CORS, validates configuration, and routes AI calls through Azure OpenAI using a PydanticAI agent. Optional Tavily search runs server-side.
-- **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `data/dashboard-data.ts` and `backend/dashboard_data.py`.
+- **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `frontend/data/dashboard-data.ts` and `backend/dashboard_data.py`.
 - **External Services**: Azure OpenAI streams completions and powers the agent; Tavily Search augments answers when the runtime triggers `searchInternet`.
 
 ## Frontend Responsibilities
-- Maintain layout and styling in Tailwind (`app/globals.css`) with highlight animations consumed by `AssistantMessage` and AG-UI custom events.
-- Keep `AgUiSidebar` fixed on wide viewports, labelled "Data Assistant", and wired to markdown rendering + highlight dispatch through `lib/chart-highlighting.ts`.
+- Maintain layout and styling in Tailwind (`frontend/app/globals.css`) with highlight animations consumed by `AssistantMessage` and AG-UI custom events.
+- Keep `AgUiSidebar` fixed on wide viewports, labelled "Data Assistant", and wired to markdown rendering + highlight dispatch through `frontend/lib/chart-highlighting.ts`.
 - Extend `AgUiProvider` so it handles new custom events, tool outputs, and thread state without breaking existing chat flows.
-- Guard assistant responses in `components/AssistantMessage.tsx`: render markdown safely, surface streaming indicators, and rely on AG-UI custom events for highlight orchestration.
-- Keep UI primitives in `components/ui/*.tsx` consistent with Recharts wrappers, tooltips, legends, and lucide-react status icons.
+- Guard assistant responses in `frontend/components/AssistantMessage.tsx`: render markdown safely, surface streaming indicators, and rely on AG-UI custom events for highlight orchestration.
+- Keep UI primitives in `frontend/components/ui/*.tsx` consistent with Recharts wrappers, tooltips, legends, and lucide-react status icons.
 
 ## Backend Responsibilities
 - Load env vars via `python-dotenv`; require Azure OpenAI credentials (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, deployment name, API version). Optionally accept `TAVILY_API_KEY`.
@@ -34,7 +34,7 @@
 
 ## Data & Prompt Alignment
 - Keep the dashboard dataset synchronised between frontend and backend modules. Any schema changes must touch both `data/dashboard-data.ts` and `backend/dashboard_data.py`.
-- Update `lib/prompt.ts` when adding new highlight directives, custom events, or contextual hints so the assistant has accurate instructions.
+- Update `frontend/lib/prompt.ts` when adding new highlight directives, custom events, or contextual hints so the assistant has accurate instructions.
 - Ensure AG-UI events emitted by the backend map cleanly to frontend handlers; mismatches lead to silent UI failures.
 
 ## Configuration & Environment
@@ -44,7 +44,7 @@
 - Secrets stay server-side; never ship API keys to the browser. Enforce HTTPS for production deployments.
 
 ## Local Development Workflow
-1. Install frontend deps and run `bun run dev` (port 3000).
+1. From `frontend/`, install dependencies and run `bun run dev` (port 3000).
 2. Create Python virtualenv in `/backend`, install dependencies, and start `uvicorn main:app --reload --port 8004`.
 3. Verify `/health` returns 200 and that the Next.js app connects to the runtime (no console errors).
 4. Test AG-UI chat prompts, ensuring highlight custom events animate cards and streaming updates stay responsive.

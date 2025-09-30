@@ -18,8 +18,8 @@ Transform your data visualization experience with an AI-powered dashboard assist
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm, yarn, or pnpm
+- Node.js 18+
+- [Bun](https://bun.sh/) (recommended package manager)
 
 ### Installation
 
@@ -29,10 +29,11 @@ Transform your data visualization experience with an AI-powered dashboard assist
    cd CopilotKit/examples/copilot-chat-with-your-data
    ```
 
-2. Install dependencies:
+2. Install dependencies for the frontend:
 
    ```bash
-   pnpm install
+   cd frontend
+   bun install
    ```
 
    <details>
@@ -64,7 +65,7 @@ Transform your data visualization experience with an AI-powered dashboard assist
 4. Install backend dependencies and start the FastAPI runtime in a separate terminal:
 
    ```bash
-   cd backend
+   cd ../backend
    pip install -r requirements.txt
    uvicorn main:app --reload --port 8004
    ```
@@ -72,20 +73,21 @@ Transform your data visualization experience with an AI-powered dashboard assist
 5. Start the Next.js development server:
 
    ```bash
-   pnpm dev
+   cd ../frontend
+   bun run dev
    ```
 
    <details>
      <summary><b>Using other package managers</b></summary>
      
-     ```bash
-     # Using yarn
-     yarn dev
-     
-     # Using npm
-     npm run dev
-     ```
-   </details>
+      ```bash
+      # Using yarn
+      yarn dev
+
+      # Using npm
+      npm run dev
+      ```
+    </details>
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
 

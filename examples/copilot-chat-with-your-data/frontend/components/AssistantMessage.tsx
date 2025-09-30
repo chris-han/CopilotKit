@@ -25,7 +25,13 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
     lines.forEach((line) => {
       const trimmed = line.trim();
       if (!trimmed) {
-        keptLines.push(line);
+        return;
+      }
+
+      if (
+        trimmed.toLowerCase() === "highlight chart cards:" ||
+        trimmed.toLowerCase() === "suggested charts:"
+      ) {
         return;
       }
 
@@ -45,7 +51,7 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
       keptLines.push(line);
     });
 
-    const compact = keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    const compact = keptLines.join("\n").replace(/\n{2,}/g, "\n").trim();
     return {
       cleanedContent: compact,
       suggestions: suggestionItems,

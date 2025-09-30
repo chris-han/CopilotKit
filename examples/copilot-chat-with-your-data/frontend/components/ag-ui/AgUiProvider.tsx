@@ -182,6 +182,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       isAnalyzing: true,
       hasTimeline: false,
     }));
+    clearAllHighlights();
     highlightRegistryRef.current = {};
     storyStepsRef.current = [];
     clearManualAdvanceTimeouts();
@@ -241,7 +242,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         status: AUDIO_NARRATION_ENABLED ? "awaiting-audio" : "playing",
         suggestion: undefined,
         steps,
-        activeStepId: AUDIO_NARRATION_ENABLED ? prev.activeStepId : steps[0]?.id,
+        activeStepId: AUDIO_NARRATION_ENABLED ? undefined : steps[0]?.id,
         error: null,
         audioUrl: undefined,
         audioEnabled: AUDIO_NARRATION_ENABLED && steps.length > 0,
@@ -257,24 +258,23 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       const normalizeSegments = (
         payloadSegments: Array<{ stepId?: unknown; audio?: unknown; contentType?: unknown }>,
       ): DataStoryAudioSegment[] =>
-        payloadSegments
-          .map((segment) => {
-            const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
-            const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
-            if (!stepId || !audioData) {
-              return null;
-            }
-            const contentType =
-              typeof segment?.contentType === "string" && segment.contentType.includes("audio")
-                ? segment.contentType
-                : "audio/mpeg";
-            return {
-              stepId,
-              url: `data:${contentType};base64,${audioData}`,
-              contentType,
-            } satisfies DataStoryAudioSegment;
-          })
-          .filter((segment: DataStoryAudioSegment | null): segment is DataStoryAudioSegment => Boolean(segment));
+        payloadSegments.reduce<DataStoryAudioSegment[]>((acc, segment) => {
+          const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
+          const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
+          if (!stepId || !audioData) {
+            return acc;
+          }
+          const contentType =
+            typeof segment?.contentType === "string" && segment.contentType.includes("audio")
+              ? segment.contentType
+              : "audio/mpeg";
+          acc.push({
+            stepId,
+            url: `data:${contentType};base64,${audioData}`,
+            contentType,
+          });
+          return acc;
+        }, []);
 
       const requestAudio = async (): Promise<{
         segments?: DataStoryAudioSegment[];

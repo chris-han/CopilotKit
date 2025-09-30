@@ -69,8 +69,8 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
       )}
       {...props}
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-        <div>
+      <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-4 px-4 py-4 sm:items-center sm:px-6 lg:px-8">
+        <div className="flex flex-col">
           <h1 className="text-2xl font-medium text-foreground">Data Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Interactive data visualization with AI assistance

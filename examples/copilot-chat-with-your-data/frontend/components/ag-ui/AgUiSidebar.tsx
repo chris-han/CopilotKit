@@ -9,6 +9,7 @@ import { useDataStory } from "../../hooks/useDataStory";
 import { useAgUiAgent } from "./AgUiProvider";
 import clsx from "clsx";
 import { X } from "lucide-react";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 
 const HEADER_FALLBACK_PX = 88;
 
@@ -41,19 +42,13 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     setDraft("");
   };
 
-  const sidebarStyle = useMemo<CSSProperties>(
-    () => ({
-      top: `var(--app-header-height, ${HEADER_FALLBACK_PX}px)`,
-      height: `calc(100dvh - var(--app-header-height, ${HEADER_FALLBACK_PX}px))`,
-      right: open ? "0" : "-100vw",
-    }),
-    [open],
-  );
-
-  const containerClasses = clsx(
-    "fixed z-40 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-xl transition-all duration-300 ease-in-out",
-    open ? "pointer-events-auto" : "pointer-events-none",
-  );
+  const sidebarDimensions = useMemo<CSSProperties>(() => {
+    const headerVar = `var(--app-header-height, ${HEADER_FALLBACK_PX}px)`;
+    return {
+      top: headerVar,
+      height: `calc(100dvh - ${headerVar})`,
+    };
+  }, []);
 
   const presetSuggestions = useMemo(
     () => [
@@ -73,40 +68,18 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     [],
   );
 
-  return (
+  const renderContent = (closeControl: React.ReactNode) => (
     <>
-      {!docked && (
-        <div
-          className={clsx(
-            "fixed inset-x-0 top-[var(--app-header-height,88px)] z-30 h-[calc(100dvh-var(--app-header-height,88px))] bg-background/60 backdrop-blur transition-opacity duration-300",
-            open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-          )}
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
-      <aside
-        className={containerClasses}
-        style={sidebarStyle}
-        aria-hidden={!open}
-      >
-        <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="space-y-1">
-            <div className="text-lg font-semibold text-foreground">Data Assistant</div>
-            <p className="text-sm text-muted-foreground">
-              Ask about sales trends, product performance, and key SaaS KPIs.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted"
-            aria-label="Close data assistant"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="space-y-1">
+          <div className="text-lg font-semibold text-foreground">Data Assistant</div>
+          <p className="text-sm text-muted-foreground">
+            Ask about sales trends, product performance, and key SaaS KPIs.
+          </p>
+        </div>
+        {closeControl}
+      </header>
+      <div className="flex-1 overflow-y-auto space-y-4 px-5 py-4">
           {messages.map((message) => {
             if (message.role === "assistant") {
               return (
@@ -226,7 +199,63 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
             </button>
           </div>
         </form>
-      </aside>
     </>
+  );
+
+  if (docked) {
+    if (!open) {
+      return null;
+    }
+
+    return (
+      <aside
+        className="fixed right-0 z-40 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-xl"
+        style={{ ...sidebarDimensions, right: 0 }}
+      >
+        {renderContent(
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted"
+            aria-label="Close data assistant"
+          >
+            <X className="h-4 w-4" />
+          </button>,
+        )}
+      </aside>
+    );
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-full max-w-md border-l border-border bg-card p-0 shadow-xl"
+        style={{ ...sidebarDimensions, bottom: "auto" }}
+      >
+        <div className="sr-only">
+          <SheetTitle>Data Assistant</SheetTitle>
+          <SheetDescription>Ask about sales trends, product performance, and key SaaS KPIs.</SheetDescription>
+        </div>
+        {renderContent(
+          <SheetClose asChild>
+            <button
+              type="button"
+              className="ml-auto inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted"
+              aria-label="Close data assistant"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </SheetClose>,
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

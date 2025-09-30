@@ -27,6 +27,8 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     onAudioComplete,
     onAudioAutoplayFailure,
     onAudioReady,
+    onTalkingPointStart,
+    onTalkingPointEnd,
   } = useDataStory();
   const [draft, setDraft] = useState("");
 
@@ -145,6 +147,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
             <DataStoryTimeline
               steps={dataStoryState.steps}
               activeStepId={dataStoryState.activeStepId}
+              activeTalkingPointId={dataStoryState.activeTalkingPointId}
               status={dataStoryState.status}
               onReview={replayHighlight}
               audioUrl={dataStoryState.audioUrl}
@@ -155,6 +158,8 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
               onAudioStep={onAudioProgress}
               onAudioComplete={onAudioComplete}
               onAudioAutoplayFailure={onAudioAutoplayFailure}
+              onTalkingPointStart={onTalkingPointStart}
+              onTalkingPointEnd={onTalkingPointEnd}
             />
           )}
           {messages.length === 0 && !error && (

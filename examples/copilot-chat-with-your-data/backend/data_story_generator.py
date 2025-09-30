@@ -43,6 +43,8 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
     previous_month = sales[-2]
     revenue_delta = latest_month["Sales"] - previous_month["Sales"]
     revenue_delta_pct = (revenue_delta / previous_month["Sales"]) * 100 if previous_month["Sales"] else 0
+    profit_delta = latest_month["Profit"] - previous_month["Profit"]
+    expense_delta = latest_month["Expenses"] - previous_month["Expenses"]
 
     top_product = max(product_data, key=lambda item: item["sales"])
     lagging_product = min(product_data, key=lambda item: item["growth"])
@@ -152,19 +154,196 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
         ]
     )
 
+    overview_points = [
+        {
+            "id": "story-overview-sales",
+            "markdown": (
+                f"Monthly **sales** hit {_format_currency(latest_month['Sales'])} in {latest_month['date']},"
+                f" {('up' if revenue_delta >= 0 else 'down')} {_format_currency(abs(revenue_delta))} versus {previous_month['date']}."
+            ),
+            "chartIds": ["sales-overview"],
+            "chartFocus": [
+                {
+                    "chartId": "sales-overview",
+                    "seriesName": "Sales",
+                    "dataName": latest_month["date"],
+                }
+            ],
+        },
+        {
+            "id": "story-overview-profit",
+            "markdown": (
+                f"Operating **profit** reached {_format_currency(latest_month['Profit'])},"
+                f" {('up' if profit_delta >= 0 else 'down')} {_format_currency(abs(profit_delta))} from {previous_month['date']}."
+            ),
+            "chartIds": ["sales-overview"],
+            "chartFocus": [
+                {
+                    "chartId": "sales-overview",
+                    "seriesName": "Profit",
+                    "dataName": latest_month["date"],
+                }
+            ],
+        },
+        {
+            "id": "story-overview-expenses",
+            "markdown": (
+                f"Monthly **expenses** landed at {_format_currency(latest_month['Expenses'])},"
+                f" {('up' if expense_delta >= 0 else 'down')} {_format_currency(abs(expense_delta))} versus {previous_month['date']}."
+            ),
+            "chartIds": ["sales-overview"],
+            "chartFocus": [
+                {
+                    "chartId": "sales-overview",
+                    "seriesName": "Expenses",
+                    "dataName": latest_month["date"],
+                }
+            ],
+        },
+    ]
+
+    product_points = [
+        {
+            "id": "story-products-smartphone",
+            "markdown": (
+                f"**{top_product['name']}** leads with {_format_currency(top_product['sales'])} in sales "
+                f"and {top_product['growth']:.1f}% growth."
+            ),
+            "chartIds": ["product-performance"],
+            "chartFocus": [
+                {
+                    "chartId": "product-performance",
+                    "dataName": top_product["name"],
+                }
+            ],
+        },
+        {
+            "id": "story-products-laggard",
+            "markdown": (
+                f"**{lagging_product['name']}** is slipping with {lagging_product['growth']:.1f}% growth on "
+                f"{_format_currency(lagging_product['sales'])} in sales."
+            ),
+            "chartIds": ["product-performance"],
+            "chartFocus": [
+                {
+                    "chartId": "product-performance",
+                    "dataName": lagging_product["name"],
+                }
+            ],
+        },
+    ]
+
+    category_points = [
+        {
+            "id": "story-categories-electronics",
+            "markdown": (
+                f"Electronics accounts for {leading_category['value']}% of revenue and is still growing {leading_category['growth']:.1f}%."
+            ),
+            "chartIds": ["sales-by-category"],
+            "chartFocus": [
+                {
+                    "chartId": "sales-by-category",
+                    "dataName": leading_category["name"],
+                }
+            ],
+        },
+        {
+            "id": "story-categories-home",
+            "markdown": (
+                f"Home & Kitchen contributes {category_data[2]['value']}% and is expanding {_format_percentage(category_data[2]['growth'])}."
+            ),
+            "chartIds": ["sales-by-category"],
+            "chartFocus": [
+                {
+                    "chartId": "sales-by-category",
+                    "dataName": category_data[2]["name"],
+                }
+            ],
+        },
+    ]
+
+    regional_points = [
+        {
+            "id": "story-regions-leader",
+            "markdown": (
+                f"{top_region['region']} leads revenue with {_format_currency(top_region['sales'])} and {top_region['marketShare']}% share."
+            ),
+            "chartIds": ["regional-sales"],
+            "chartFocus": [
+                {
+                    "chartId": "regional-sales",
+                    "dataName": top_region["region"],
+                }
+            ],
+        },
+        {
+            "id": "story-regions-expansion",
+            "markdown": (
+                f"{expansion_region['region']} remains a growth lever at {_format_currency(expansion_region['sales'])} and {expansion_region['marketShare']}% share."
+            ),
+            "chartIds": ["regional-sales"],
+            "chartFocus": [
+                {
+                    "chartId": "regional-sales",
+                    "dataName": expansion_region["region"],
+                }
+            ],
+        },
+    ]
+
+    demographics_points = [
+        {
+            "id": "story-demographics-top",
+            "markdown": (
+                f"Age {top_demo['ageGroup']} shoppers now spend {_format_currency(top_demo['spending'])}, "
+                f"leading cohort revenue."
+            ),
+            "chartIds": ["customer-demographics"],
+            "chartFocus": [
+                {
+                    "chartId": "customer-demographics",
+                    "dataName": top_demo["ageGroup"],
+                }
+            ],
+        },
+        {
+            "id": "story-demographics-dominant",
+            "markdown": (
+                f"Ages {dominant_age_group['ageGroup']} make up {dominant_age_group['percentage']}% of customers,"
+                " anchoring engagement."
+            ),
+            "chartIds": ["customer-demographics"],
+            "chartFocus": [
+                {
+                    "chartId": "customer-demographics",
+                    "dataName": dominant_age_group["ageGroup"],
+                }
+            ],
+        },
+        {
+            "id": "story-demographics-tail",
+            "markdown": (
+                f"Smaller cohorts like ages {demographics_data[-1]['ageGroup']} still contribute"
+                f" {_format_currency(demographics_data[-1]['spending'])}, highlighting an upsell path."
+            ),
+            "chartIds": ["customer-demographics"],
+            "chartFocus": [
+                {
+                    "chartId": "customer-demographics",
+                    "dataName": demographics_data[-1]["ageGroup"],
+                }
+            ],
+        },
+    ]
+
     steps: List[Dict[str, Any]] = [
         {
             "id": "story-overview",
             "stepType": "overview",
             "title": "Overall performance remains strong",
-            "markdown": (
-                "The dashboard closed the latest month with **"
-                f"{_format_currency(latest_month['Sales'])}** in revenue and **"
-                f"{_format_currency(latest_month['Profit'])}** profit. Month-over-month revenue moved "
-                f"{revenue_delta_pct:+.1f}% compared to {previous_month['date']} and customer reach hit "
-                f"{latest_month['Customers']:,}."
-            ),
+            "markdown": "\n\n".join(point["markdown"] for point in overview_points),
             "chartIds": ["sales-overview"],
+            "talkingPoints": overview_points,
             "kpis": [
                 {"label": "Revenue", "value": _format_currency(metrics["totalRevenue"]), "trend": "up" if revenue_delta >= 0 else "down"},
                 {"label": "Profit", "value": _format_currency(metrics["totalProfit"]), "trend": "up"},
@@ -176,14 +355,9 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "id": "story-products",
             "stepType": "change",
             "title": "Product leaders and laggards",
-            "markdown": (
-                f"**{top_product['name']}** continues to lead with {_format_currency(top_product['sales'])} in sales "
-                f"and {top_product['growth']:.1f}% growth. In contrast, **{lagging_product['name']}** is contracting "
-                f"at {lagging_product['growth']:.1f}% and is worth a closer look."
-                "\n\nProduct Performance:\n\n"
-                + "\n".join(product_table_lines)
-            ),
+            "markdown": "\n\n".join(point["markdown"] for point in product_points),
             "chartIds": ["product-performance"],
+            "talkingPoints": product_points,
             "kpis": [
                 {"label": top_product["name"], "value": _format_currency(top_product["sales"]), "trend": "up"},
                 {"label": lagging_product["name"], "value": _format_currency(lagging_product["sales"]), "trend": "down"},
@@ -194,11 +368,9 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "id": "story-categories",
             "stepType": "change",
             "title": "Category mix skewed toward electronics",
-            "markdown": (
-                f"Electronics drives {leading_category['value']}% of revenue and is still growing at {leading_category['growth']:.1f}%. "
-                f"Other categories such as Home & Kitchen ({_format_percentage(category_data[2]['growth'])}) are also contributing incremental growth."
-            ),
+            "markdown": "\n\n".join(point["markdown"] for point in category_points),
             "chartIds": ["sales-by-category"],
+            "talkingPoints": category_points,
             "kpis": [
                 {"label": leading_category["name"], "value": f"{leading_category['value']}%", "trend": "up"},
                 {"label": "Home & Kitchen", "value": f"{category_data[2]['value']}%", "trend": "up"},
@@ -209,11 +381,9 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "id": "story-regions",
             "stepType": "change",
             "title": "Regional concentration remains high",
-            "markdown": (
-                f"**{top_region['region']}** contributes {_format_currency(top_region['sales'])} ({top_region['marketShare']}% share). "
-                f"{second_region['region']} follows with {_format_currency(second_region['sales'])} ({second_region['marketShare']}%)."
-            ),
+            "markdown": "\n\n".join(point["markdown"] for point in regional_points),
             "chartIds": ["regional-sales"],
+            "talkingPoints": regional_points,
             "kpis": [
                 {"label": top_region["region"], "value": _format_currency(top_region["sales"]), "trend": "neutral"},
                 {"label": second_region["region"], "value": _format_currency(second_region["sales"]), "trend": "neutral"},
@@ -224,13 +394,9 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "id": "story-demographics",
             "stepType": "change",
             "title": "Customer demographics keep spending concentrated",
-            "markdown": (
-                f"The highest-spending segment remains **ages {top_demo['ageGroup']}**, generating {_format_currency(top_demo['spending'])}."
-                " Engagement from other age groups is steadier but smaller, suggesting room for targeted campaigns."
-                "\n\nCustomer Demographics:\n\n"
-                + "\n".join(demographics_table_lines)
-            ),
+            "markdown": "\n\n".join(point["markdown"] for point in demographics_points),
             "chartIds": ["customer-demographics"],
+            "talkingPoints": demographics_points,
             "kpis": [
                 {"label": top_demo["ageGroup"], "value": _format_currency(top_demo["spending"]), "trend": "up"},
                 {"label": "Conversion Rate", "value": _format_percentage(metrics["conversionRate"]), "trend": "neutral"},
@@ -244,6 +410,15 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "markdown": strategic_risk_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("risks"),
+            "talkingPoints": [
+                {
+                    "id": f"story-strategic-risks-point-{idx+1}",
+                    "markdown": bullet.lstrip("- ").strip(),
+                    "chartIds": ["strategic-commentary"],
+                }
+                for idx, bullet in enumerate(strategic_risk_bullets)
+                if bullet
+            ],
             "kpis": [
                 {"label": "North America Share", "value": f"{top_region['marketShare']}%", "trend": "neutral"},
                 {
@@ -272,6 +447,15 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "markdown": strategic_opportunity_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("opportunities"),
+            "talkingPoints": [
+                {
+                    "id": f"story-strategic-opportunities-point-{idx+1}",
+                    "markdown": bullet.lstrip("- ").strip(),
+                    "chartIds": ["strategic-commentary"],
+                }
+                for idx, bullet in enumerate(strategic_opportunity_markdown.split("\n"))
+                if bullet
+            ],
             "kpis": [
                 {
                     "label": f"{fastest_category['name']} Growth",
@@ -298,6 +482,15 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "markdown": strategic_recommendation_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("recommendations"),
+            "talkingPoints": [
+                {
+                    "id": f"story-strategic-recommendations-point-{idx+1}",
+                    "markdown": bullet.lstrip("- ").strip(),
+                    "chartIds": ["strategic-commentary"],
+                }
+                for idx, bullet in enumerate(strategic_recommendation_markdown.split("\n"))
+                if bullet
+            ],
             "kpis": [
                 {"label": "Profit Margin", "value": metrics["profitMargin"], "trend": "up"},
                 {

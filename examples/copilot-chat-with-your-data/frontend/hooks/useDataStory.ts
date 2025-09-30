@@ -1,5 +1,7 @@
 import { createContext, useContext } from "react";
 
+import type { ChartFocusTarget } from "../lib/chart-highlighting";
+
 export type DataStorySuggestion = {
   intentId: string;
   summary: string;
@@ -12,12 +14,21 @@ export type DataStoryEvent = {
   value?: Record<string, unknown>;
 };
 
+export type DataStoryTalkingPoint = {
+  id: string;
+  markdown: string;
+  chartIds?: string[];
+  chartFocus?: ChartFocusTarget[];
+};
+
 export type DataStoryStep = {
   id: string;
   stepType: "overview" | "change" | "summary" | string;
   title: string;
   markdown: string;
   chartIds: string[];
+  chartFocus?: ChartFocusTarget[];
+  talkingPoints?: DataStoryTalkingPoint[];
   kpis?: Array<{ label: string; value: string; trend?: "up" | "down" | "neutral" }>;
   reviewPrompt?: string;
   agUiEvents?: DataStoryEvent[];
@@ -25,6 +36,7 @@ export type DataStoryStep = {
 
 export type DataStoryAudioSegment = {
   stepId: string;
+  talkingPointId?: string;
   url: string;
   contentType?: string;
 };
@@ -53,6 +65,7 @@ export type DataStoryState = {
   audioGenerationTotalSegments?: number;
   isAnalyzing?: boolean;
   hasTimeline?: boolean;
+  activeTalkingPointId?: string;
 };
 
 export type DataStoryContextValue = {
@@ -65,6 +78,8 @@ export type DataStoryContextValue = {
   onAudioAutoplayFailure: () => void;
   onAudioReady: () => void;
   audioNarrationEnabled: boolean;
+  onTalkingPointStart: (stepId: string, talkingPointId: string) => void;
+  onTalkingPointEnd: (stepId: string, talkingPointId: string) => void;
 };
 
 export const DataStoryContext = createContext<DataStoryContextValue | null>(null);

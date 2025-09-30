@@ -359,6 +359,21 @@ async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> Lis
 
         default_script = f"Section {index}. {title}. {body_text}".strip()
 
+        talking_points = step.get("talkingPoints")
+        if isinstance(talking_points, list) and talking_points:
+            for tp_index, point in enumerate(talking_points, start=1):
+                talking_point_id = point.get("id") or f"{step_id}-point-{tp_index}"
+                point_markdown = str(point.get("markdown", ""))
+                point_text = _markdown_to_text(point_markdown) or default_script
+                segments.append(
+                    {
+                        "stepId": step_id,
+                        "talkingPointId": talking_point_id,
+                        "script": point_text,
+                    }
+                )
+            continue
+
         summary_text = ""
         try:
             user_sections = [
@@ -485,8 +500,13 @@ async def _synthesize_story_audio(
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
             for index, segment in enumerate(script_segments, start=1):
                 step_id = segment.get("stepId") or f"step-{index}"
+                talking_point_id = segment.get("talkingPointId")
                 narration = segment.get("script") or ""
-                segment_step_name = f"dataStory.audio.segment:{step_id}"
+                segment_step_name = (
+                    f"dataStory.audio.segment:{step_id}:{talking_point_id}"
+                    if talking_point_id
+                    else f"dataStory.audio.segment:{step_id}"
+                )
 
                 if streaming and send_event is not None:
                     await emit(StepStartedEvent(stepName=segment_step_name))
@@ -534,6 +554,7 @@ async def _synthesize_story_audio(
                                         value={
                                             "code": error_detail,
                                             "stepId": step_id,
+                                            "talkingPointId": talking_point_id,
                                             "status": exc.response.status_code,
                                             "message": "TTS deployment not found",
                                         },
@@ -554,6 +575,7 @@ async def _synthesize_story_audio(
                                         name="dataStory.audio.error",
                                         value={
                                             "stepId": step_id,
+                                            "talkingPointId": talking_point_id,
                                             "status": exc.response.status_code,
                                             "message": detail_message,
                                         },
@@ -582,6 +604,7 @@ async def _synthesize_story_audio(
                                         name="dataStory.audio.error",
                                         value={
                                             "stepId": step_id,
+                                            "talkingPointId": talking_point_id,
                                             "message": "Audio generation request failed",
                                         },
                                     )
@@ -608,6 +631,7 @@ async def _synthesize_story_audio(
                                 name="dataStory.audio.error",
                                 value={
                                     "stepId": step_id,
+                                    "talkingPointId": talking_point_id,
                                     "message": "Audio generation returned an empty payload",
                                 },
                             )
@@ -623,6 +647,7 @@ async def _synthesize_story_audio(
                 audio_segments.append(
                     {
                         "stepId": step_id,
+                        "talkingPointId": talking_point_id,
                         "audio": base64.b64encode(audio_bytes).decode("utf-8"),
                         "contentType": content_type,
                     }
@@ -636,6 +661,7 @@ async def _synthesize_story_audio(
                             name="dataStory.audio.progress",
                             value={
                                 "stepId": step_id,
+                                "talkingPointId": talking_point_id,
                                 "completed": index,
                                 "total": total_segments if total_segments else 1,
                             },

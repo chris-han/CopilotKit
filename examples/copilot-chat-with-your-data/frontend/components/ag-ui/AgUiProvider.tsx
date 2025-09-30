@@ -14,10 +14,11 @@ import {
 } from "react";
 
 import {
-  type HighlightOptions,
   applyHighlights,
   clearAllHighlights,
   dispatchStrategicCommentaryTab,
+  type ChartFocusTarget,
+  type HighlightOptions,
 } from "../../lib/chart-highlighting";
 import { prompt as defaultPrompt } from "../../lib/prompt";
 import {
@@ -79,13 +80,22 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     audioGenerationTotalSegments: 0,
     isAnalyzing: false,
     hasTimeline: false,
+    activeTalkingPointId: undefined,
   });
 
   const agentRef = useRef<HttpAgent | null>(null);
   const threadIdRef = useRef<string>(generateId("thread"));
   const historyRef = useRef<Message[]>([]);
   const highlightRegistryRef = useRef<
-    Record<string, { chartIds: string[]; events: DataStoryEvent[] }>
+    Record<
+      string,
+      {
+        chartIds: string[];
+        focusTargets: ChartFocusTarget[];
+        talkingPoints: Array<{ id: string; chartIds: string[]; focusTargets: ChartFocusTarget[] }>;
+        events: DataStoryEvent[];
+      }
+    >
   >({});
   const storyStepsRef = useRef<DataStoryStep[]>([]);
   const manualAdvanceTimeoutsRef = useRef<number[]>([]);
@@ -121,6 +131,42 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     }));
   }, []);
 
+  const normaliseFocusTargets = useCallback((raw: unknown): ChartFocusTarget[] => {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw.reduce<ChartFocusTarget[]>((acc, entry) => {
+      if (!entry || typeof entry !== "object") {
+        return acc;
+      }
+      const chartId = typeof (entry as { chartId?: unknown }).chartId === "string"
+        ? (entry as { chartId: string }).chartId
+        : undefined;
+      if (!chartId) {
+        return acc;
+      }
+      const target: ChartFocusTarget = { chartId };
+      const source = entry as Record<string, unknown>;
+      if (typeof source.seriesIndex === "number") {
+        target.seriesIndex = source.seriesIndex;
+      }
+      if (typeof source.seriesId === "string") {
+        target.seriesId = source.seriesId;
+      }
+      if (typeof source.seriesName === "string") {
+        target.seriesName = source.seriesName;
+      }
+      if (typeof source.dataIndex === "number") {
+        target.dataIndex = source.dataIndex;
+      }
+      if (typeof source.dataName === "string") {
+        target.dataName = source.dataName;
+      }
+      acc.push(target);
+      return acc;
+    }, []);
+  }, []);
+
   const emitStepEvents = useCallback(
     (stepId: string, { skipHighlight }: { skipHighlight?: boolean } = {}) => {
       const registryEntry = highlightRegistryRef.current[stepId];
@@ -144,8 +190,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
               : typeof value.chartId === "string"
                 ? [value.chartId as string]
                 : [];
+            const focusTargets = normaliseFocusTargets(value.focusTargets);
             if (ids.length > 0) {
-              applyHighlights(ids);
+              applyHighlights(ids, focusTargets.length ? { focusTargets } : undefined);
             }
           }
           return;
@@ -155,23 +202,74 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         }
       });
     },
-    [],
+    [normaliseFocusTargets],
   );
 
   const replayHighlight = useCallback((stepId: string, options?: HighlightOptions) => {
     const registryEntry = highlightRegistryRef.current[stepId];
+    const firstTalkingPoint = registryEntry?.talkingPoints?.[0];
+    if (firstTalkingPoint) {
+      const mergedOptions = firstTalkingPoint.focusTargets.length
+        ? { ...(options ?? {}), focusTargets: firstTalkingPoint.focusTargets }
+        : options;
+      const chartIds = firstTalkingPoint.chartIds.length ? firstTalkingPoint.chartIds : registryEntry?.chartIds ?? [];
+      if (chartIds.length > 0) {
+        applyHighlights(chartIds, mergedOptions);
+      } else {
+        applyHighlights([], mergedOptions);
+      }
+      emitStepEvents(stepId, { skipHighlight: true });
+      setDataStoryState((prev) => ({
+        ...prev,
+        activeStepId: stepId,
+        activeTalkingPointId: firstTalkingPoint.id,
+      }));
+      return;
+    }
+
     const chartIds = registryEntry?.chartIds ?? [];
+    const focusTargets = registryEntry?.focusTargets ?? [];
+    const mergedOptions = focusTargets.length
+      ? { ...(options ?? {}), focusTargets }
+      : options;
     if (chartIds.length > 0) {
-      applyHighlights(chartIds, options);
+      applyHighlights(chartIds, mergedOptions);
     } else {
-      applyHighlights([]);
+      applyHighlights([], mergedOptions);
     }
     emitStepEvents(stepId, { skipHighlight: true });
     setDataStoryState((prev) => ({
       ...prev,
       activeStepId: stepId,
+      activeTalkingPointId: undefined,
     }));
   }, [emitStepEvents]);
+
+  const highlightTalkingPoint = useCallback(
+    (stepId: string, talkingPointId: string, options?: HighlightOptions) => {
+      const registryEntry = highlightRegistryRef.current[stepId];
+      const targetPoint = registryEntry?.talkingPoints?.find((point) => point.id === talkingPointId);
+      const fallbackFocus = registryEntry?.focusTargets ?? [];
+      const fallbackCharts = registryEntry?.chartIds ?? [];
+      const focusTargets = targetPoint?.focusTargets?.length ? targetPoint.focusTargets : fallbackFocus;
+      const chartIds = targetPoint?.chartIds?.length ? targetPoint.chartIds : fallbackCharts;
+      const mergedOptions = focusTargets.length
+        ? { ...(options ?? {}), focusTargets }
+        : options;
+      if (chartIds.length > 0) {
+        applyHighlights(chartIds, mergedOptions);
+      } else {
+        applyHighlights([], mergedOptions);
+      }
+      emitStepEvents(stepId, { skipHighlight: true });
+      setDataStoryState((prev) => ({
+        ...prev,
+        activeStepId: stepId,
+        activeTalkingPointId: talkingPointId,
+      }));
+    },
+    [emitStepEvents],
+  );
 
   const highlightCharts = useCallback((chartIds: string[], options?: HighlightOptions) => {
     applyHighlights(chartIds, options);
@@ -182,6 +280,34 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       window.clearTimeout(timeoutId);
     });
     manualAdvanceTimeoutsRef.current = [];
+  }, []);
+
+  const handleTalkingPointPlaybackStart = useCallback(
+    (stepId: string, talkingPointId: string) => {
+      highlightTalkingPoint(stepId, talkingPointId, { persistent: true });
+    },
+    [highlightTalkingPoint],
+  );
+
+  const handleTalkingPointPlaybackEnd = useCallback((stepId: string, talkingPointId: string) => {
+    const registryEntry = highlightRegistryRef.current[stepId];
+    const fallbackCharts = registryEntry?.chartIds ?? [];
+    const fallbackFocus = registryEntry?.focusTargets ?? [];
+    const fallbackOptions = fallbackFocus.length ? { focusTargets: fallbackFocus } : undefined;
+    setDataStoryState((prev) => {
+      if (prev.activeTalkingPointId !== talkingPointId) {
+        return prev;
+      }
+      if (fallbackCharts.length > 0) {
+        applyHighlights(fallbackCharts, fallbackOptions);
+      } else {
+        applyHighlights([], fallbackOptions);
+      }
+      return {
+        ...prev,
+        activeTalkingPointId: undefined,
+      };
+    });
   }, []);
 
   const scheduleManualStepProgression = useCallback(
@@ -195,14 +321,22 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         const delay = (index + 1) * 2000;
         const timeoutId = window.setTimeout(() => {
           const registryEntry = highlightRegistryRef.current[step.id];
-          const chartIds = registryEntry?.chartIds ?? [];
-          if (chartIds.length) {
-            applyHighlights(chartIds);
+          const firstPoint = registryEntry?.talkingPoints?.[0];
+          if (firstPoint) {
+            highlightTalkingPoint(step.id, firstPoint.id);
           } else {
-            applyHighlights([]);
+            const chartIds = registryEntry?.chartIds ?? [];
+            const focusTargets = registryEntry?.focusTargets ?? [];
+            const focusOptions = focusTargets.length ? { focusTargets } : undefined;
+            if (chartIds.length) {
+              applyHighlights(chartIds, focusOptions);
+            } else {
+              applyHighlights([], focusOptions);
+            }
+            setDataStoryState((prev) => ({ ...prev, activeTalkingPointId: undefined }));
+            setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
           }
           emitStepEvents(step.id, { skipHighlight: true });
-          setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
         }, delay);
         manualAdvanceTimeoutsRef.current.push(timeoutId);
       });
@@ -213,7 +347,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       }, completionDelay);
       manualAdvanceTimeoutsRef.current.push(completionTimeoutId);
     },
-    [clearManualAdvanceTimeouts, emitStepEvents],
+    [clearManualAdvanceTimeouts, emitStepEvents, highlightTalkingPoint],
   );
 
   const startStory = useCallback(async () => {
@@ -231,6 +365,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       audioGenerationTotalSegments: 0,
       isAnalyzing: true,
       hasTimeline: false,
+      activeTalkingPointId: undefined,
     }));
     clearAllHighlights();
     highlightRegistryRef.current = {};
@@ -261,7 +396,15 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       const steps: DataStoryStep[] = Array.isArray(payload?.steps) ? payload.steps : [];
       storyStepsRef.current = steps;
       highlightRegistryRef.current = steps.reduce<
-        Record<string, { chartIds: string[]; events: DataStoryEvent[] }>
+        Record<
+          string,
+          {
+            chartIds: string[];
+            focusTargets: ChartFocusTarget[];
+            talkingPoints: Array<{ id: string; chartIds: string[]; focusTargets: ChartFocusTarget[] }>;
+            events: DataStoryEvent[];
+          }
+        >
       >((acc, step) => {
         const chartIds = Array.isArray(step.chartIds) ? step.chartIds : [];
         const events = Array.isArray(step.agUiEvents)
@@ -269,7 +412,23 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
               Boolean(event && typeof event.name === "string"),
             )
           : [];
-        acc[step.id] = { chartIds, events };
+        const focusTargets = Array.isArray(step.chartFocus)
+          ? normaliseFocusTargets(step.chartFocus)
+          : [];
+        const talkingPoints = Array.isArray(step.talkingPoints)
+          ? step.talkingPoints.map((point) => {
+              const pointChartIds = Array.isArray(point.chartIds) ? point.chartIds : [];
+              const pointFocusTargets = Array.isArray(point.chartFocus)
+                ? normaliseFocusTargets(point.chartFocus)
+                : [];
+              return {
+                id: point.id,
+                chartIds: pointChartIds,
+                focusTargets: pointFocusTargets,
+              };
+            })
+          : [];
+        acc[step.id] = { chartIds, focusTargets, talkingPoints, events };
         return acc;
       }, {});
 
@@ -314,10 +473,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       }));
 
       const normalizeSegments = (
-        payloadSegments: Array<{ stepId?: unknown; audio?: unknown; contentType?: unknown }>,
+        payloadSegments: Array<{ stepId?: unknown; talkingPointId?: unknown; audio?: unknown; contentType?: unknown }>,
       ): DataStoryAudioSegment[] =>
         payloadSegments.reduce<DataStoryAudioSegment[]>((acc, segment) => {
           const stepId = typeof segment?.stepId === "string" ? segment.stepId : undefined;
+          const talkingPointId = typeof segment?.talkingPointId === "string" ? segment.talkingPointId : undefined;
           const audioData = typeof segment?.audio === "string" ? segment.audio : undefined;
           if (!stepId || !audioData) {
             return acc;
@@ -328,6 +488,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
               : "audio/mpeg";
           acc.push({
             stepId,
+            talkingPointId,
             url: `data:${contentType};base64,${audioData}`,
             contentType,
           });
@@ -597,6 +758,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     clearManualAdvanceTimeouts,
     scheduleManualStepProgression,
     replayHighlight,
+    normaliseFocusTargets,
   ]);
 
   const handleAudioProgress = useCallback(
@@ -832,6 +994,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       onAudioProgress: handleAudioProgress,
       onAudioComplete: handleAudioComplete,
       onAudioAutoplayFailure: handleAudioAutoplayFailure,
+      onTalkingPointStart: handleTalkingPointPlaybackStart,
+      onTalkingPointEnd: handleTalkingPointPlaybackEnd,
       audioNarrationEnabled: AUDIO_NARRATION_ENABLED,
     }),
     [
@@ -843,6 +1007,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       handleAudioProgress,
       handleAudioComplete,
       handleAudioAutoplayFailure,
+      handleTalkingPointPlaybackStart,
+      handleTalkingPointPlaybackEnd,
     ],
   );
 

@@ -246,6 +246,7 @@ export function Dashboard() {
               data={salesData}
               index="date"
               categories={["Sales", "Profit", "Expenses"]}
+              chartId="sales-overview"
               colors={colors.salesOverview}
               valueFormatter={(value) => `$${value.toLocaleString()}`}
               showLegend={true}
@@ -268,6 +269,7 @@ export function Dashboard() {
               data={productData}
               index="name"
               categories={["sales"]}
+              chartId="product-performance"
               colors={colors.productPerformance}
               valueFormatter={(value) => `$${value.toLocaleString()}`}
               showLegend={false}
@@ -289,6 +291,7 @@ export function Dashboard() {
               data={categoryData}
               category="value"
               index="name"
+              chartId="sales-by-category"
               valueFormatter={(value) => `${value}%`}
               colors={colors.categories}
               centerText="Categories"
@@ -296,7 +299,7 @@ export function Dashboard() {
               showLabel={false}
               showLegend={true}
               innerRadius={45}
-              outerRadius="90%"
+              outerRadius="85%"
             />
           </div>
         </CardContent>
@@ -313,6 +316,7 @@ export function Dashboard() {
               data={regionalData}
               index="region"
               categories={["sales"]}
+              chartId="regional-sales"
               colors={colors.regional}
               valueFormatter={(value) => `$${value.toLocaleString()}`}
               showLegend={false}
@@ -334,6 +338,7 @@ export function Dashboard() {
               data={demographicsData}
               index="ageGroup"
               categories={["spending"]}
+              chartId="customer-demographics"
               colors={colors.demographics}
               valueFormatter={(value) => `$${value}`}
               showLegend={false}

@@ -23,33 +23,131 @@ interface DataStoryTimelineProps {
   onAudioComplete?: () => void;
   onAudioAutoplayFailure?: () => void;
   onAudioReady?: () => void;
+  activeTalkingPointId?: string;
+  onTalkingPointStart?: (stepId: string, talkingPointId: string) => void;
+  onTalkingPointEnd?: (stepId: string, talkingPointId: string) => void;
 }
-export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, audioSegments, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady }: DataStoryTimelineProps) {
+export function DataStoryTimeline({ steps, activeStepId, status, onReview, audioUrl, audioEnabled, audioContentType, audioSegments, onAudioStep, onAudioComplete, onAudioAutoplayFailure, onAudioReady, activeTalkingPointId, onTalkingPointStart, onTalkingPointEnd }: DataStoryTimelineProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastStepIndexRef = useRef<number>(-1);
+  const currentSegmentStepRef = useRef<string | null>(null);
   const audioReadyNotifiedRef = useRef<boolean>(false);
   const segmentIndexRef = useRef<number>(0);
   const [segmentIndex, setSegmentIndex] = useState<number>(0);
   const [playbackState, setPlaybackState] = useState<"idle" | "playing" | "paused" | "completed">("idle");
   const hasSteps = steps.length > 0;
   const segments = useMemo(
-    () => (Array.isArray(audioSegments) ? audioSegments : []),
+    () => (Array.isArray(audioSegments) ? audioSegments.filter((segment) => Boolean(segment?.stepId)) : []),
     [audioSegments],
   );
-  const hasSegments = segments.length > 0;
-  const segmentMap = useMemo(() => {
+  const segmentLookup = useMemo(() => {
     const map = new Map<string, DataStoryAudioSegment>();
     segments.forEach((segment) => {
-      if (segment?.stepId) {
-        map.set(segment.stepId, segment);
+      if (!segment?.stepId) {
+        return;
+      }
+      const key = segment.talkingPointId
+        ? `${segment.stepId}:${segment.talkingPointId}`
+        : segment.stepId;
+      if (!map.has(key)) {
+        map.set(key, segment);
       }
     });
     return map;
   }, [segments]);
-  const hasAnyAudio = hasSegments || Boolean(audioUrl);
+  const orderedSegments = useMemo(() => {
+    if (!steps.length && segmentLookup.size === 0) {
+      return [] as Array<{ key: string; segment: DataStoryAudioSegment }>;
+    }
+    const entries: Array<{ key: string; segment: DataStoryAudioSegment }> = [];
+    const added = new Set<string>();
 
+    steps.forEach((step) => {
+      const stepId = step.id;
+      const talkingPoints = Array.isArray(step.talkingPoints) ? step.talkingPoints : [];
+      if (talkingPoints.length) {
+        talkingPoints.forEach((point) => {
+          const key = `${stepId}:${point.id}`;
+          const segment = segmentLookup.get(key);
+          if (segment && !added.has(key)) {
+            entries.push({ key, segment });
+            added.add(key);
+          }
+        });
+      }
+      if (!talkingPoints.length) {
+        const key = stepId;
+        const segment = segmentLookup.get(key);
+        if (segment && !added.has(key)) {
+          entries.push({ key, segment });
+          added.add(key);
+        }
+      }
+    });
+
+    segmentLookup.forEach((segment, key) => {
+      if (!added.has(key)) {
+        entries.push({ key, segment });
+        added.add(key);
+      }
+    });
+
+    return entries;
+  }, [segmentLookup, steps]);
+  const hasStepSegments = orderedSegments.some((entry) => !entry.segment.talkingPointId);
+  const hasTalkingPointSegments = orderedSegments.some((entry) => Boolean(entry.segment.talkingPointId));
+  const segmentMap = useMemo(() => {
+    const map = new Map<string, DataStoryAudioSegment>();
+    orderedSegments.forEach(({ segment }) => {
+      if (segment?.stepId && !segment?.talkingPointId) {
+        map.set(segment.stepId, segment);
+      }
+    });
+    return map;
+  }, [orderedSegments]);
+  const talkingPointSegmentMap = useMemo(() => {
+    const map = new Map<string, Map<string, DataStoryAudioSegment>>();
+    orderedSegments.forEach(({ segment }) => {
+      if (!segment?.stepId || !segment?.talkingPointId) {
+        return;
+      }
+      const existing = map.get(segment.stepId) ?? new Map<string, DataStoryAudioSegment>();
+      existing.set(segment.talkingPointId, segment);
+      map.set(segment.stepId, existing);
+    });
+    return map;
+  }, [orderedSegments]);
+  const segmentOrderMap = useMemo(() => {
+    const map = new Map<string, number>();
+    orderedSegments.forEach(({ key, segment }, idx) => {
+      if (!segment?.stepId) {
+        return;
+      }
+      map.set(key, idx);
+    });
+    return map;
+  }, [orderedSegments]);
+  const stepFirstSegmentMap = useMemo(() => {
+    const map = new Map<string, number>();
+    orderedSegments.forEach(({ segment }, idx) => {
+      const stepId = segment.stepId;
+      if (!stepId || map.has(stepId)) {
+        return;
+      }
+      map.set(stepId, idx);
+    });
+    return map;
+  }, [orderedSegments]);
+  const effectiveSegmentIndex = orderedSegments.length
+    ? Math.min(segmentIndex, orderedSegments.length - 1)
+    : 0;
+  const activeSegmentEntry = orderedSegments.length ? orderedSegments[effectiveSegmentIndex] : undefined;
+  const activeSegmentStepId = activeSegmentEntry?.segment?.stepId;
+  const activeSegmentTalkingPointId = activeSegmentEntry?.segment?.talkingPointId;
+  const hasAnyAudio = hasStepSegments || hasTalkingPointSegments || Boolean(audioUrl);
+  const hasSegments = orderedSegments.length > 0;
   const notifyAudioReady = useCallback(() => {
     if (audioReadyNotifiedRef.current) {
       return;
@@ -59,8 +157,8 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   }, [onAudioReady]);
 
   useEffect(() => {
-    segmentIndexRef.current = segmentIndex;
-  }, [segmentIndex]);
+    segmentIndexRef.current = effectiveSegmentIndex;
+  }, [effectiveSegmentIndex]);
 
   useEffect(() => {
     setPlaybackState("idle");
@@ -82,6 +180,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     setSegmentIndex(0);
     lastStepIndexRef.current = -1;
     audioReadyNotifiedRef.current = false;
+    currentSegmentStepRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -98,6 +197,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     setSegmentIndex(0);
     lastStepIndexRef.current = -1;
     audioReadyNotifiedRef.current = false;
+    currentSegmentStepRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -216,19 +316,15 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     onAudioAutoplayFailure,
   ]);
 
-  const getSegmentForIndex = useCallback(
+  const getSegmentEntry = useCallback(
     (index: number) => {
-      if (!hasSegments || steps.length === 0) {
+      if (!hasSegments || orderedSegments.length === 0) {
         return undefined;
       }
-      const clamped = Math.min(Math.max(index, 0), steps.length - 1);
-      const targetStepId = steps[clamped]?.id;
-      if (!targetStepId) {
-        return undefined;
-      }
-      return segmentMap.get(targetStepId);
+      const clamped = Math.min(Math.max(index, 0), orderedSegments.length - 1);
+      return orderedSegments[clamped];
     },
-    [hasSegments, segmentMap, steps],
+    [hasSegments, orderedSegments],
   );
 
   const findNextSegmentIndex = useCallback(
@@ -236,20 +332,21 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       if (!hasSegments) {
         return -1;
       }
-      for (let idx = Math.max(startIndex, 0); idx < steps.length; idx += 1) {
-        const stepId = steps[idx]?.id;
-        if (stepId && segmentMap.has(stepId)) {
-          return idx;
+      for (let idx = Math.max(startIndex, 0); idx < orderedSegments.length; idx += 1) {
+        const entry = orderedSegments[idx];
+        if (!entry?.segment?.stepId) {
+          continue;
         }
+        return idx;
       }
       return -1;
     },
-    [hasSegments, steps, segmentMap],
+    [hasSegments, orderedSegments],
   );
 
-  const pauseOtherSegments = useCallback((activeStepId: string) => {
-    Object.entries(audioRefs.current).forEach(([stepId, element]) => {
-      if (!element || stepId === activeStepId) {
+  const pauseOtherSegments = useCallback((activeKey: string) => {
+    Object.entries(audioRefs.current).forEach(([key, element]) => {
+      if (!element || key === activeKey) {
         return;
       }
       element.pause();
@@ -266,12 +363,14 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       if (nextIndex === -1) {
         return;
       }
-      const targetSegment = getSegmentForIndex(nextIndex);
+      const segmentEntry = getSegmentEntry(nextIndex);
+      const targetSegment = segmentEntry?.segment;
       const targetId = targetSegment?.stepId;
-      if (!targetId) {
+      const segmentKey = segmentEntry?.key;
+      if (!targetId || !segmentKey) {
         return;
       }
-      const targetAudio = audioRefs.current[targetId];
+      const targetAudio = audioRefs.current[segmentKey];
       if (!targetAudio) {
         return;
       }
@@ -281,7 +380,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       lastStepIndexRef.current = nextIndex;
       setPlaybackState("playing");
 
-      pauseOtherSegments(targetId);
+      pauseOtherSegments(segmentKey);
 
       const playPromise = targetAudio.play();
       if (playPromise?.catch) {
@@ -292,20 +391,36 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         });
       }
     },
-    [findNextSegmentIndex, getSegmentForIndex, hasSegments, onAudioAutoplayFailure, pauseOtherSegments],
+    [findNextSegmentIndex, getSegmentEntry, hasSegments, onAudioAutoplayFailure, pauseOtherSegments],
   );
 
   const handleSegmentPlay = useCallback(
-    (stepId: string, index: number) => {
-      pauseOtherSegments(stepId);
+    (segmentKey: string, index: number, stepId: string, talkingPointId?: string) => {
+      pauseOtherSegments(segmentKey);
       segmentIndexRef.current = index;
       setSegmentIndex(index);
       lastStepIndexRef.current = index;
       setPlaybackState("playing");
       notifyAudioReady();
-      onAudioStep?.(stepId);
+
+      const previousStepId = currentSegmentStepRef.current;
+      const stepChanged = stepId && previousStepId !== stepId;
+      if (stepId) {
+        if (stepChanged) {
+          currentSegmentStepRef.current = stepId;
+          onAudioStep?.(stepId);
+        } else if (!talkingPointId) {
+          onAudioStep?.(stepId);
+        }
+      } else {
+        currentSegmentStepRef.current = null;
+      }
+
+      if (talkingPointId) {
+        onTalkingPointStart?.(stepId, talkingPointId);
+      }
     },
-    [notifyAudioReady, onAudioStep, pauseOtherSegments],
+    [notifyAudioReady, onAudioStep, onTalkingPointStart, pauseOtherSegments],
   );
 
   const handleSegmentPause = useCallback(
@@ -322,14 +437,14 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   );
 
   const handleSegmentLoaded = useCallback(
-    (stepId: string, index: number) => {
+    (segmentKey: string, index: number) => {
       if (!hasSegments || !audioEnabled) {
         return;
       }
       if (segmentIndexRef.current !== index) {
         return;
       }
-      const audio = audioRefs.current[stepId];
+      const audio = audioRefs.current[segmentKey];
       if (!audio) {
         return;
       }
@@ -347,21 +462,28 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   );
 
   const handleSegmentEnded = useCallback(
-    (index: number) => {
+    (index: number, stepId?: string, talkingPointId?: string) => {
+      let nextIndex = -1;
       if (!hasSegments) {
         setPlaybackState("completed");
         onAudioComplete?.();
-        return;
-      }
-      const nextIndex = findNextSegmentIndex(index + 1);
-      if (audioEnabled && nextIndex !== -1) {
-        playSegment(nextIndex);
       } else {
-        setPlaybackState("completed");
-        onAudioComplete?.();
+        nextIndex = findNextSegmentIndex(index + 1);
+        if (audioEnabled && nextIndex !== -1) {
+          playSegment(nextIndex);
+        } else {
+          setPlaybackState("completed");
+          onAudioComplete?.();
+        }
+      }
+      if (talkingPointId && stepId) {
+        onTalkingPointEnd?.(stepId, talkingPointId);
+      }
+      if (!audioEnabled || nextIndex === -1) {
+        currentSegmentStepRef.current = null;
       }
     },
-    [hasSegments, findNextSegmentIndex, audioEnabled, playSegment, onAudioComplete],
+    [hasSegments, findNextSegmentIndex, audioEnabled, playSegment, onAudioComplete, onTalkingPointEnd],
   );
 
   useEffect(() => {
@@ -375,17 +497,23 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     (stepId: string, index: number) => {
       onReview(stepId);
       if (hasSegments) {
-        if (!segmentMap.has(stepId)) {
+        const targetIndex = stepFirstSegmentMap.get(stepId);
+        if (targetIndex === undefined) {
           return;
         }
-        const segmentAudio = audioRefs.current[stepId];
-        const isCurrent = segmentIndexRef.current === index && playbackState === "playing";
+        const segmentEntry = getSegmentEntry(targetIndex);
+        if (!segmentEntry) {
+          return;
+        }
+        const segmentAudio = audioRefs.current[segmentEntry.key];
+        const isCurrent = segmentIndexRef.current === targetIndex && playbackState === "playing";
         if (isCurrent && segmentAudio && !segmentAudio.paused) {
           segmentAudio.pause();
           setPlaybackState("paused");
           return;
         }
-        playSegment(index, { userInitiated: true });
+        playSegment(targetIndex, { userInitiated: true });
+        return;
       }
       if (!hasSegments && audioUrl) {
         const audio = audioRef.current;
@@ -402,7 +530,8 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     [
       onReview,
       hasSegments,
-      segmentMap,
+      stepFirstSegmentMap,
+      getSegmentEntry,
       playbackState,
       playSegment,
       audioUrl,
@@ -416,10 +545,9 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
 
     if (playbackState === "playing") {
       if (hasSegments) {
-        const currentSegment = getSegmentForIndex(segmentIndexRef.current);
-        const stepId = currentSegment?.stepId;
-        if (stepId) {
-          const element = audioRefs.current[stepId];
+        const currentEntry = getSegmentEntry(segmentIndexRef.current);
+        if (currentEntry) {
+          const element = audioRefs.current[currentEntry.key];
           element?.pause();
         }
       } else {
@@ -467,7 +595,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     hasAnyAudio,
     playbackState,
     hasSegments,
-    getSegmentForIndex,
+    getSegmentEntry,
     playSegment,
     audioUrl,
     notifyAudioReady,
@@ -534,17 +662,23 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         {steps.map((step, index) => {
           const isActive = step.id === activeStepId;
           const segment = hasSegments ? segmentMap.get(step.id) : undefined;
-          const isCurrentSegment = hasSegments && segmentIndex === index;
+          const stepSegmentOrder = typeof segment !== "undefined" ? segmentOrderMap.get(step.id) ?? -1 : -1;
+          const isStepActive = hasSegments
+            ? activeSegmentStepId === step.id
+            : playbackState === "playing" && lastStepIndexRef.current === index;
+          const talkingPoints = step.talkingPoints ?? [];
+          const talkingPointSegments = talkingPointSegmentMap.get(step.id);
+          const hasStepAudio = hasSegments && stepSegmentOrder >= 0 && Boolean(segment);
           const stepControlLabel =
             hasSegments
-              ? isCurrentSegment && playbackState === "playing"
+              ? isStepActive && playbackState === "playing"
                 ? "Pause"
                 : "Play"
-              : playbackState === "playing"
+              : playbackState === "playing" && lastStepIndexRef.current === index
                 ? "Pause"
                 : "Play";
           const stepButtonClasses = `cursor-pointer text-xs font-medium transition ${
-            isCurrentSegment && playbackState === "playing"
+            isStepActive && playbackState === "playing"
               ? "text-primary"
               : "text-primary/80 hover:text-primary"
           }`;
@@ -578,9 +712,68 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                     {stepControlLabel}
                   </button>
                 </div>
-                <div className="prose prose-sm mt-2 text-muted-foreground dark:prose-invert">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeMarkdownTables(step.markdown)}</ReactMarkdown>
-                </div>
+                {talkingPoints.length ? (
+                  <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                    {talkingPoints.map((point, pointIndex) => {
+                      const pointText = normalizeMarkdownTables(point.markdown);
+                      const isActivePoint =
+                        (typeof activeSegmentTalkingPointId === "string" &&
+                          activeSegmentTalkingPointId === point.id) ||
+                        (!activeSegmentTalkingPointId && activeTalkingPointId === point.id);
+                      const talkingSegment = talkingPointSegments?.get(point.id);
+                      const segmentKey = `${step.id}:${point.id}`;
+                      const segmentOrder = segmentOrderMap.get(segmentKey) ?? -1;
+                      const hasAudio = Boolean(talkingSegment && segmentOrder >= 0);
+                      return (
+                        <div key={point.id} className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`text-[11px] font-semibold uppercase tracking-wide ${
+                                isActivePoint ? "text-primary" : "text-primary/70"
+                              }`}
+                            >
+                              Sub-step {index + 1}.{pointIndex + 1}
+                            </span>
+                            <div
+                              className={
+                                isActivePoint
+                                  ? "text-foreground underline decoration-2 decoration-primary"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{pointText}</ReactMarkdown>
+                            </div>
+                          </div>
+                          {hasAudio ? (
+                            <audio
+                              controls
+                              preload="auto"
+                              ref={(element) => {
+                                if (element) {
+                                  audioRefs.current[segmentKey] = element;
+                                } else {
+                                  delete audioRefs.current[segmentKey];
+                                }
+                              }}
+                              onPlay={() => {
+                                handleSegmentPlay(segmentKey, segmentOrder, step.id, point.id);
+                              }}
+                              onPause={(event) => handleSegmentPause(segmentOrder, event.currentTarget)}
+                              onEnded={() => handleSegmentEnded(segmentOrder, step.id, point.id)}
+                            >
+                              <source src={talkingSegment.url} type={talkingSegment.contentType ?? "audio/mpeg"} />
+                              Your browser does not support the audio element.
+                            </audio>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="prose prose-sm mt-2 text-muted-foreground dark:prose-invert">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeMarkdownTables(step.markdown)}</ReactMarkdown>
+                  </div>
+                )}
                 {step.kpis?.length ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {step.kpis.map((kpi) => (
@@ -594,7 +787,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                     ))}
                   </div>
                 ) : null}
-                {segment ? (
+                {hasStepAudio ? (
                   <div className="mt-3">
                     <audio
                       controls
@@ -606,10 +799,10 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                           delete audioRefs.current[step.id];
                         }
                       }}
-                      onPlay={() => handleSegmentPlay(step.id, index)}
-                      onPause={(event) => handleSegmentPause(index, event.currentTarget)}
-                      onLoadedData={() => handleSegmentLoaded(step.id, index)}
-                      onEnded={() => handleSegmentEnded(index)}
+                      onPlay={() => handleSegmentPlay(step.id, stepSegmentOrder, step.id)}
+                      onPause={(event) => handleSegmentPause(stepSegmentOrder, event.currentTarget)}
+                      onLoadedData={() => handleSegmentLoaded(step.id, stepSegmentOrder)}
+                      onEnded={() => handleSegmentEnded(stepSegmentOrder, step.id)}
                     >
                       <source src={segment.url} type={segment.contentType ?? "audio/mpeg"} />
                       Your browser does not support the audio element.

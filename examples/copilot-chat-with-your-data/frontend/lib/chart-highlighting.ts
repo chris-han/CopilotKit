@@ -1,5 +1,25 @@
 const HIGHLIGHT_CLASS = "chart-card-highlight";
 const highlights = new Map<HTMLElement, number>();
+const activeChartFocus = new Map<string, ChartFocusSpec | null>();
+
+type ChartFocusSpec = {
+  seriesIndex?: number;
+  seriesId?: string;
+  seriesName?: string;
+  dataIndex?: number;
+  dataName?: string;
+};
+
+export type ChartFocusTarget = {
+  chartId: string;
+} & ChartFocusSpec;
+
+export type ChartFocusEventDetail = {
+  chartId: string;
+  target: ChartFocusSpec | null;
+};
+
+export const CHART_FOCUS_EVENT = "chart.dimension-focus";
 
 export const STRATEGIC_COMMENTARY_TAB_EVENT = "strategic-commentary.tab";
 
@@ -20,7 +40,47 @@ export function dispatchStrategicCommentaryTab(tab: string) {
 export type HighlightOptions = {
   durationMs?: number;
   persistent?: boolean;
+  focusTargets?: ChartFocusTarget[];
 };
+
+function normaliseFocusTarget(target?: ChartFocusTarget): ChartFocusSpec | null {
+  if (!target || !target.chartId) {
+    return null;
+  }
+  const spec: ChartFocusSpec = {
+    seriesIndex: target.seriesIndex,
+    seriesId: target.seriesId,
+    seriesName: target.seriesName,
+    dataIndex: target.dataIndex,
+    dataName: target.dataName,
+  };
+  const hasValues = Object.values(spec).some((value) => value !== undefined);
+  return hasValues ? spec : null;
+}
+
+function isSameFocus(a: ChartFocusSpec | null | undefined, b: ChartFocusSpec | null | undefined) {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.seriesIndex === b.seriesIndex &&
+    a.seriesId === b.seriesId &&
+    a.seriesName === b.seriesName &&
+    a.dataIndex === b.dataIndex &&
+    a.dataName === b.dataName
+  );
+}
+
+function dispatchChartFocus(chartId: string, target: ChartFocusSpec | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const detail: ChartFocusEventDetail = { chartId, target };
+  window.dispatchEvent(new CustomEvent(CHART_FOCUS_EVENT, { detail }));
+}
 
 function escapeChartId(id: string): string {
   if (typeof window !== "undefined" && typeof window.CSS?.escape === "function") {
@@ -42,6 +102,12 @@ function clearHighlight(element: HTMLElement) {
 export function clearAllHighlights() {
   const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-chart-id]"));
   cards.forEach((card) => clearHighlight(card));
+  if (typeof window !== "undefined") {
+    activeChartFocus.forEach((_value, chartId) => {
+      dispatchChartFocus(chartId, null);
+    });
+  }
+  activeChartFocus.clear();
 }
 
 export function applyHighlights(chartIds: string[], options?: HighlightOptions) {
@@ -62,8 +128,19 @@ export function applyHighlights(chartIds: string[], options?: HighlightOptions) 
     }
   });
 
-  const { persistent = false } = options ?? {};
+  const { persistent = false, focusTargets } = options ?? {};
   const durationMs = options?.durationMs ?? 6000;
+
+  const highlightedSet = new Set(uniqueIds);
+  const focusMap = new Map<string, ChartFocusSpec | null>();
+  if (Array.isArray(focusTargets)) {
+    focusTargets.forEach((target) => {
+      if (!target?.chartId) {
+        return;
+      }
+      focusMap.set(target.chartId, normaliseFocusTarget(target));
+    });
+  }
 
   uniqueIds.forEach((rawId, index) => {
     const selector = `[data-chart-id="${escapeChartId(rawId)}"]`;
@@ -85,6 +162,29 @@ export function applyHighlights(chartIds: string[], options?: HighlightOptions) 
         clearHighlight(element);
       }, durationMs);
       highlights.set(element, timeoutId);
+    }
+  });
+
+  const chartsToProcess = new Set<string>([
+    ...Array.from(highlightedSet),
+    ...Array.from(activeChartFocus.keys()),
+    ...Array.from(focusMap.keys()),
+  ]);
+
+  chartsToProcess.forEach((chartId) => {
+    if (!chartId) {
+      return;
+    }
+    const shouldHighlight = highlightedSet.has(chartId);
+    const nextFocus = shouldHighlight ? focusMap.get(chartId) ?? null : null;
+    const previousFocus = activeChartFocus.get(chartId) ?? null;
+    if (!isSameFocus(previousFocus, nextFocus)) {
+      dispatchChartFocus(chartId, nextFocus);
+    }
+    if (shouldHighlight || nextFocus) {
+      activeChartFocus.set(chartId, nextFocus);
+    } else if (activeChartFocus.has(chartId)) {
+      activeChartFocus.delete(chartId);
     }
   });
 }

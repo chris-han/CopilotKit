@@ -59,7 +59,7 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
         return (
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+            className="inline-flex cursor-pointer items-center gap-1 text-primary underline-offset-4 hover:underline"
             onClick={(event) => {
               event.preventDefault();
               if (chartId) {
@@ -75,7 +75,7 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
         <a
           href={href ?? "#"}
           {...props}
-          className="text-primary underline-offset-4 hover:underline"
+          className="cursor-pointer text-primary underline-offset-4 hover:underline"
           target={href?.startsWith("http") ? "_blank" : undefined}
           rel={href?.startsWith("http") ? "noreferrer" : undefined}
         >
@@ -105,7 +105,7 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
                     key={`${suggestion.id}-${suggestion.label}`}
                     type="button"
                     onClick={() => highlightCharts([suggestion.id], { persistent: true })}
-                    className="inline-flex items-center justify-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    className="inline-flex cursor-pointer items-center justify-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                   >
                     {suggestion.label}
                   </button>

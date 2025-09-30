@@ -511,9 +511,9 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
             type="button"
             onClick={handleGlobalControlClick}
             disabled={isGlobalControlDisabled}
-            className={`w-16 rounded-full border border-border px-3 py-1 text-xs font-medium transition disabled:opacity-60 ${
+            className={`w-16 cursor-pointer rounded-full border border-border px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
               isGlobalControlDisabled
-                ? "cursor-not-allowed bg-muted text-muted-foreground"
+                ? "bg-muted text-muted-foreground"
                 : "bg-muted text-foreground hover:bg-muted/80"
             }`}
             aria-label={`${controlLabel} narration`}
@@ -543,7 +543,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
               : playbackState === "playing"
                 ? "Pause"
                 : "Play";
-          const stepButtonClasses = `text-xs font-medium transition ${
+          const stepButtonClasses = `cursor-pointer text-xs font-medium transition ${
             isCurrentSegment && playbackState === "playing"
               ? "text-primary"
               : "text-primary/80 hover:text-primary"

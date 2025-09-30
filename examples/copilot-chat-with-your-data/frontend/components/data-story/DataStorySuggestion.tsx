@@ -27,7 +27,7 @@ export function DataStorySuggestion({ suggestion, status, onRun, onDismiss }: Da
         </div>
         <button
           type="button"
-          className="text-xs text-muted-foreground transition hover:text-foreground"
+          className="cursor-pointer text-xs text-muted-foreground transition hover:text-foreground"
           onClick={onDismiss}
         >
           Dismiss
@@ -53,7 +53,7 @@ function StoryButton({ disabled, children, onClick }: ButtonHTMLAttributes<HTMLB
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>

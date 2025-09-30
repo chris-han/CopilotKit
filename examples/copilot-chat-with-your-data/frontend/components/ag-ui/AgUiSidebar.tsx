@@ -100,7 +100,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted"
+            className="ml-auto inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground transition hover:bg-muted"
             aria-label="Close data assistant"
           >
             <X className="h-4 w-4" />
@@ -197,7 +197,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
                   key={suggestion.message}
                   type="button"
                   onClick={() => sendMessage(suggestion.message)}
-                  className="inline-flex items-center justify-center rounded-full border border-border bg-muted px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-muted px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   {suggestion.label}
                 </button>
@@ -220,7 +220,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
             <button
               type="submit"
               disabled={isRunning || !draft.trim()}
-              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+              className="inline-flex cursor-pointer items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
             >
               {isRunning ? "Running" : "Send"}
             </button>

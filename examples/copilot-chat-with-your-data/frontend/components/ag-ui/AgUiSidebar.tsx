@@ -11,8 +11,6 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 
-const HEADER_FALLBACK_PX = 88;
-
 type AgUiSidebarProps = {
   open: boolean;
   docked: boolean;
@@ -42,13 +40,10 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     setDraft("");
   };
 
-  const sidebarDimensions = useMemo<CSSProperties>(() => {
-    const headerVar = `var(--app-header-height, ${HEADER_FALLBACK_PX}px)`;
-    return {
-      top: headerVar,
-      height: `calc(100dvh - ${headerVar})`,
-    };
-  }, []);
+  const sidebarDimensions = useMemo<CSSProperties>(
+    () => ({ top: 0, height: "100dvh" }),
+    [],
+  );
 
   const presetSuggestions = useMemo(
     () => [
@@ -209,7 +204,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
 
     return (
       <aside
-        className="fixed right-0 z-40 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-xl"
+        className="fixed right-0 z-60 flex h-full w-full max-w-md flex-col border-l border-border bg-card shadow-xl"
         style={{ ...sidebarDimensions, right: 0 }}
       >
         {renderContent(
@@ -238,7 +233,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
       <SheetContent
         side="right"
         className="w-full max-w-md border-l border-border bg-card p-0 shadow-xl"
-        style={{ ...sidebarDimensions, bottom: "auto" }}
+        style={sidebarDimensions}
       >
         <div className="sr-only">
           <SheetTitle>Data Assistant</SheetTitle>

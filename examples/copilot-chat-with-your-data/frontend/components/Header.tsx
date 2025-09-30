@@ -14,10 +14,11 @@ import { PanelRightClose, PanelRightOpen } from "lucide-react";
 type HeaderProps = ComponentPropsWithoutRef<"header"> & {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  sidebarOffset?: boolean;
 };
 
 export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
-  { className, onToggleSidebar, isSidebarOpen, ...props },
+  { className, onToggleSidebar, isSidebarOpen, sidebarOffset, ...props },
   ref,
 ) {
   const internalRef = useRef<HTMLElement | null>(null);
@@ -64,7 +65,8 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
         }
       }}
       className={clsx(
-        "sticky top-0 z-50 border-b border-border bg-background",
+        "sticky top-0 z-50 border-b border-border bg-background transition-[padding] duration-300",
+        sidebarOffset && "lg:pr-[28rem]",
         className,
       )}
       {...props}
@@ -77,6 +79,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {onToggleSidebar && (
             <button
               type="button"
@@ -99,7 +102,7 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
               <span className="sm:hidden">Assistant</span>
             </button>
           )}
-          <ThemeToggle />
+          
         </div>
       </div>
     </header>

@@ -59,7 +59,11 @@ export default function Home() {
 
   return (
     <div className={layoutClasses}>
-      <Header isSidebarOpen={isSidebarOpen} onToggleSidebar={handleToggleSidebar} />
+      <Header
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={handleToggleSidebar}
+        sidebarOffset={Boolean(isSidebarOpen && shouldOffsetLayout)}
+      />
       <div className={mainWrapperClasses}>
         <main
           className={mainClasses}

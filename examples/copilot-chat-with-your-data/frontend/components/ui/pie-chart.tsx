@@ -1,35 +1,13 @@
 "use client"
 
-import { Cell, Legend, Pie, PieChart as RechartsPieChart, ResponsiveContainer, Tooltip, Text } from "recharts"
+import { useMemo } from "react"
+import type { EChartsOption } from "echarts"
 
-// Define a generic type for chart data
+import { ReactEChartsCore, echarts } from "./echarts-base"
+
 interface ChartDataItem {
-  [key: string]: string | number;
+  [key: string]: string | number
 }
-
-// Define tooltip props
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{
-    name: string;
-    value: number;
-    color: string;
-  }>;
-  valueFormatter?: (value: number) => string;
-}
-
-// Custom tooltip component for the pie chart
-const CustomTooltip = ({ active, payload, valueFormatter }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded-md shadow-sm text-sm">
-        <p className="font-medium text-gray-700">{payload[0].name}</p>
-        <p style={{ color: payload[0].color }}>{valueFormatter ? valueFormatter(payload[0].value) : `${payload[0].value}%`}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface PieChartProps {
   data: ChartDataItem[]
@@ -46,38 +24,6 @@ interface PieChartProps {
   centerText?: string
 }
 
-// Define label props
-interface CustomizedLabelProps {
-  cx: number;
-  cy: number;
-  midAngle: number;
-  innerRadius: number;
-  outerRadius: number;
-  percent: number;
-  // Removing the unused 'name' parameter
-}
-
-const RADIAN = Math.PI / 180
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: CustomizedLabelProps) => {
-  const radius = Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.5
-  const x = cx + radius * Math.cos(-midAngle * RADIAN)
-  const y = cy + radius * Math.sin(-midAngle * RADIAN)
-
-  return (
-    <text
-      x={x}
-      y={y}
-      fill="white"
-      textAnchor={x > cx ? 'start' : 'end'}
-      dominantBaseline="central"
-      fontSize={12}
-      fontWeight={500}
-    >
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  )
-}
-
 export function PieChart({
   data,
   category,
@@ -92,69 +38,117 @@ export function PieChart({
   showLegend = true,
   centerText,
 }: PieChartProps) {
+  const option = useMemo<EChartsOption>(() => {
+    const radius: [string | number, string | number] = [
+      typeof innerRadius === "number" ? innerRadius : innerRadius,
+      typeof outerRadius === "number" ? outerRadius : outerRadius,
+    ]
+
+    const chartData = data.map((item, idx) => ({
+      value: Number(item[category] ?? 0),
+      name: String(item[index]),
+      itemStyle: {
+        color: colors[idx % colors.length],
+      },
+    }))
+
+    return {
+      color: colors,
+      tooltip: {
+        trigger: "item",
+        backgroundColor: "#ffffff",
+        borderColor: "#e5e7eb",
+        borderWidth: 1,
+        textStyle: { color: "#374151", fontSize: 12 },
+        padding: 10,
+        formatter: (params: any) => {
+          if (!params) {
+            return ""
+          }
+          const value = Number(params.value ?? 0)
+          const percent = Math.round(Number(params.percent ?? 0))
+          const marker = typeof params.marker === "string" ? params.marker : ""
+          const name = typeof params.name === "string" ? params.name : ""
+          return `${marker}${name}: ${valueFormatter(value)} (${percent}%)`
+        },
+      },
+      legend: {
+        show: showLegend,
+        bottom: 0,
+        icon: "circle",
+        textStyle: { color: "#6b7280", fontSize: 14 },
+        itemGap: 12,
+      },
+      graphic: centerText
+        ? [{
+            type: "text",
+            left: "center",
+            top: "middle",
+            style: {
+              text: centerText,
+              fill: "#374151",
+              fontSize: 16,
+              fontWeight: 500,
+            },
+          }]
+        : undefined,
+      series: [
+        {
+          name: category,
+          type: "pie",
+          radius,
+          center: ["50%", showLegend ? "45%" : "50%"],
+          padAngle: paddingAngle,
+          avoidLabelOverlap: true,
+          minAngle: 2,
+          itemStyle: {
+            borderRadius: 6,
+            borderColor: "#ffffff",
+            borderWidth: 2,
+          },
+          label: showLabel
+            ? {
+                show: true,
+                formatter: (params: any) => `${Math.round(Number(params.percent ?? 0))}%`,
+                color: "#374151",
+                fontSize: 12,
+                fontWeight: 500,
+                distance: 24,
+              }
+            : { show: false },
+          labelLine: showLabel
+            ? {
+                show: true,
+                length: 16,
+                length2: 12,
+                lineStyle: { width: 1, color: "#d1d5db" },
+              }
+            : { show: false },
+          data: chartData,
+        },
+      ],
+    }
+  }, [centerText, colors, data, category, index, innerRadius, outerRadius, paddingAngle, showLabel, showLegend, valueFormatter])
+
   return (
-    <ResponsiveContainer width="100%" height="100%" className={className}>
-      <RechartsPieChart margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-        <Pie
-          data={data}
-          dataKey={category}
-          nameKey={index}
-          cx="50%"
-          cy="50%"
-          innerRadius={innerRadius}
-          outerRadius={outerRadius}
-          paddingAngle={paddingAngle}
-          label={showLabel ? renderCustomizedLabel : undefined}
-          labelLine={false}
-        >
-          {data.map((entry, index) => (
-            <Cell 
-              key={`cell-${index}`} 
-              fill={colors[index % colors.length]} 
-              fillOpacity={0.1}
-              stroke={colors[index % colors.length]}
-              strokeWidth={3}
-            />
-          ))}
-          {centerText && (
-            <Text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="text-lg font-medium"
-              fill="#374151"
-            >
-              {centerText}
-            </Text>
-          )}
-        </Pie>
-        <Tooltip content={<CustomTooltip valueFormatter={valueFormatter} />} />
-        {showLegend && (
-          <Legend 
-            layout="horizontal" 
-            verticalAlign="bottom" 
-            align="center"
-            iconType="circle"
-            iconSize={8}
-            formatter={(value) => (
-              <span style={{ color: "#6b7280", fontSize: "0.875rem" }}>{value}</span>
-            )}
-          />
-        )}
-      </RechartsPieChart>
-    </ResponsiveContainer>
+    <ReactEChartsCore
+      echarts={echarts}
+      option={option}
+      className={className}
+      style={{ width: "100%", height: "100%" }}
+      notMerge
+    />
   )
 }
 
 export function DonutChart(props: PieChartProps) {
   return (
-    <PieChart 
-      {...props} 
-      innerRadius={props.innerRadius || 40}
-      outerRadius={props.outerRadius || "85%"}
-      showLabel={props.showLabel !== undefined ? props.showLabel : false}
-      showLegend={props.showLegend !== undefined ? props.showLegend : true}
+    <PieChart
+      {...props}
+      innerRadius={props.innerRadius ?? 40}
+      outerRadius={props.outerRadius ?? "85%"}
+      showLabel={props.showLabel ?? false}
+      showLegend={props.showLegend ?? true}
     />
   )
-} 
+}

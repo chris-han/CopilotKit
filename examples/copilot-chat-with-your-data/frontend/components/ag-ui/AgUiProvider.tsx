@@ -528,7 +528,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
             error: typeof audioPayload?.error === "string" ? audioPayload.error : null,
           };
         } catch (audioErr) {
-          console.error("Data story audio generation failed", audioErr);
+          console.warn("Data story audio generation failed", audioErr);
           return {
             error: audioErr instanceof Error ? audioErr.message : String(audioErr),
           };
@@ -543,7 +543,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       const hasAudio = Boolean((audioSegments && audioSegments.length > 0) || audioUrl);
 
       if (audioError && !hasAudio) {
-        console.error("Data story audio generation returned an error", audioError);
+        console.warn("Data story audio generation returned an error", audioError);
       }
 
       const firstStepId = steps[0]?.id;

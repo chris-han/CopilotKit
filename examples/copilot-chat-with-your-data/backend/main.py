@@ -929,6 +929,31 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
     return response
 
 
+@app.post("/ag-ui/action/generateStrategicCommentary")
+async def action_generate_strategic_commentary() -> Dict[str, Any]:
+    prompt = (
+        "You are the lead analyst preparing an executive briefing. "
+        "Use the dashboard data (sales history, products, categories, regions, demographics, metrics) to write a concise strategic commentary. "
+        "Organize the response into three sections titled 'Risks', 'Opportunities', and 'Recommendations'. "
+        "Provide two to three bullet points per section, grounded in the data with specific numbers or trends. "
+        "Do not include code fences or raw tables. Return valid Markdown only.\n\n"
+        f"```json\n{json.dumps(DASHBOARD_CONTEXT)}\n```"
+    )
+
+    try:
+        result = await analysis_agent.run(prompt)
+        commentary = getattr(result, "data", None)
+        if commentary is None:
+            commentary = getattr(result, "output_text", None)
+        if commentary is None:
+            commentary = str(result)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to generate strategic commentary")
+        raise HTTPException(status_code=500, detail=f"Strategic commentary error: {exc}") from exc
+
+    return {"commentary": commentary}
+
+
 @app.post("/ag-ui/action/generateDataStoryAudio")
 async def action_generate_data_story_audio(request: Request) -> Response:
     if not DATA_STORY_AUDIO_ENABLED:

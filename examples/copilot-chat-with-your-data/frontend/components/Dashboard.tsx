@@ -1,9 +1,14 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { AreaChart } from "./ui/area-chart";
 import { BarChart } from "./ui/bar-chart";
 import { DonutChart } from "./ui/pie-chart";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { 
   salesData, 
   productData, 
@@ -26,6 +31,129 @@ export function Dashboard() {
   const conversionRate = calculateConversionRate();
   const averageOrderValue = calculateAverageOrderValue();
   const profitMargin = calculateProfitMargin();
+
+  const [strategicCommentary, setStrategicCommentary] = useState<string>("");
+  const [commentaryLoading, setCommentaryLoading] = useState<boolean>(false);
+  const [commentaryError, setCommentaryError] = useState<string | null>(null);
+
+  const strategicCommentaryEndpoint = useMemo(() => {
+    const runtimeUrl = process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL ?? "http://localhost:8004/ag-ui/run";
+    const baseUrl = runtimeUrl.replace(/\/run\/?$/, "");
+    return `${baseUrl}/action/generateStrategicCommentary`;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCommentary = async () => {
+      setCommentaryLoading(true);
+      setCommentaryError(null);
+      try {
+        const response = await fetch(strategicCommentaryEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        const data = (await response.json()) as { commentary?: string };
+        if (!cancelled) {
+          setStrategicCommentary(data.commentary?.trim() ?? "");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCommentaryError("Unable to load strategic commentary.");
+        }
+      } finally {
+        if (!cancelled) {
+          setCommentaryLoading(false);
+        }
+      }
+    };
+
+    fetchCommentary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [strategicCommentaryEndpoint]);
+
+  const commentarySections = useMemo(() => {
+    if (!strategicCommentary) {
+      return null;
+    }
+
+    const sections = {
+      risks: [] as string[],
+      opportunities: [] as string[],
+      recommendations: [] as string[],
+      other: [] as string[],
+    };
+
+    let current: keyof typeof sections | null = null;
+
+    const normaliseHeading = (line: string) =>
+      line
+        .trim()
+        .replace(/^#+\s*/, "")
+        .replace(/^[>*\-\s]+/, "")
+        .replace(/[*_`]/g, "")
+        .replace(/:$/, "")
+        .trim()
+        .toLowerCase();
+
+    strategicCommentary.split(/\r?\n/).forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (current) {
+          sections[current].push("");
+        }
+        return;
+      }
+
+      const heading = normaliseHeading(trimmed);
+      if (["risks", "risk"].includes(heading)) {
+        current = "risks";
+        return;
+      }
+      if (["opportunities", "opportunity"].includes(heading)) {
+        current = "opportunities";
+        return;
+      }
+      if (["recommendations", "recommendation"].includes(heading)) {
+        current = "recommendations";
+        return;
+      }
+
+      if (current) {
+        sections[current].push(line);
+      } else {
+        sections.other.push(line);
+      }
+    });
+
+    const ordered = [
+      { id: "risks", label: "Risks", content: sections.risks.join("\n").trim() },
+      {
+        id: "opportunities",
+        label: "Opportunities",
+        content: sections.opportunities.join("\n").trim(),
+      },
+      {
+        id: "recommendations",
+        label: "Recommendations",
+        content: sections.recommendations.join("\n").trim(),
+      },
+    ].filter((section) => section.content.length > 0);
+
+    if (ordered.length === 0) {
+      return null;
+    }
+
+    return ordered;
+  }, [strategicCommentary]);
 
   const keyMetrics = [
     { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}` },
@@ -184,14 +312,41 @@ export function Dashboard() {
           <CardDescription className="text-xs">Risks, opportunities, and recommendations</CardDescription>
         </CardHeader>
         <CardContent className="p-3">
-          <div className="h-full">
-            
-            {/* text entry area */}
-            <textarea
-              className="w-full h-32 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Type your insights and recommendations here..."
-            ></textarea>
-            
+          <div className="min-h-[8rem]">
+            {commentaryLoading ? (
+              <div className="space-y-2">
+                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+              </div>
+            ) : commentaryError ? (
+              <p className="text-sm text-destructive">{commentaryError}</p>
+            ) : commentarySections ? (
+              <Tabs defaultValue={commentarySections[0]?.id} className="w-full">
+                <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
+                  {commentarySections.map((section) => (
+                    <TabsTrigger key={section.id} value={section.id}>
+                      {section.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {commentarySections.map((section) => (
+                  <TabsContent key={section.id} value={section.id}>
+                    <div className="prose prose-sm text-muted-foreground dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            ) : strategicCommentary ? (
+              <div className="prose prose-sm text-muted-foreground dark:prose-invert">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{strategicCommentary}</ReactMarkdown>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Strategic commentary is not available yet.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

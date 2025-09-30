@@ -6,6 +6,7 @@
 - Keep the experience responsive, secure, and easy to extend for teams experimenting with AG-UI integrations.
 
 ## System Architecture Snapshot
+- **Protocol Choice**: The project now speaks exclusively to the backend via the AG-UI protocol. Do not reintroduce CopilotKit SDK clients or endpoints; all chat or action traffic must flow through `/ag-ui` routes and the shared AG-UI provider.
 - **Frontend**: Next.js 15 App Router with React 19 client components in `frontend/app/` and `frontend/components/`, styled via Tailwind, local UI primitives, and Recharts wrappers.
 - **AG-UI Bridge**: `frontend/app/layout.tsx` wraps the tree with `AgUiProvider` pointing at `NEXT_PUBLIC_AG_UI_RUNTIME_URL` (default `http://localhost:8004/ag-ui/run`). All children share the same runtime session.
 - **Chat Surface**: `frontend/app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, injects static assistant instructions from `frontend/lib/prompt.ts`, and streams assistant output through `frontend/components/AssistantMessage.tsx`.

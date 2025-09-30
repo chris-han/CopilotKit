@@ -43,6 +43,7 @@ export type AgUiContextValue = {
   isRunning: boolean;
   error: string | null;
   sendMessage: (content: string) => void;
+  highlightCharts: (chartIds: string[], options?: HighlightOptions) => void;
 };
 
 const AgUiContext = createContext<AgUiContextValue | null>(null);
@@ -123,6 +124,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       ...prev,
       activeStepId: stepId,
     }));
+  }, []);
+
+  const highlightCharts = useCallback((chartIds: string[], options?: HighlightOptions) => {
+    applyHighlights(chartIds, options);
   }, []);
 
   const clearManualAdvanceTimeouts = useCallback(() => {
@@ -780,7 +785,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   );
 
   return (
-    <AgUiContext.Provider value={{ messages, isRunning, error, sendMessage }}>
+    <AgUiContext.Provider value={{ messages, isRunning, error, sendMessage, highlightCharts }}>
       <DataStoryContext.Provider value={dataStoryContextValue}>
         {children}
       </DataStoryContext.Provider>

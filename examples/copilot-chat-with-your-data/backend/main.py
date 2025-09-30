@@ -147,6 +147,14 @@ logger.info("Allowed frontend origins: %s", ALLOWED_ORIGINS)
 
 HIGHLIGHT_LINE_REGEX = re.compile(r"^Highlight chart cards?:\s*(.+)$", re.MULTILINE)
 
+CHART_TITLES: Dict[str, str] = {
+    "sales-overview": "Sales Overview",
+    "product-performance": "Product Performance",
+    "sales-by-category": "Sales by Category",
+    "regional-sales": "Regional Sales",
+    "customer-demographics": "Customer Demographics",
+}
+
 
 @app.middleware("http")
 async def handle_options(request: Request, call_next):
@@ -274,6 +282,45 @@ def _separate_highlight_directives(answer: str) -> Tuple[str, List[str]]:
 
     sanitized_answer = "\n".join(line for line in sanitized_lines if line.strip() or line == "").strip()
     return sanitized_answer, unique_ids
+
+
+def _format_chart_title(chart_id: str) -> str:
+    if chart_id in CHART_TITLES:
+        return CHART_TITLES[chart_id]
+    # Fallback: humanize the slug
+    parts = chart_id.replace("_", "-").split("-")
+    return " ".join(part.capitalize() for part in parts if part)
+
+
+def _inject_chart_suggestions(answer: str, chart_ids: List[str]) -> str:
+    if not chart_ids:
+        return answer
+
+    unique_ids = list(dict.fromkeys(chart_ids))
+    bullet_lines = [f"- [{_format_chart_title(chart_id)}](highlight://{chart_id})" for chart_id in unique_ids]
+    lines = answer.splitlines()
+
+    for idx, line in enumerate(lines):
+        if line.strip() == "Suggested Charts:":
+            # Determine if bullets already follow this heading.
+            has_entries = False
+            for look_ahead in lines[idx + 1 :]:
+                stripped = look_ahead.strip()
+                if not stripped:
+                    break
+                if stripped.startswith("-") or stripped.startswith("*") or re.match(r"\d+\.\s", stripped):
+                    has_entries = True
+                    break
+                # Stop if we reach non-list content.
+                break
+
+            if not has_entries:
+                lines[idx: idx + 1] = [line, *bullet_lines]
+            return "\n".join(lines).strip()
+
+    suffix = [""] if answer.strip() else []
+    suggestion_block = ["Suggested Charts:", *bullet_lines]
+    return "\n".join([answer.strip(), *suffix, *suggestion_block]).strip()
 
 
 def _markdown_to_text(markdown: str) -> str:
@@ -739,6 +786,8 @@ async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
     try:
         answer = await _run_analysis(latest_user, system_messages, transcript)
         sanitized_answer, chart_ids = _separate_highlight_directives(answer)
+        sanitized_answer = _inject_chart_suggestions(sanitized_answer, chart_ids)
+        unique_chart_ids = list(dict.fromkeys(chart_ids))
 
         start_event = TextMessageStartEvent(
             type=EventType.TEXT_MESSAGE_START,
@@ -761,7 +810,7 @@ async def _agent_event_stream(run_input: RunAgentInput) -> AsyncIterator[str]:
         )
         yield encoder.encode(end_event)
 
-        for chart_id in chart_ids:
+        for chart_id in unique_chart_ids:
             custom_event = CustomEvent(
                 type=EventType.CUSTOM,
                 name="chart.highlight",

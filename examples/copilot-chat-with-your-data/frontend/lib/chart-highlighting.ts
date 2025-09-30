@@ -1,6 +1,22 @@
 const HIGHLIGHT_CLASS = "chart-card-highlight";
 const highlights = new Map<HTMLElement, number>();
 
+export const STRATEGIC_COMMENTARY_TAB_EVENT = "strategic-commentary.tab";
+
+export type StrategicCommentaryTabEventDetail = {
+  tab: string;
+};
+
+export function dispatchStrategicCommentaryTab(tab: string) {
+  if (typeof window === "undefined" || !tab) {
+    return;
+  }
+  const event = new CustomEvent<StrategicCommentaryTabEventDetail>(STRATEGIC_COMMENTARY_TAB_EVENT, {
+    detail: { tab },
+  });
+  window.dispatchEvent(event);
+}
+
 export type HighlightOptions = {
   durationMs?: number;
   persistent?: boolean;

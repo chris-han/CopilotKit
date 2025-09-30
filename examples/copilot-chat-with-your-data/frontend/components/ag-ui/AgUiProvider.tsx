@@ -17,6 +17,7 @@ import {
   type HighlightOptions,
   applyHighlights,
   clearAllHighlights,
+  dispatchStrategicCommentaryTab,
 } from "../../lib/chart-highlighting";
 import { prompt as defaultPrompt } from "../../lib/prompt";
 import {
@@ -24,6 +25,7 @@ import {
   type DataStoryAudioSegment,
   type DataStoryState,
   type DataStorySuggestion,
+  type DataStoryEvent,
   type DataStoryStep,
 } from "../../hooks/useDataStory";
 
@@ -82,7 +84,9 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   const agentRef = useRef<HttpAgent | null>(null);
   const threadIdRef = useRef<string>(generateId("thread"));
   const historyRef = useRef<Message[]>([]);
-  const highlightRegistryRef = useRef<Record<string, string[]>>({});
+  const highlightRegistryRef = useRef<
+    Record<string, { chartIds: string[]; events: DataStoryEvent[] }>
+  >({});
   const storyStepsRef = useRef<DataStoryStep[]>([]);
   const manualAdvanceTimeoutsRef = useRef<number[]>([]);
   const systemMessage = useMemo(() => systemPrompt || defaultPrompt, [systemPrompt]);
@@ -117,14 +121,57 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     }));
   }, []);
 
+  const emitStepEvents = useCallback(
+    (stepId: string, { skipHighlight }: { skipHighlight?: boolean } = {}) => {
+      const registryEntry = highlightRegistryRef.current[stepId];
+      const events = registryEntry?.events ?? [];
+      if (!events.length) {
+        return;
+      }
+      events.forEach((event) => {
+        if (!event?.name) {
+          return;
+        }
+        if (event.name === "chart.highlight") {
+          const value = (event.value ?? {}) as Record<string, unknown>;
+          const tabValue = typeof value.tab === "string" ? value.tab : undefined;
+          if (tabValue) {
+            dispatchStrategicCommentaryTab(tabValue);
+          }
+          if (!skipHighlight) {
+            const ids = Array.isArray(value.chartIds)
+              ? (value.chartIds as string[])
+              : typeof value.chartId === "string"
+                ? [value.chartId as string]
+                : [];
+            if (ids.length > 0) {
+              applyHighlights(ids);
+            }
+          }
+          return;
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(event.name, { detail: event.value ?? {} }));
+        }
+      });
+    },
+    [],
+  );
+
   const replayHighlight = useCallback((stepId: string, options?: HighlightOptions) => {
-    const chartIds = highlightRegistryRef.current[stepId] ?? [];
-    applyHighlights(chartIds, options);
+    const registryEntry = highlightRegistryRef.current[stepId];
+    const chartIds = registryEntry?.chartIds ?? [];
+    if (chartIds.length > 0) {
+      applyHighlights(chartIds, options);
+    } else {
+      applyHighlights([]);
+    }
+    emitStepEvents(stepId, { skipHighlight: true });
     setDataStoryState((prev) => ({
       ...prev,
       activeStepId: stepId,
     }));
-  }, []);
+  }, [emitStepEvents]);
 
   const highlightCharts = useCallback((chartIds: string[], options?: HighlightOptions) => {
     applyHighlights(chartIds, options);
@@ -147,11 +194,14 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       steps.slice(1).forEach((step, index) => {
         const delay = (index + 1) * 2000;
         const timeoutId = window.setTimeout(() => {
-          if (step.chartIds?.length) {
-            applyHighlights(step.chartIds);
+          const registryEntry = highlightRegistryRef.current[step.id];
+          const chartIds = registryEntry?.chartIds ?? [];
+          if (chartIds.length) {
+            applyHighlights(chartIds);
           } else {
             applyHighlights([]);
           }
+          emitStepEvents(step.id, { skipHighlight: true });
           setDataStoryState((prev) => ({ ...prev, activeStepId: step.id }));
         }, delay);
         manualAdvanceTimeoutsRef.current.push(timeoutId);
@@ -163,7 +213,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       }, completionDelay);
       manualAdvanceTimeoutsRef.current.push(completionTimeoutId);
     },
-    [clearManualAdvanceTimeouts],
+    [clearManualAdvanceTimeouts, emitStepEvents],
   );
 
   const startStory = useCallback(async () => {
@@ -210,8 +260,16 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       const payload = await response.json();
       const steps: DataStoryStep[] = Array.isArray(payload?.steps) ? payload.steps : [];
       storyStepsRef.current = steps;
-      highlightRegistryRef.current = steps.reduce<Record<string, string[]>>((acc, step) => {
-        acc[step.id] = Array.isArray(step.chartIds) ? step.chartIds : [];
+      highlightRegistryRef.current = steps.reduce<
+        Record<string, { chartIds: string[]; events: DataStoryEvent[] }>
+      >((acc, step) => {
+        const chartIds = Array.isArray(step.chartIds) ? step.chartIds : [];
+        const events = Array.isArray(step.agUiEvents)
+          ? step.agUiEvents.filter((event): event is DataStoryEvent =>
+              Boolean(event && typeof event.name === "string"),
+            )
+          : [];
+        acc[step.id] = { chartIds, events };
         return acc;
       }, {});
 
@@ -732,6 +790,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
                 : [];
             if (ids.length > 0) {
               applyHighlights(ids);
+            }
+            const tabValue = typeof value.tab === "string" ? value.tab : undefined;
+            if (tabValue) {
+              dispatchStrategicCommentaryTab(tabValue);
             }
           }
         },

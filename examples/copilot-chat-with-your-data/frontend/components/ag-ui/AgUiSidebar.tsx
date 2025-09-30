@@ -7,7 +7,6 @@ import { DataStorySuggestion } from "../data-story/DataStorySuggestion";
 import { DataStoryTimeline } from "../data-story/DataStoryTimeline";
 import { useDataStory } from "../../hooks/useDataStory";
 import { useAgUiAgent } from "./AgUiProvider";
-import clsx from "clsx";
 import { X } from "lucide-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 

@@ -7,6 +7,11 @@ export type DataStorySuggestion = {
   focusAreas?: string[];
 };
 
+export type DataStoryEvent = {
+  name: string;
+  value?: Record<string, unknown>;
+};
+
 export type DataStoryStep = {
   id: string;
   stepType: "overview" | "change" | "summary" | string;
@@ -15,6 +20,7 @@ export type DataStoryStep = {
   chartIds: string[];
   kpis?: Array<{ label: string; value: string; trend?: "up" | "down" | "neutral" }>;
   reviewPrompt?: string;
+  agUiEvents?: DataStoryEvent[];
 };
 
 export type DataStoryAudioSegment = {

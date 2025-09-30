@@ -9,6 +9,10 @@ import { AreaChart } from "./ui/area-chart";
 import { BarChart } from "./ui/bar-chart";
 import { DonutChart } from "./ui/pie-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import {
+  STRATEGIC_COMMENTARY_TAB_EVENT,
+  type StrategicCommentaryTabEventDetail,
+} from "../lib/chart-highlighting";
 import { 
   salesData, 
   productData, 
@@ -35,6 +39,7 @@ export function Dashboard() {
   const [strategicCommentary, setStrategicCommentary] = useState<string>("");
   const [commentaryLoading, setCommentaryLoading] = useState<boolean>(false);
   const [commentaryError, setCommentaryError] = useState<string | null>(null);
+  const [activeCommentaryTab, setActiveCommentaryTab] = useState<string | undefined>(undefined);
 
   const strategicCommentaryEndpoint = useMemo(() => {
     const runtimeUrl = process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL ?? "http://localhost:8004/ag-ui/run";
@@ -62,7 +67,7 @@ export function Dashboard() {
         if (!cancelled) {
           setStrategicCommentary(data.commentary?.trim() ?? "");
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setCommentaryError("Unable to load strategic commentary.");
         }
@@ -154,6 +159,40 @@ export function Dashboard() {
 
     return ordered;
   }, [strategicCommentary]);
+
+  useEffect(() => {
+    if (!commentarySections || commentarySections.length === 0) {
+      setActiveCommentaryTab(undefined);
+      return;
+    }
+    setActiveCommentaryTab((previous) => {
+      if (previous && commentarySections.some((section) => section.id === previous)) {
+        return previous;
+      }
+      return commentarySections[0]?.id;
+    });
+  }, [commentarySections]);
+
+  useEffect(() => {
+    const handler = (event: CustomEvent<StrategicCommentaryTabEventDetail>) => {
+      const tabId = event.detail?.tab;
+      if (!tabId) {
+        return;
+      }
+      setActiveCommentaryTab((previous) => {
+        if (!commentarySections || commentarySections.length === 0) {
+          return previous;
+        }
+        return commentarySections.some((section) => section.id === tabId) ? tabId : previous;
+      });
+    };
+
+    const wrappedHandler = handler as EventListener;
+    window.addEventListener(STRATEGIC_COMMENTARY_TAB_EVENT, wrappedHandler);
+    return () => {
+      window.removeEventListener(STRATEGIC_COMMENTARY_TAB_EVENT, wrappedHandler);
+    };
+  }, [commentarySections]);
 
   const keyMetrics = [
     { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}` },
@@ -322,7 +361,11 @@ export function Dashboard() {
             ) : commentaryError ? (
               <p className="text-sm text-destructive">{commentaryError}</p>
             ) : commentarySections ? (
-              <Tabs defaultValue={commentarySections[0]?.id} className="w-full">
+              <Tabs
+                value={activeCommentaryTab ?? commentarySections[0]?.id}
+                onValueChange={setActiveCommentaryTab}
+                className="w-full"
+              >
                 <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
                   {commentarySections.map((section) => (
                     <TabsTrigger key={section.id} value={section.id}>

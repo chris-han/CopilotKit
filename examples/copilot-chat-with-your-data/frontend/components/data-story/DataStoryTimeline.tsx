@@ -505,16 +505,16 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   return (
     <div className="mt-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-gray-900">Data Story Timeline</h4>
+        <h4 className="text-sm font-semibold text-foreground">Data Story Timeline</h4>
         {hasAnyAudio ? (
           <button
             type="button"
             onClick={handleGlobalControlClick}
             disabled={isGlobalControlDisabled}
-            className={`w-16 rounded-full border border-blue-200 px-3 py-1 text-xs font-medium transition ${
+            className={`w-16 rounded-full border border-border px-3 py-1 text-xs font-medium transition disabled:opacity-60 ${
               isGlobalControlDisabled
-                ? "cursor-not-allowed bg-blue-50 text-blue-300"
-                : "cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100"
+                ? "cursor-not-allowed bg-muted text-muted-foreground"
+                : "bg-muted text-foreground hover:bg-muted/80"
             }`}
             aria-label={`${controlLabel} narration`}
           >
@@ -530,7 +530,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
           </audio>
         </div>
       ) : null}
-      <ol className="space-y-4 border-l border-gray-200 pl-4">
+      <ol className="space-y-4 border-l border-border pl-4">
         {steps.map((step, index) => {
           const isActive = step.id === activeStepId;
           const segment = hasSegments ? segmentMap.get(step.id) : undefined;
@@ -543,20 +543,20 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
               : playbackState === "playing"
                 ? "Pause"
                 : "Play";
-          const stepButtonClasses = `cursor-pointer text-xs transition ${
+          const stepButtonClasses = `text-xs font-medium transition ${
             isCurrentSegment && playbackState === "playing"
-              ? "text-blue-700"
-              : "text-blue-600 hover:text-blue-700"
+              ? "text-primary"
+              : "text-primary/80 hover:text-primary"
           }`;
           return (
             <li key={step.id} className="relative">
               <span
                 className={`absolute -left-2 top-1.5 flex h-3 w-3 -translate-x-1/2 rounded-full ${
-                  isActive ? "bg-blue-600" : "bg-gray-300"
+                  isActive ? "bg-primary" : "bg-muted"
                 }`}
               />
               <div
-                className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
+                className="rounded-xl border border-primary/30 bg-card/95 p-4 text-card-foreground shadow-md ring-1 ring-primary/10"
                 ref={(element) => {
                   if (element) {
                     stepRefs.current[step.id] = element;
@@ -567,18 +567,18 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-gray-500">Step {index + 1}</p>
-                    <h5 className="text-sm font-semibold text-gray-900">{step.title}</h5>
+                    <p className="text-xs uppercase tracking-wide text-primary/70">Step {index + 1}</p>
+                    <h5 className="text-sm font-semibold text-foreground">{step.title}</h5>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleReviewClick(step.id, index)}
                     className={stepButtonClasses}
-                    >
+                  >
                     {stepControlLabel}
                   </button>
                 </div>
-                <div className="prose prose-sm mt-2 text-gray-700">
+                <div className="prose prose-sm mt-2 text-muted-foreground dark:prose-invert">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizeMarkdownTables(step.markdown)}</ReactMarkdown>
                 </div>
                 {step.kpis?.length ? (
@@ -586,10 +586,10 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
                     {step.kpis.map((kpi) => (
                       <div
                         key={`${step.id}-${kpi.label}`}
-                        className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                        className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2"
                       >
-                        <p className="text-xs text-gray-500">{kpi.label}</p>
-                        <p className="text-sm font-semibold text-gray-800">{kpi.value}</p>
+                        <p className="text-xs text-primary/70">{kpi.label}</p>
+                        <p className="text-sm font-semibold text-foreground">{kpi.value}</p>
                       </div>
                     ))}
                   </div>

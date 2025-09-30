@@ -14,20 +14,20 @@ export function DataStorySuggestion({ suggestion, status, onRun, onDismiss }: Da
   const isLoading = status === "loading";
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h4 className="text-sm font-semibold text-blue-900">Data Story Available</h4>
-          <p className="text-sm text-blue-800 mt-1">{suggestion.summary}</p>
+          <h4 className="text-sm font-semibold text-foreground">Data Story Available</h4>
+          <p className="mt-1 text-sm text-muted-foreground">{suggestion.summary}</p>
           {suggestion.focusAreas?.length ? (
-            <p className="text-xs text-blue-700 mt-2">
+            <p className="mt-2 text-xs text-muted-foreground">
               Focus areas: {suggestion.focusAreas.join(", ")}
             </p>
           ) : null}
         </div>
         <button
           type="button"
-          className="text-xs text-blue-700 hover:text-blue-900"
+          className="text-xs text-muted-foreground transition hover:text-foreground"
           onClick={onDismiss}
         >
           Dismiss
@@ -38,7 +38,7 @@ export function DataStorySuggestion({ suggestion, status, onRun, onDismiss }: Da
           {isLoading ? "Preparing..." : "Run Data Story"}
         </StoryButton>
         {suggestion.confidence != null && (
-          <span className="text-xs text-blue-700">
+          <span className="text-xs text-muted-foreground">
             Confidence: {(suggestion.confidence * 100).toFixed(0)}%
           </span>
         )}
@@ -53,7 +53,7 @@ function StoryButton({ disabled, children, onClick }: ButtonHTMLAttributes<HTMLB
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
+      className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </button>

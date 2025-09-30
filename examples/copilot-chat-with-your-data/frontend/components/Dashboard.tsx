@@ -27,6 +27,15 @@ export function Dashboard() {
   const averageOrderValue = calculateAverageOrderValue();
   const profitMargin = calculateProfitMargin();
 
+  const keyMetrics = [
+    { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}` },
+    { label: "Total Profit", value: `$${totalProfit.toLocaleString()}` },
+    { label: "Customers", value: totalCustomers.toLocaleString() },
+    { label: "Conversion Rate", value: conversionRate },
+    { label: "Avg Order Value", value: `$${averageOrderValue}` },
+    { label: "Profit Margin", value: profitMargin }
+  ];
+
   // Color palettes for different charts
   const colors = {
     salesOverview: ["#3b82f6", "#10b981", "#ef4444"],  // Blue, Green, Red
@@ -41,30 +50,20 @@ export function Dashboard() {
       {/* Key Metrics */}
       <div className="col-span-1 md:col-span-2 lg:col-span-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Total Revenue</p>
-            <p className="text-xl font-semibold text-gray-900">${totalRevenue.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Total Profit</p>
-            <p className="text-xl font-semibold text-gray-900">${totalProfit.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Customers</p>
-            <p className="text-xl font-semibold text-gray-900">{totalCustomers.toLocaleString()}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Conversion Rate</p>
-            <p className="text-xl font-semibold text-gray-900">{conversionRate}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Avg Order Value</p>
-            <p className="text-xl font-semibold text-gray-900">${averageOrderValue}</p>
-          </div>
-          <div className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-500">Profit Margin</p>
-            <p className="text-xl font-semibold text-gray-900">{profitMargin}</p>
-          </div>
+          {keyMetrics.map((metric) => (
+            <Card key={metric.label} className="gap-2 py-4">
+              <CardHeader className="px-4 py-0">
+                <CardDescription className="text-xs text-muted-foreground">
+                  {metric.label}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="px-4 py-0">
+                <CardTitle className="text-xl text-card-foreground">
+                  {metric.value}
+                </CardTitle>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
 

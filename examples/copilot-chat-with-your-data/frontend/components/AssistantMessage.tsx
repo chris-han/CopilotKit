@@ -13,11 +13,11 @@ export const AssistantMessage = ({ content, isStreaming }: AssistantMessageProps
 
   return (
     <div className="pb-4">
-      <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
+      <div className="rounded-lg border border-border bg-muted/60 p-3 shadow-sm">
+        <div className="prose prose-sm space-y-2 text-muted-foreground dark:prose-invert">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{normalizedContent}</ReactMarkdown>
           {isStreaming && (
-            <div className="flex items-center gap-2 text-xs text-blue-500 mt-2">
+            <div className="mt-2 flex items-center gap-2 text-xs text-primary">
               <Loader className="h-3 w-3 animate-spin" />
               <span>Thinking...</span>
             </div>

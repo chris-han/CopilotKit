@@ -177,6 +177,25 @@ export function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+
+      <Card className="col-span-1 md:col-span-2 lg:col-span-4" data-chart-id="strategic-commentary">
+        <CardHeader className="pb-1 pt-3">
+          <CardTitle className="text-base font-medium">Strategic Commentary</CardTitle>
+          <CardDescription className="text-xs">Risks, opportunities, and recommendations</CardDescription>
+        </CardHeader>
+        <CardContent className="p-3">
+          <div className="h-full">
+            
+            {/* text entry area */}
+            <textarea
+              className="w-full h-32 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Type your insights and recommendations here..."
+            ></textarea>
+            
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 } 

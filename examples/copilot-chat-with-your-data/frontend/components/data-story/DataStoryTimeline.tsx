@@ -33,6 +33,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastStepIndexRef = useRef<number>(-1);
   const currentSegmentStepRef = useRef<string | null>(null);
+  const activeSegmentKeyRef = useRef<string | null>(null);
   const audioReadyNotifiedRef = useRef<boolean>(false);
   const segmentIndexRef = useRef<number>(0);
   const [segmentIndex, setSegmentIndex] = useState<number>(0);
@@ -181,6 +182,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     lastStepIndexRef.current = -1;
     audioReadyNotifiedRef.current = false;
     currentSegmentStepRef.current = null;
+    activeSegmentKeyRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -198,6 +200,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     lastStepIndexRef.current = -1;
     audioReadyNotifiedRef.current = false;
     currentSegmentStepRef.current = null;
+    activeSegmentKeyRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -354,6 +357,28 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
     });
   }, []);
 
+  const activateSegment = useCallback(
+    (segmentKey: string, stepId: string, talkingPointId?: string) => {
+      if (!stepId) {
+        return;
+      }
+      if (activeSegmentKeyRef.current === segmentKey) {
+        return;
+      }
+      activeSegmentKeyRef.current = segmentKey;
+      const previousStepId = currentSegmentStepRef.current;
+      const stepChanged = previousStepId !== stepId;
+      currentSegmentStepRef.current = stepId;
+      if (stepChanged) {
+        onAudioStep?.(stepId);
+      }
+      if (talkingPointId) {
+        onTalkingPointStart?.(stepId, talkingPointId);
+      }
+    },
+    [onAudioStep, onTalkingPointStart],
+  );
+
   const playSegment = useCallback(
     (index: number, options?: { userInitiated?: boolean }) => {
       if (!hasSegments) {
@@ -382,6 +407,8 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
 
       pauseOtherSegments(segmentKey);
 
+      activateSegment(segmentKey, targetId, targetSegment.talkingPointId);
+
       const playPromise = targetAudio.play();
       if (playPromise?.catch) {
         playPromise.catch(() => {
@@ -391,7 +418,7 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
         });
       }
     },
-    [findNextSegmentIndex, getSegmentEntry, hasSegments, onAudioAutoplayFailure, pauseOtherSegments],
+    [findNextSegmentIndex, getSegmentEntry, hasSegments, onAudioAutoplayFailure, pauseOtherSegments, activateSegment],
   );
 
   const handleSegmentPlay = useCallback(
@@ -401,26 +428,10 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
       setSegmentIndex(index);
       lastStepIndexRef.current = index;
       setPlaybackState("playing");
+      activateSegment(segmentKey, stepId, talkingPointId);
       notifyAudioReady();
-
-      const previousStepId = currentSegmentStepRef.current;
-      const stepChanged = stepId && previousStepId !== stepId;
-      if (stepId) {
-        if (stepChanged) {
-          currentSegmentStepRef.current = stepId;
-          onAudioStep?.(stepId);
-        } else if (!talkingPointId) {
-          onAudioStep?.(stepId);
-        }
-      } else {
-        currentSegmentStepRef.current = null;
-      }
-
-      if (talkingPointId) {
-        onTalkingPointStart?.(stepId, talkingPointId);
-      }
     },
-    [notifyAudioReady, onAudioStep, onTalkingPointStart, pauseOtherSegments],
+    [activateSegment, notifyAudioReady, pauseOtherSegments],
   );
 
   const handleSegmentPause = useCallback(
@@ -475,6 +486,9 @@ export function DataStoryTimeline({ steps, activeStepId, status, onReview, audio
           setPlaybackState("completed");
           onAudioComplete?.();
         }
+      }
+      if (activeSegmentKeyRef.current === `${stepId ?? ""}:${talkingPointId ?? ""}`) {
+        activeSegmentKeyRef.current = null;
       }
       if (talkingPointId && stepId) {
         onTalkingPointEnd?.(stepId, talkingPointId);

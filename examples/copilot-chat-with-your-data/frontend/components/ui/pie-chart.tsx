@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { EChartsOption } from "echarts"
 import type { EChartsType } from "echarts/core"
 import type { CallbackDataParams } from "echarts/types/dist/shared"
@@ -48,6 +48,50 @@ export function PieChart({
 }: PieChartProps) {
   const chartRef = useRef<EChartsType | null>(null)
   const lastFocusRef = useRef<ChartFocusEventDetail | null>(null)
+  const centerPositionRef = useRef<{ left: number; top: number } | null>(null)
+  const [isChartReady, setIsChartReady] = useState(false)
+  const [centerOverride, setCenterOverride] = useState<[number, number] | null>(null)
+
+  const centerGraphicId = useMemo(() => (chartId ? `${chartId}-center-text` : "pie-center-text"), [chartId])
+
+  // Keep the optional center label aligned with the pie's computed center.
+  const updateCenterGraphic = useCallback(() => {
+    if (!centerText) {
+      centerPositionRef.current = null
+      return
+    }
+
+    const chart = chartRef.current
+    if (!chart) {
+      return
+    }
+
+    const model = chart.getModel()
+    const seriesModel = model.getSeriesByIndex(0)
+    if (!seriesModel) {
+      return
+    }
+
+    const data = seriesModel.getData()
+    if (!data || data.count() === 0) {
+      return
+    }
+
+    const layout = data.getItemLayout(0) as { cx?: number; cy?: number }
+    const cx = layout?.cx
+    const cy = layout?.cy
+    if (typeof cx !== "number" || typeof cy !== "number") {
+      return
+    }
+
+    const previous = centerPositionRef.current
+    if (previous && previous.left === cx && previous.top === cy) {
+      return
+    }
+
+    centerPositionRef.current = { left: cx, top: cy }
+    setCenterOverride([cx, cy])
+  }, [centerText])
 
   const applyFocus = (chart: EChartsType, detail: ChartFocusEventDetail) => {
     lastFocusRef.current = detail
@@ -118,6 +162,41 @@ export function PieChart({
     }
   }, [chartId])
 
+  useEffect(() => {
+    if (!centerText || !isChartReady) {
+      centerPositionRef.current = null
+      setCenterOverride(null)
+      return
+    }
+
+    updateCenterGraphic()
+  }, [centerText, isChartReady, data, category, index, innerRadius, outerRadius, paddingAngle, showLegend, updateCenterGraphic])
+
+  useEffect(() => {
+    if (!isChartReady || !centerText) {
+      return
+    }
+
+    const chart = chartRef.current
+    if (!chart) {
+      return
+    }
+
+    const handleUpdate = () => {
+      updateCenterGraphic()
+    }
+
+    chart.on("rendered", handleUpdate)
+    chart.on("legendselectchanged", handleUpdate)
+    chart.getZr().on("resize", handleUpdate)
+
+    return () => {
+      chart.off("rendered", handleUpdate)
+      chart.off("legendselectchanged", handleUpdate)
+      chart.getZr().off("resize", handleUpdate)
+    }
+  }, [centerText, isChartReady, updateCenterGraphic])
+
   const option = useMemo<EChartsOption>(() => {
     const radius: [string | number, string | number] = [
       typeof innerRadius === "number" ? innerRadius : innerRadius,
@@ -131,6 +210,50 @@ export function PieChart({
         color: colors[idx % colors.length],
       },
     }))
+
+    const pieCenter: [string | number, string | number] = showLegend
+      ? ["60%", "50%"]
+      : ["50%", "50%"]
+
+    const effectiveCenter: [string | number, string | number] = centerOverride ?? pieCenter
+
+    const centerGraphicElement = centerText
+      ? centerOverride
+        ? {
+            id: centerGraphicId,
+            type: "text" as const,
+            silent: true,
+            style: {
+              text: centerText,
+              fill: "#374151",
+              fontSize: 16,
+              fontWeight: 500,
+              align: "center" as const,
+              verticalAlign: "middle" as const,
+              textAlign: "center" as const,
+              textVerticalAlign: "middle" as const,
+              x: centerOverride[0],
+              y: centerOverride[1],
+            },
+          }
+        : {
+            id: centerGraphicId,
+            type: "text" as const,
+            silent: true,
+            left: effectiveCenter[0],
+            top: effectiveCenter[1],
+            style: {
+              text: centerText,
+              fill: "#374151",
+              fontSize: 16,
+              fontWeight: 500,
+              align: "center" as const,
+              verticalAlign: "middle" as const,
+              textAlign: "center" as const,
+              textVerticalAlign: "middle" as const,
+            },
+          }
+      : undefined
 
     return {
       color: colors,
@@ -154,30 +277,20 @@ export function PieChart({
       },
       legend: {
         show: showLegend,
-        bottom: 0,
+        orient: "vertical",
+        left: 0,
+        top: "middle",
         icon: "circle",
         textStyle: { color: "#6b7280", fontSize: 14 },
         itemGap: 12,
       },
-      graphic: centerText
-        ? [{
-            type: "text",
-            left: "center",
-            top: "middle",
-            style: {
-              text: centerText,
-              fill: "#374151",
-              fontSize: 16,
-              fontWeight: 500,
-            },
-          }]
-        : undefined,
+      graphic: centerGraphicElement ? { elements: [centerGraphicElement] } : undefined,
       series: [
         {
           name: category,
           type: "pie",
           radius,
-          center: ["50%", showLegend ? "45%" : "50%"],
+          center: effectiveCenter,
           padAngle: paddingAngle,
           avoidLabelOverlap: true,
           minAngle: 2,
@@ -208,7 +321,21 @@ export function PieChart({
         },
       ],
     }
-  }, [centerText, colors, data, category, index, innerRadius, outerRadius, paddingAngle, showLabel, showLegend, valueFormatter])
+  }, [
+    centerText,
+    centerOverride,
+    centerGraphicId,
+    colors,
+    data,
+    category,
+    index,
+    innerRadius,
+    outerRadius,
+    paddingAngle,
+    showLabel,
+    showLegend,
+    valueFormatter,
+  ])
 
   return (
     <ReactEChartsCore
@@ -216,10 +343,15 @@ export function PieChart({
       option={option}
       onChartReady={(instance) => {
         chartRef.current = instance
+        setIsChartReady(true)
+        if (typeof window !== "undefined" && chartId) {
+          ;(window as unknown as Record<string, EChartsType | undefined>)[`__chart_${chartId}`] = instance
+        }
         const pendingFocus = lastFocusRef.current
         if (pendingFocus && pendingFocus.chartId === chartId) {
           applyFocus(instance, pendingFocus)
         }
+        updateCenterGraphic()
       }}
       className={className}
       style={{ width: "100%", height: "100%" }}

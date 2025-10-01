@@ -71,7 +71,6 @@ AZURE_OPENAI_TTS_API_VERSION = os.getenv("AZURE_OPENAI_TTS_API_VERSION", "2025-0
 DATA_STORY_AUDIO_ENABLED = (os.getenv("DATA_STORY_AUDIO_ENABLED", "true").lower() not in {"false", "0", "no"})
 ANALYSIS_AGENT_SYSTEM_PROMPT = _load_prompt("analysis_agent_system_prompt.md")
 DATA_STORY_AUDIO_INSTRUCTIONS = _load_prompt("data_story_audio_instructions.md")
-DATA_STORY_AUDIO_SUMMARY_PROMPT = _load_prompt("data_story_audio_summary_prompt.md")
 STRATEGIC_COMMENTARY_PROMPT = _load_prompt("strategic_commentary_prompt.md")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
@@ -387,6 +386,8 @@ async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> Lis
         summary_text = ""
         try:
             user_sections = [
+                "Task: audio_summary",
+                "Audience: executive stakeholders who care most about the strategic takeaway. Provide at most two sentences with confident tone.",
                 f"Step number: {index}",
                 f"Step type: {step.get('stepType', 'unknown')}",
                 f"Step title: {title}",
@@ -426,7 +427,7 @@ async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> Lis
                 input=[
                     {
                         "role": "system",
-                        "content": [{"type": "text", "text": DATA_STORY_AUDIO_SUMMARY_PROMPT}],
+                        "content": [{"type": "text", "text": STRATEGIC_COMMENTARY_PROMPT}],
                     },
                     {
                         "role": "user",
@@ -434,7 +435,7 @@ async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> Lis
                     },
                 ],
                 temperature=0.3,
-                max_output_tokens=300,
+                max_output_tokens=250,
             )
             summary_text = (response.output_text or "").strip()
         except Exception as exc:  # pragma: no cover - defensive
@@ -913,6 +914,27 @@ async def deprecated_copilot_endpoint_trailing() -> JSONResponse:
     return await deprecated_copilot_endpoint()
 
 
+async def _generate_strategic_commentary_markdown() -> str:
+    """Run the strategic commentary agent and return markdown output."""
+
+    prompt = (
+        f"{STRATEGIC_COMMENTARY_PROMPT}\n\n"
+        f"```json\n{json.dumps(DASHBOARD_CONTEXT)}\n```"
+    )
+
+    result = await analysis_agent.run(prompt)
+    commentary = getattr(result, "data", None)
+    if commentary is None:
+        commentary = getattr(result, "output_text", None)
+    if commentary is None:
+        commentary = str(result)
+
+    commentary_text = str(commentary).strip()
+    if not commentary_text:
+        raise ValueError("Strategic commentary agent returned empty output")
+    return commentary_text
+
+
 @app.post("/ag-ui/action/searchInternet")
 async def action_search_internet(request: Request) -> dict[str, Any]:
     if not TAVILY_API_KEY:
@@ -949,12 +971,19 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
     payload = await request.json()
     intent_id = payload.get("intentId")
 
-    steps = generate_data_story_steps()
+    try:
+        strategic_commentary = await _generate_strategic_commentary_markdown()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to generate strategic commentary for data story")
+        raise HTTPException(status_code=500, detail=f"Strategic commentary error: {exc}") from exc
+
+    steps = generate_data_story_steps(strategic_commentary)
     info = DATA_STORY_INTENTS.get(intent_id or "")
 
     response: Dict[str, Any] = {
         "storyId": intent_id or f"story-{uuid4()}",
         "steps": steps,
+        "strategicCommentary": strategic_commentary,
     }
 
     if info:
@@ -967,18 +996,8 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
 
 @app.post("/ag-ui/action/generateStrategicCommentary")
 async def action_generate_strategic_commentary() -> Dict[str, Any]:
-    prompt = (
-        f"{STRATEGIC_COMMENTARY_PROMPT}\n\n"
-        f"```json\n{json.dumps(DASHBOARD_CONTEXT)}\n```"
-    )
-
     try:
-        result = await analysis_agent.run(prompt)
-        commentary = getattr(result, "data", None)
-        if commentary is None:
-            commentary = getattr(result, "output_text", None)
-        if commentary is None:
-            commentary = str(result)
+        commentary = await _generate_strategic_commentary_markdown()
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Failed to generate strategic commentary")
         raise HTTPException(status_code=500, detail=f"Strategic commentary error: {exc}") from exc
@@ -993,8 +1012,19 @@ async def action_generate_data_story_audio(request: Request) -> Response:
 
     request_payload = await request.json()
     steps = request_payload.get("steps")
+    commentary_hint = request_payload.get("strategicCommentary")
+    strategic_commentary = (
+        commentary_hint.strip() if isinstance(commentary_hint, str) and commentary_hint.strip() else None
+    )
+
     if not isinstance(steps, list) or not steps:
-        steps = generate_data_story_steps()
+        if strategic_commentary is None:
+            try:
+                strategic_commentary = await _generate_strategic_commentary_markdown()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("Failed to regenerate strategic commentary for audio story")
+                raise HTTPException(status_code=500, detail=f"Strategic commentary error: {exc}") from exc
+        steps = generate_data_story_steps(strategic_commentary)
 
     wants_stream = _wants_event_stream(request)
 

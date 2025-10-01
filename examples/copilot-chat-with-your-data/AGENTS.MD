@@ -9,7 +9,7 @@
 - **Protocol Choice**: The project now speaks exclusively to the backend via the AG-UI protocol. Do not reintroduce CopilotKit SDK clients or endpoints; all chat or action traffic must flow through `/ag-ui` routes and the shared AG-UI provider.
 - **Frontend**: Next.js 15 App Router with React 19 client components in `frontend/app/` and `frontend/components/`, styled via Tailwind, local UI primitives, and Recharts wrappers.
 - **AG-UI Bridge**: `frontend/app/layout.tsx` wraps the tree with `AgUiProvider` pointing at `NEXT_PUBLIC_AG_UI_RUNTIME_URL` (default `http://localhost:8004/ag-ui/run`). All children share the same runtime session.
-- **Chat Surface**: `frontend/app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, injects static assistant instructions from `frontend/lib/prompt.ts`, and streams assistant output through `frontend/components/AssistantMessage.tsx`.
+- **Chat Surface**: `frontend/app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, and streams assistant output through `frontend/components/AssistantMessage.tsx` while the backend injects instructions from `backend/prompts/analysis_agent_system_prompt.md`.
 - **Highlight Integration**: `frontend/lib/chart-highlighting.ts` centralises chart highlighting so both AG-UI custom events and timeline components can toggle card focus.
 - **Backend Runtime**: FastAPI app in `backend/main.py` hosts `/ag-ui/run`, handles CORS, validates configuration, and routes AI calls through Azure OpenAI using a PydanticAI agent. Optional Tavily search runs server-side.
 - **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `frontend/data/dashboard-data.ts` and `backend/dashboard_data.py`.
@@ -35,7 +35,7 @@
 
 ## Data & Prompt Alignment
 - Keep the dashboard dataset synchronised between frontend and backend modules. Any schema changes must touch both `data/dashboard-data.ts` and `backend/dashboard_data.py`.
-- Update `frontend/lib/prompt.ts` when adding new highlight directives, custom events, or contextual hints so the assistant has accurate instructions.
+- Update `backend/prompts/analysis_agent_system_prompt.md` when adding new highlight directives, custom events, or contextual hints so the assistant has accurate instructions.
 - Ensure AG-UI events emitted by the backend map cleanly to frontend handlers; mismatches lead to silent UI failures.
 
 ## Configuration & Environment

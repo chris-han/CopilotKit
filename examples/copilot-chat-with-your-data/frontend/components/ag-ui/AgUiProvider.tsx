@@ -20,7 +20,6 @@ import {
   type ChartFocusTarget,
   type HighlightOptions,
 } from "../../lib/chart-highlighting";
-import { prompt as defaultPrompt } from "../../lib/prompt";
 import {
   DataStoryContext,
   type DataStoryAudioSegment,
@@ -99,7 +98,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   >({});
   const storyStepsRef = useRef<DataStoryStep[]>([]);
   const manualAdvanceTimeoutsRef = useRef<number[]>([]);
-  const systemMessage = useMemo(() => systemPrompt || defaultPrompt, [systemPrompt]);
+  const systemMessage = useMemo(() => {
+    const trimmed = systemPrompt?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  }, [systemPrompt]);
   const runtimeBaseUrl = useMemo(() => runtimeUrl.replace(/\/run\/?$/, ""), [runtimeUrl]);
 
   if (agentRef.current == null) {

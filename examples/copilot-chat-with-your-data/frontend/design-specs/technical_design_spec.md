@@ -62,16 +62,12 @@ classDiagram
         file: lib/chart-highlighting.ts
         +applyHighlights()
     }
-    class PromptSpec {
-        file: lib/prompt.ts
-    }
     AgUiProvider --> AgUiSidebar : context value
     AgUiSidebar --> AssistantMessage : render delegate
     AgUiSidebar --> DataStoryTimeline : timeline props
     AssistantMessage --> HighlightHelper : invokes
     DataStoryTimeline --> HighlightHelper : invokes
     Dashboard --> AgUiProvider : highlight helper use
-    Dashboard --> PromptSpec : dataset parity
 ```
 
 ### Backend
@@ -99,6 +95,9 @@ classDiagram
     class AnalysisAgent {
         type: pydantic_ai.Agent
     }
+    class AnalysisPrompt {
+        file: backend/prompts/analysis_agent_system_prompt.md
+    }
     class AzureClient {
         type: AsyncAzureOpenAI
     }
@@ -108,44 +107,63 @@ classDiagram
     FastAPIApp --> TavilyAction
     StrategicCommentaryAction --> AnalysisAgent
     DataStoryAction --> DashboardData
+    AnalysisAgent --> AnalysisPrompt : system instructions
     AgUiRunEndpoint --> AnalysisAgent
     AnalysisAgent --> AzureClient
     TavilyAction --> TavilyClient
 ```
 
 ## 5. Data & Prompt Flow
+### Prompt Flow Sequence
 ```mermaid
-flowchart TD
-    PromptSpec["Static Prompt\nlib/prompt.ts"]
-    Provider["AgUiProvider"]
-    Sidebar["AgUiSidebar"]
-    Assistant["AssistantMessage"]
-    Highlight["chart-highlighting.ts"]
-    Dashboard["Dashboard & Commentary"]
-    Runtime["FastAPI /ag-ui/run"]
-    Commentary["/ag-ui/action/generateStrategicCommentary"]
-    Story["/ag-ui/action/generateDataStory"]
-    Azure["Azure OpenAI"]
-    Tavily["Tavily Search"]
+sequenceDiagram
+  participant User
+  participant Sidebar as "AgUiSidebar"
+  participant Provider as "AgUiProvider"
+  participant Runtime as "FastAPI /ag-ui/run"
+  participant SystemPrompt as "analysis_agent_system_prompt.md"
+  participant Agent as "PydanticAI Agent"
+  participant Azure as "Azure OpenAI"
 
-    PromptSpec --> Runtime
-    Dashboard --> Provider
-    Sidebar --> Provider
-    Provider --> Runtime
-    Runtime --> Azure
-    Azure --> Runtime
-    Runtime --> Provider
-    Provider --> Sidebar
-    Sidebar --> Assistant
-    Assistant --> Highlight
-    Dashboard --> Commentary
-    Commentary --> Dashboard
-    Story --> Provider
-    Runtime --> Tavily
-    Tavily --> Runtime
+  User->>Sidebar: Ask question or choose preset
+  Sidebar->>Provider: sendMessage(messages, chart context)
+  Provider->>Runtime: POST RunAgentInput
+  Runtime->>SystemPrompt: load instructions
+  SystemPrompt-->>Runtime: system message content
+  Runtime->>Agent: compose prompt + dataset JSON
+  Agent->>Azure: streamCompletion(prompt payload)
+  Azure-->>Agent: tokens
+  Agent-->>Runtime: markdown + highlight directives
+  Runtime-->>Provider: Run/Text/Custom events (SSE)
+  Provider-->>Sidebar: append assistant response
+  Sidebar-->>User: stream assistant text
 ```
 
-## 6. Sequence Diagram
+### Data Context Sequence
+```mermaid
+sequenceDiagram
+  participant Dashboard as "Dashboard.tsx"
+  participant FrontData as "frontend/data/dashboard-data.ts"
+  participant Runtime as "FastAPI Actions"
+  participant BackData as "backend/dashboard_data.py"
+  participant Agent as "PydanticAI Agent"
+  participant Azure as "Azure OpenAI"
+
+  Dashboard->>FrontData: importKpiDataset()
+  Dashboard->>Runtime: POST /ag-ui/action/generateStrategicCommentary
+  Runtime->>BackData: load mirrored dataset
+  BackData-->>Runtime: metrics JSON
+  Runtime->>Agent: inject metrics + commentary prompt
+  Agent->>Azure: completion request
+  Azure-->>Agent: analysis tokens
+  Agent-->>Runtime: structured markdown
+  Runtime-->>Dashboard: commentary response
+  Dashboard->>Runtime: POST /ag-ui/action/generateDataStory
+  Runtime->>BackData: reuse metrics + commentary
+  Runtime-->>Dashboard: timeline steps + audio refs
+```
+
+## 6. E2E Sequence Diagram
 ```mermaid
 sequenceDiagram
   participant User
@@ -207,8 +225,9 @@ graph TB
 ## 8. Strategic Commentary Flow
 1. `Dashboard` renders metrics and POSTs to `/ag-ui/action/generateStrategicCommentary` (runtime URL derived from environment variable).
 2. FastAPI merges dashboard JSON into the agent prompt and runs the PydanticAI agent against Azure OpenAI.
-3. Backend responds with markdown grouped into Risks, Opportunities, and Recommendations.
+3. Backend responds with markdown grouped into Risks, Opportunities, and Recommendations and stores the structured bullets in memory for the current request scope.
 4. Frontend renders the markdown with loading/error skeletons; content is stored only in component state.
+5. The same commentary payload is injected into the data-story generator so the "Strategic commentary" timeline sections mirror the agent output without recomputing analytic summaries, and the shared analysis prompt also powers audio narration to keep tone and emphasis aligned.
 
 ## 9. Environment & Configuration
 - **Frontend** – `NEXT_PUBLIC_AG_UI_RUNTIME_URL`, Tailwind config, fonts.

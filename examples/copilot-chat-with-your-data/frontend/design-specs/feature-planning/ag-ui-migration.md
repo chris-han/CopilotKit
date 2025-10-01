@@ -32,7 +32,7 @@ backend/
 - `AgUiProvider` owns the single `HttpAgent` instance, tracks messages/error state, and applies highlights when `chart.highlight` events arrive.
 - `AgUiSidebar` consumes the provider, renders user/assistant bubbles, and posts prompts while the provider orchestrates streaming state.
 - `AssistantMessage` now only handles markdown + spinner; highlight manipulation occurs via dedicated helper responding to custom events.
-- Legacy CopilotKit constructs (`CopilotSidebar`, `useCopilotReadable`, `useCopilotAction`) were removed. The prompt is still sourced from `lib/prompt.ts` but injected as the initial system message inside the provider.
+- Legacy CopilotKit constructs (`CopilotSidebar`, `useCopilotReadable`, `useCopilotAction`) were removed. Assistant instructions now live in `backend/prompts/analysis_agent_system_prompt.md`, and the provider relies on the backend to supply the system message over the AG-UI stream.
 
 ### Backend
 - `/ag-ui/run` accepts AG-UI `RunAgentInput` payloads and streams SSE; `/copilotkit` now returns HTTP 410 for compatibility.

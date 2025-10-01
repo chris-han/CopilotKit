@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from dashboard_data import DASHBOARD_CONTEXT
 
@@ -29,7 +30,101 @@ def _format_percentage(value: Any, decimals: int = 1) -> str:
     return f"{number:.{decimals}f}%"
 
 
-def generate_data_story_steps() -> List[Dict[str, Any]]:
+def _format_markdown_list(items: Sequence[str]) -> str:
+    """Render a markdown bullet list from the provided text items."""
+
+    return "\n".join(f"- {item}" for item in items if item).strip()
+
+
+_SECTION_HEADING_PATTERN = re.compile(
+    r"^(?:#{1,6}\s*)?(risks|opportunities|recommendations)\s*:?$",
+    re.IGNORECASE,
+)
+
+
+def _parse_strategic_commentary(markdown: str) -> Dict[str, Dict[str, List[str] | str]]:
+    """Extract bullet text per strategic commentary section from markdown."""
+
+    sections: Dict[str, Dict[str, List[str]]] = {
+        "risks": {"raw_lines": []},
+        "opportunities": {"raw_lines": []},
+        "recommendations": {"raw_lines": []},
+    }
+    active_key: Optional[str] = None
+
+    for raw_line in markdown.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        heading_match = _SECTION_HEADING_PATTERN.match(stripped)
+        if heading_match:
+            active_key = heading_match.group(1).lower()
+            sections[active_key]["bullets"] = []
+            continue
+
+        if active_key is None:
+            continue
+
+        section_data = sections[active_key]
+        section_data.setdefault("bullets", [])
+        section_data["raw_lines"].append(stripped)
+        if stripped[0] in {"-", "*"}:
+            bullet_text = stripped.lstrip("-* ").strip()
+            if bullet_text:
+                section_data["bullets"].append(bullet_text)
+
+    parsed: Dict[str, Dict[str, List[str] | str]] = {}
+    for key, data in sections.items():
+        raw_lines = [line for line in data.get("raw_lines", []) if line.strip()]
+        bullets = [bullet for bullet in data.get("bullets", []) if bullet]
+        if not bullets and raw_lines:
+            bullets = [line.lstrip("-* ").strip() for line in raw_lines if line.strip()]
+        markdown_block = "\n".join(raw_lines).strip()
+        if not markdown_block and bullets:
+            markdown_block = _format_markdown_list(bullets)
+        parsed[key] = {"markdown": markdown_block, "bullets": bullets}
+
+    return parsed
+
+
+def _resolve_commentary_section(
+    parsed_section: Optional[Dict[str, List[str] | str]],
+    default_points: Sequence[str],
+) -> Tuple[List[str], str]:
+    """Return talking points and markdown for a strategic section."""
+
+    points = [point for point in default_points if point]
+    markdown = _format_markdown_list(points)
+
+    if not parsed_section:
+        return points, markdown
+
+    parsed_points = [
+        str(item).strip()
+        for item in (parsed_section.get("bullets") or [])
+        if str(item).strip()
+    ]
+    parsed_markdown = str(parsed_section.get("markdown", "")).strip()
+
+    if parsed_points or parsed_markdown:
+        if not parsed_points and parsed_markdown:
+            parsed_points = [
+                line.lstrip("-* ").strip()
+                for line in parsed_markdown.splitlines()
+                if line.strip()
+            ]
+        if parsed_points:
+            points = parsed_points
+        if parsed_markdown:
+            markdown = parsed_markdown
+        else:
+            markdown = _format_markdown_list(points)
+
+    return points, markdown
+
+
+def generate_data_story_steps(strategic_commentary: Optional[str] = None) -> List[Dict[str, Any]]:
     """Return an ordered list of data story steps derived from the dashboard dataset."""
 
     sales = DASHBOARD_CONTEXT["salesData"]
@@ -93,65 +188,77 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             }
         ]
 
-    strategic_risk_bullets: List[str] = [
+    default_risk_points: List[str] = [
         (
-            f"- Revenue remains concentrated in **{top_region['region']}** at {top_region['marketShare']}% share "
+            f"Revenue remains concentrated in **{top_region['region']}** at {top_region['marketShare']}% share "
             f"while {second_region['region']} trails at {second_region['marketShare']}%, keeping exposure skewed."
         )
     ]
     if primary_declining and secondary_declining:
-        strategic_risk_bullets.append(
-            f"- Core products like **{primary_declining['name']}** ({primary_declining['growth']:.1f}%) and "
+        default_risk_points.append(
+            f"Core products like **{primary_declining['name']}** ({primary_declining['growth']:.1f}%) and "
             f"**{secondary_declining['name']}** ({secondary_declining['growth']:.1f}%) are contracting, signaling churn risk."
         )
     elif primary_declining:
-        strategic_risk_bullets.append(
-            f"- **{primary_declining['name']}** is contracting at {primary_declining['growth']:.1f}%, hinting at lifecycle or retention pressure."
+        default_risk_points.append(
+            f"**{primary_declining['name']}** is contracting at {primary_declining['growth']:.1f}%, hinting at lifecycle or retention pressure."
         )
     if declining_category:
-        strategic_risk_bullets.append(
-            f"- The **{declining_category['name']}** category shrank {declining_category['growth']:.1f}% while electronics already represent "
+        default_risk_points.append(
+            f"The **{declining_category['name']}** category shrank {declining_category['growth']:.1f}% while electronics already represent "
             f"{leading_category['value']}% of revenue, limiting diversification."
         )
-    strategic_risk_markdown = "\n".join(bullet for bullet in strategic_risk_bullets if bullet).strip()
 
-    strategic_opportunity_markdown = "\n".join(
-        [
-            (
-                f"- **{fastest_category['name']}** is growing {fastest_category['growth']:.1f}% on"
-                f" {fastest_category['value']}% of revenue; bundle with electronics to lift basket size."
-            ),
-            (
-                f"- **{expansion_region['region']}** delivered {_format_currency(expansion_region['sales'])}"
-                f" at {expansion_region['marketShare']}% share, leaving headroom for targeted expansion."
-            ),
-            (
-                f"- The **{dominant_age_group['ageGroup']}** cohort already represents"
-                f" {dominant_age_group['percentage']}% of customers; loyalty offers can upsell wearables and subscriptions."
-            ),
-        ]
+    default_opportunity_points: List[str] = [
+        (
+            f"**{fastest_category['name']}** is growing {fastest_category['growth']:.1f}% on"
+            f" {fastest_category['value']}% of revenue; bundle with electronics to lift basket size."
+        ),
+        (
+            f"**{expansion_region['region']}** delivered {_format_currency(expansion_region['sales'])}"
+            f" at {expansion_region['marketShare']}% share, leaving headroom for targeted expansion."
+        ),
+        (
+            f"The **{dominant_age_group['ageGroup']}** cohort already represents"
+            f" {dominant_age_group['percentage']}% of customers; loyalty offers can upsell wearables and subscriptions."
+        ),
+    ]
+
+    default_recommendation_points: List[str] = [
+        (
+            f"Launch retention plays around **{lagging_product['name']}** ({lagging_product['growth']:.1f}%)"
+            + (
+                f" and **{secondary_declining['name']}** ({secondary_declining['growth']:.1f}%)"
+                if secondary_declining
+                else ""
+            )
+            + " to stabilise core hardware revenue."
+        ),
+        (
+            f"Rebalance go-to-market spend toward **{second_region['region']}** and"
+            f" **{expansion_region['region']}** to ease reliance on {top_region['region']} ({top_region['marketShare']}% share)."
+        ),
+        (
+            f"Use {_format_currency(top_product['sales'])} momentum from **{top_product['name']}** and"
+            f" {metrics['profitMargin']} margins to fund campaigns that grow emerging segments."
+        ),
+    ]
+
+    parsed_commentary: Dict[str, Dict[str, List[str] | str]] = {}
+    if strategic_commentary:
+        parsed_commentary = _parse_strategic_commentary(strategic_commentary)
+
+    risk_points, strategic_risk_markdown = _resolve_commentary_section(
+        parsed_commentary.get("risks"),
+        default_risk_points,
     )
-
-    strategic_recommendation_markdown = "\n".join(
-        [
-            (
-                f"- Launch retention plays around **{lagging_product['name']}** ({lagging_product['growth']:.1f}%)"
-                + (
-                    f" and **{secondary_declining['name']}** ({secondary_declining['growth']:.1f}%)"
-                    if secondary_declining
-                    else ""
-                )
-                + " to stabilise core hardware revenue."
-            ),
-            (
-                f"- Rebalance go-to-market spend toward **{second_region['region']}** and"
-                f" **{expansion_region['region']}** to ease reliance on {top_region['region']} ({top_region['marketShare']}% share)."
-            ),
-            (
-                f"- Use {_format_currency(top_product['sales'])} momentum from **{top_product['name']}** and"
-                f" {metrics['profitMargin']} margins to fund campaigns that grow emerging segments."
-            ),
-        ]
+    opportunity_points, strategic_opportunity_markdown = _resolve_commentary_section(
+        parsed_commentary.get("opportunities"),
+        default_opportunity_points,
+    )
+    recommendation_points, strategic_recommendation_markdown = _resolve_commentary_section(
+        parsed_commentary.get("recommendations"),
+        default_recommendation_points,
     )
 
     overview_points = [
@@ -413,10 +520,10 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "talkingPoints": [
                 {
                     "id": f"story-strategic-risks-point-{idx+1}",
-                    "markdown": bullet.lstrip("- ").strip(),
+                    "markdown": bullet,
                     "chartIds": ["strategic-commentary"],
                 }
-                for idx, bullet in enumerate(strategic_risk_bullets)
+                for idx, bullet in enumerate(risk_points)
                 if bullet
             ],
             "kpis": [
@@ -450,10 +557,10 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "talkingPoints": [
                 {
                     "id": f"story-strategic-opportunities-point-{idx+1}",
-                    "markdown": bullet.lstrip("- ").strip(),
+                    "markdown": bullet,
                     "chartIds": ["strategic-commentary"],
                 }
-                for idx, bullet in enumerate(strategic_opportunity_markdown.split("\n"))
+                for idx, bullet in enumerate(opportunity_points)
                 if bullet
             ],
             "kpis": [
@@ -485,10 +592,10 @@ def generate_data_story_steps() -> List[Dict[str, Any]]:
             "talkingPoints": [
                 {
                     "id": f"story-strategic-recommendations-point-{idx+1}",
-                    "markdown": bullet.lstrip("- ").strip(),
+                    "markdown": bullet,
                     "chartIds": ["strategic-commentary"],
                 }
-                for idx, bullet in enumerate(strategic_recommendation_markdown.split("\n"))
+                for idx, bullet in enumerate(recommendation_points)
                 if bullet
             ],
             "kpis": [

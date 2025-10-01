@@ -63,20 +63,23 @@ Define the technical approach for the "data story" guided-tour feature that surf
 ## Key Components
 - **Intent Detection Service**: Reuses existing semantic parsing to flag queries aligned with trend analysis; emits `data_story` intents with confidence scores and context metadata.
 - **Conversation Router**: Middleware inside the chat backend that inspects intents, queues suggestion messages, and orchestrates follow-up actions.
-- **Guided Tour Orchestrator**: Stateful controller responsible for building the vertical timeline, sequencing requests to the insights engine, and coordinating chart highlights.
-- **Data Story Insights Engine**: Aggregates metrics from the analytics warehouse, computes the overview/changes/summary structure, and maps insights to visualizations.
+- **Guided Tour Orchestrator**: Stateful controller responsible for building the vertical timeline, sequencing requests to the insights engine, coordinating chart highlights, and merging agent-produced strategic commentary into the closing sections.
+- **Strategic Commentary Adapter**: Wraps the unified strategic commentary prompt, normalises Risks/Opportunities/Recommendations output, and hands it to the orchestrator and audio services.
+- **Data Story Insights Engine**: Aggregates metrics from the analytics warehouse, computes the overview/changes/summary structure, maps insights to visualizations, and accepts injected commentary for the strategic wrap-up.
 - **Timeline Renderer**: Chat-side component that renders the vertical timeline blocks, attaches "Review" buttons, and maintains scroll/selection sync.
 - **Chart Layer Integration**: Canvas controller capable of highlighting charts when requested and exposing review hooks for each timeline section.
 
 ## Flow Overview
 1. User submits a natural-language question that reaches the Chat UI.
 2. The Intent Detection Service classifies intents. When confidence crosses the threshold, the Conversation Router pushes a "Run Data Story" suggestion button into the chat.
-3. Upon CTA activation, the Guided Tour Orchestrator constructs the story skeleton, requesting overview, significant change details, and summary from the Insights Engine.
-4. Each section returned includes chart identifiers, highlight metadata, and optional follow-up prompts that the Timeline Renderer displays.
-5. Timeline steps emit highlight commands to the chart layer and embed "Review" actions that replay those highlights without recomputing insights.
+3. Upon CTA activation, the Guided Tour Orchestrator constructs the story skeleton, requesting overview, significant change details, and summary from the Insights Engine, and in parallel triggers the Strategic Commentary Adapter using the unified prompt.
+4. The adapter returns normalised markdown sections which are appended to the skeleton before rendering the "Strategic commentary" timeline blocks and feeding the audio summariser.
+5. Each section returned includes chart identifiers, highlight metadata, and optional follow-up prompts that the Timeline Renderer displays.
+6. Timeline steps emit highlight commands to the chart layer and embed "Review" actions that replay those highlights without recomputing insights.
 
 ## Data Contracts
 - `IntentResult`: `{ intent: "data_story", score: number, dimensions: string[], timeframe: DateRange }`
+- `StrategicCommentary`: `{ markdown: string, risks: string[], opportunities: string[], recommendations: string[] }`
 - `StoryStep`: `{ id: string, type: "overview" | "change" | "summary", text: string, chartIds: string[], highlight: HighlightSpec, reviewPrompt?: string }`
 - `HighlightSpec`: `{ mode: "focus" | "pulse", durationMs: number, relatedElements: string[] }`
 

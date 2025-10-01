@@ -374,6 +374,12 @@ async def _story_steps_to_audio_segments(steps: Sequence[Dict[str, Any]]) -> Lis
                 talking_point_id = point.get("id") or f"{step_id}-point-{tp_index}"
                 point_markdown = str(point.get("markdown", ""))
                 point_text = _markdown_to_text(point_markdown) or default_script
+                lead_in = str(point.get("audioLeadIn", "")).strip()
+                if lead_in:
+                    if point_text:
+                        point_text = f"{lead_in} {point_text}".strip()
+                    else:
+                        point_text = lead_in
                 segments.append(
                     {
                         "stepId": step_id,

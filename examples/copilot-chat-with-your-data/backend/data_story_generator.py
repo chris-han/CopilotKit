@@ -36,6 +36,60 @@ def _format_markdown_list(items: Sequence[str]) -> str:
     return "\n".join(f"- {item}" for item in items if item).strip()
 
 
+_STRATEGIC_AUDIO_LEADS = {
+    "risks": (
+        "On risks...",
+        "Now, let’s shift gears and examine the risks that could impact our ability to execute...",
+    ),
+    "opportunities": (
+        "Moving to opportunities...",
+        "Now, on opportunities...",
+    ),
+    "recommendations": (
+        "Here are my recommendations...",
+        "My recommendations...",
+    ),
+}
+
+
+def _select_audio_lead(section: str, bullet_index: int, total_bullets: int) -> str:
+    """Return a human-style spoken lead-in for the first strategic bullet."""
+
+    if bullet_index != 0:
+        return ""
+
+    options = _STRATEGIC_AUDIO_LEADS.get(section.lower())
+    if not options:
+        return ""
+
+    if not total_bullets:
+        return ""
+
+    variant_index = min(total_bullets - 1, len(options) - 1)
+    return options[variant_index]
+
+
+def _build_strategic_talking_points(section: str, bullets: Sequence[str]) -> List[Dict[str, Any]]:
+    """Construct talking points for a strategic section with optional audio leads."""
+
+    non_empty_bullets = [bullet for bullet in bullets if bullet]
+    total_bullets = len(non_empty_bullets)
+
+    talking_points: List[Dict[str, Any]] = []
+    for idx, bullet in enumerate(non_empty_bullets):
+        entry: Dict[str, Any] = {
+            "id": f"story-strategic-{section}-point-{idx + 1}",
+            "markdown": bullet,
+            "chartIds": ["strategic-commentary"],
+        }
+        lead = _select_audio_lead(section, idx, total_bullets)
+        if lead:
+            entry["audioLeadIn"] = lead
+        talking_points.append(entry)
+
+    return talking_points
+
+
 _SECTION_HEADING_PATTERN = re.compile(
     r"^(?:#{1,6}\s*)?(risks|opportunities|recommendations)\s*:?$",
     re.IGNORECASE,
@@ -517,15 +571,7 @@ def generate_data_story_steps(strategic_commentary: Optional[str] = None) -> Lis
             "markdown": strategic_risk_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("risks"),
-            "talkingPoints": [
-                {
-                    "id": f"story-strategic-risks-point-{idx+1}",
-                    "markdown": bullet,
-                    "chartIds": ["strategic-commentary"],
-                }
-                for idx, bullet in enumerate(risk_points)
-                if bullet
-            ],
+            "talkingPoints": _build_strategic_talking_points("risks", risk_points),
             "kpis": [
                 {"label": "North America Share", "value": f"{top_region['marketShare']}%", "trend": "neutral"},
                 {
@@ -554,15 +600,7 @@ def generate_data_story_steps(strategic_commentary: Optional[str] = None) -> Lis
             "markdown": strategic_opportunity_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("opportunities"),
-            "talkingPoints": [
-                {
-                    "id": f"story-strategic-opportunities-point-{idx+1}",
-                    "markdown": bullet,
-                    "chartIds": ["strategic-commentary"],
-                }
-                for idx, bullet in enumerate(opportunity_points)
-                if bullet
-            ],
+            "talkingPoints": _build_strategic_talking_points("opportunities", opportunity_points),
             "kpis": [
                 {
                     "label": f"{fastest_category['name']} Growth",
@@ -589,15 +627,7 @@ def generate_data_story_steps(strategic_commentary: Optional[str] = None) -> Lis
             "markdown": strategic_recommendation_markdown,
             "chartIds": ["strategic-commentary"],
             "agUiEvents": _strategic_tab_event("recommendations"),
-            "talkingPoints": [
-                {
-                    "id": f"story-strategic-recommendations-point-{idx+1}",
-                    "markdown": bullet,
-                    "chartIds": ["strategic-commentary"],
-                }
-                for idx, bullet in enumerate(recommendation_points)
-                if bullet
-            ],
+            "talkingPoints": _build_strategic_talking_points("recommendations", recommendation_points),
             "kpis": [
                 {"label": "Profit Margin", "value": metrics["profitMargin"], "trend": "up"},
                 {

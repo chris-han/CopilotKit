@@ -9,6 +9,8 @@ import json
 import logging
 import os
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Sequence, Tuple
 from uuid import uuid4
 
@@ -46,6 +48,20 @@ from intent_detection import detect_data_story_intent
 load_dotenv()
 
 
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+
+
+@lru_cache(maxsize=None)
+def _load_prompt(filename: str) -> str:
+    """Read prompt text from the prompts directory with basic caching."""
+
+    path = PROMPTS_DIR / filename
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:  # pragma: no cover - configuration guard
+        raise RuntimeError(f"Prompt file not found: {path}") from exc
+
+
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
@@ -53,13 +69,10 @@ AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-04-01-pre
 AZURE_OPENAI_TTS_DEPLOYMENT = os.getenv("AZURE_OPENAI_TTS_DEPLOYMENT") or "gpt-4o-mini-tts"
 AZURE_OPENAI_TTS_API_VERSION = os.getenv("AZURE_OPENAI_TTS_API_VERSION", "2025-03-01-preview")
 DATA_STORY_AUDIO_ENABLED = (os.getenv("DATA_STORY_AUDIO_ENABLED", "true").lower() not in {"false", "0", "no"})
-DATA_STORY_AUDIO_INSTRUCTIONS = os.getenv(
-    "DATA_STORY_AUDIO_INSTRUCTIONS",
-    "You are a professional financial analyst. Speak confidently and when attention need, use a brief pause before proceeding with your points.",
-)
-DATA_STORY_AUDIO_SUMMARY_PROMPT = (
-    "You are a professional financial analyst. Identify the most important insight from this section, explain the likely driver in one or two sentences, and cite only the essential numbers. Do not recite table headers or enumerate every row from the markdown table."
-)
+ANALYSIS_AGENT_SYSTEM_PROMPT = _load_prompt("analysis_agent_system_prompt.md")
+DATA_STORY_AUDIO_INSTRUCTIONS = _load_prompt("data_story_audio_instructions.md")
+DATA_STORY_AUDIO_SUMMARY_PROMPT = _load_prompt("data_story_audio_summary_prompt.md")
+STRATEGIC_COMMENTARY_PROMPT = _load_prompt("strategic_commentary_prompt.md")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 if not AZURE_OPENAI_API_KEY:
@@ -114,10 +127,7 @@ azure_client = AsyncAzureOpenAI(
 
 analysis_agent = Agent(
     model=OpenAIModel(openai_client=azure_client, model_name=AZURE_OPENAI_DEPLOYMENT),
-    system_prompt=(
-        "You are an efficient, professional data analyst. Use the dashboard dataset, respond in concise "
-        "markdown, and highlight key metrics with tables when appropriate."
-    ),
+    system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT,
 )
 
 encoder = EventEncoder()
@@ -958,11 +968,7 @@ async def action_generate_data_story(request: Request) -> Dict[str, Any]:
 @app.post("/ag-ui/action/generateStrategicCommentary")
 async def action_generate_strategic_commentary() -> Dict[str, Any]:
     prompt = (
-        "You are the lead analyst preparing an executive briefing. "
-        "Use the dashboard data (sales history, products, categories, regions, demographics, metrics) to write a concise strategic commentary. "
-        "Organize the response into three sections titled 'Risks', 'Opportunities', and 'Recommendations'. "
-        "Provide two to three bullet points per section, grounded in the data with specific numbers or trends. "
-        "Do not include code fences or raw tables. Return valid Markdown only.\n\n"
+        f"{STRATEGIC_COMMENTARY_PROMPT}\n\n"
         f"```json\n{json.dumps(DASHBOARD_CONTEXT)}\n```"
     )
 

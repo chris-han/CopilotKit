@@ -23,7 +23,8 @@ This consolidated specification captures the system design, architecture, and im
 ## 3. System Components
 - **AgUiProvider (`components/ag-ui/AgUiProvider.tsx`)** – Manages the `HttpAgent`, subscribes to Run/Text/Custom events, stores messages, and exposes helpers (`highlightCharts`, audio callbacks) plus Data Story context.
 - **AgUiSidebar (`components/ag-ui/AgUiSidebar.tsx`)** – Chat UI with preset prompts, suggestion cards, data-story timeline, and progress indicators; renders as a shadcn Sheet on mobile and a docked panel on large screens.
-- **AssistantMessage (`components/AssistantMessage.tsx`)** – Markdown renderer converting `highlight://` links into buttons that call `highlightCharts`; applies shadcn styling and streaming indications.
+- **AssistantMessage (`components/AssistantMessage.tsx`)** – Markdown renderer converting `highlight://` links into buttons that call `highlightCharts`; applies shadcn styling, streaming indications, and delegates to `normalizeMarkdownTables` so pipe-delimited model output is auto-upgraded into valid tables.
+- **Markdown Helpers (`lib/markdown.ts`)** – Normalises tables by inserting missing header separator rows (for example `| --- |`) and trimming stray whitespace so `react-markdown` emits structured `<table>` elements instead of paragraph fallbacks.
 - **Data Story Components (`components/data-story/*`)** – Timeline UI controlling audio playback, step highlighting, and review controls.
 - **Dashboard (`components/Dashboard.tsx`)** – KPI cards, chart panels, and strategic commentary card organised in shadcn Tabs (Risks/Opportunities/Recommendations); fetches commentary directly from the backend action with loading/error states.
 - **Highlight Helper (`lib/chart-highlighting.ts`)** – DOM utility applying/removing `chart-card-highlight` class used by assistant, timeline, and AG‑UI events.

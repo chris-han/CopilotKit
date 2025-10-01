@@ -914,6 +914,22 @@ async def deprecated_copilot_endpoint_trailing() -> JSONResponse:
     return await deprecated_copilot_endpoint()
 
 
+@app.get("/ag-ui/dashboard-data")
+async def stream_dashboard_data() -> StreamingResponse:
+    """Stream the dashboard dataset as a server-sent events feed."""
+
+    async def event_stream() -> AsyncIterator[str]:
+        payload = json.dumps(DASHBOARD_CONTEXT)
+        yield f"data: {payload}\n\n"
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    }
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+
 async def _generate_strategic_commentary_markdown() -> str:
     """Run the strategic commentary agent and return markdown output."""
 

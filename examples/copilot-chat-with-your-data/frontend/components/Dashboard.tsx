@@ -13,39 +13,97 @@ import {
   STRATEGIC_COMMENTARY_TAB_EVENT,
   type StrategicCommentaryTabEventDetail,
 } from "../lib/chart-highlighting";
-import { 
-  salesData, 
-  productData, 
-  categoryData, 
-  regionalData,
-  demographicsData,
-  calculateTotalRevenue,
-  calculateTotalProfit,
-  calculateTotalCustomers,
-  calculateConversionRate,
-  calculateAverageOrderValue,
-  calculateProfitMargin
-} from "../data/dashboard-data";
+import { isDashboardDataPayload, type DashboardDataPayload } from "../data/dashboard-data";
 
 export function Dashboard() {
-  // Calculate metrics
-  const totalRevenue = calculateTotalRevenue();
-  const totalProfit = calculateTotalProfit();
-  const totalCustomers = calculateTotalCustomers();
-  const conversionRate = calculateConversionRate();
-  const averageOrderValue = calculateAverageOrderValue();
-  const profitMargin = calculateProfitMargin();
-
   const [strategicCommentary, setStrategicCommentary] = useState<string>("");
   const [commentaryLoading, setCommentaryLoading] = useState<boolean>(false);
   const [commentaryError, setCommentaryError] = useState<string | null>(null);
   const [activeCommentaryTab, setActiveCommentaryTab] = useState<string | undefined>(undefined);
 
-  const strategicCommentaryEndpoint = useMemo(() => {
+  const [dashboardData, setDashboardData] = useState<DashboardDataPayload | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState<boolean>(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  const baseRuntimeUrl = useMemo(() => {
     const runtimeUrl = process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL ?? "http://localhost:8004/ag-ui/run";
-    const baseUrl = runtimeUrl.replace(/\/run\/?$/, "");
-    return `${baseUrl}/action/generateStrategicCommentary`;
+    return runtimeUrl.replace(/\/run\/?$/, "");
   }, []);
+
+  const strategicCommentaryEndpoint = useMemo(
+    () => `${baseRuntimeUrl}/action/generateStrategicCommentary`,
+    [baseRuntimeUrl],
+  );
+
+  const dashboardDataEndpoint = useMemo(
+    () => `${baseRuntimeUrl}/dashboard-data`,
+    [baseRuntimeUrl],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let source: EventSource | null = null;
+
+    const closeSource = () => {
+      if (source) {
+        source.close();
+        source = null;
+      }
+    };
+
+    const initialise = () => {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      setDashboardData(null);
+
+      try {
+        source = new EventSource(dashboardDataEndpoint, { withCredentials: true });
+      } catch {
+        if (!cancelled) {
+          setDashboardError("Unable to load dashboard data.");
+          setDashboardLoading(false);
+        }
+        return;
+      }
+
+      source.onmessage = (event) => {
+        if (cancelled) {
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(event.data);
+          if (!isDashboardDataPayload(parsed)) {
+            throw new Error("Invalid dashboard payload");
+          }
+          setDashboardData(parsed);
+          setDashboardError(null);
+        } catch {
+          setDashboardError("Received malformed dashboard data.");
+        } finally {
+          setDashboardLoading(false);
+          closeSource();
+        }
+      };
+
+      source.onerror = () => {
+        if (cancelled) {
+          return;
+        }
+
+        setDashboardError("Unable to load dashboard data.");
+        setDashboardLoading(false);
+        closeSource();
+      };
+    };
+
+    initialise();
+
+    return () => {
+      cancelled = true;
+      closeSource();
+    };
+  }, [dashboardDataEndpoint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,14 +252,35 @@ export function Dashboard() {
     };
   }, [commentarySections]);
 
-  const keyMetrics = [
-    { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}` },
-    { label: "Total Profit", value: `$${totalProfit.toLocaleString()}` },
-    { label: "Customers", value: totalCustomers.toLocaleString() },
-    { label: "Conversion Rate", value: conversionRate },
-    { label: "Avg Order Value", value: `$${averageOrderValue}` },
-    { label: "Profit Margin", value: profitMargin }
-  ];
+  const salesData = dashboardData?.salesData ?? [];
+  const productData = dashboardData?.productData ?? [];
+  const categoryData = dashboardData?.categoryData ?? [];
+  const regionalData = dashboardData?.regionalData ?? [];
+  const demographicsData = dashboardData?.demographicsData ?? [];
+  const metrics = dashboardData?.metrics ?? null;
+
+  const keyMetrics = useMemo(() => {
+    if (!metrics) {
+      const placeholder = dashboardLoading ? "Loading..." : "N/A";
+      return [
+        { label: "Total Revenue", value: placeholder },
+        { label: "Total Profit", value: placeholder },
+        { label: "Customers", value: placeholder },
+        { label: "Conversion Rate", value: placeholder },
+        { label: "Avg Order Value", value: placeholder },
+        { label: "Profit Margin", value: placeholder },
+      ];
+    }
+
+    return [
+      { label: "Total Revenue", value: `$${metrics.totalRevenue.toLocaleString()}` },
+      { label: "Total Profit", value: `$${metrics.totalProfit.toLocaleString()}` },
+      { label: "Customers", value: metrics.totalCustomers.toLocaleString() },
+      { label: "Conversion Rate", value: metrics.conversionRate },
+      { label: "Avg Order Value", value: `$${metrics.averageOrderValue}` },
+      { label: "Profit Margin", value: metrics.profitMargin },
+    ];
+  }, [metrics, dashboardLoading]);
 
   // Color palettes for different charts
   const colors = {
@@ -214,6 +293,13 @@ export function Dashboard() {
   
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 w-full">
+      {dashboardError ? (
+        <div className="col-span-1 md:col-span-2 lg:col-span-4">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {dashboardError}
+          </div>
+        </div>
+      ) : null}
       {/* Key Metrics */}
       <div className="col-span-1 md:col-span-2 lg:col-span-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

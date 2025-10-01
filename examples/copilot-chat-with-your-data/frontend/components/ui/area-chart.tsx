@@ -107,6 +107,8 @@ export function AreaChart({
           ...descriptor,
           dataIndex: resolvedIndex,
         })
+      } else {
+        chart.dispatchAction({ type: "hideTip" })
       }
     },
     [xValues],
@@ -137,6 +139,18 @@ export function AreaChart({
       window.removeEventListener(CHART_FOCUS_EVENT, handler as EventListener)
     }
   }, [chartId, applyFocus])
+
+  useEffect(() => {
+    if (!chartId) {
+      return
+    }
+    const pending = lastFocusRef.current
+    const chart = chartRef.current
+    if (!pending || !chart || pending.chartId !== chartId) {
+      return
+    }
+    applyFocus(chart, pending)
+  }, [applyFocus, chartId, data])
 
   const option = useMemo<EChartsOption>(() => {
     const gridLeft = showYAxis ? Math.max(yAxisWidth, 45) : 20
@@ -218,6 +232,9 @@ export function AreaChart({
       option={option}
       onChartReady={(instance) => {
         chartRef.current = instance
+        if (typeof window !== "undefined" && chartId) {
+          ;(window as unknown as Record<string, EChartsType | undefined>)[`__chart_${chartId}`] = instance
+        }
         const pending = lastFocusRef.current
         if (pending && pending.chartId === chartId) {
           applyFocus(instance, pending)

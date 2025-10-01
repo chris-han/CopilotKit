@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { EChartsOption } from "echarts"
 import type { EChartsType } from "echarts/core"
 
@@ -47,6 +47,78 @@ export function BarChart({
 }: BarChartProps) {
   const chartRef = useRef<EChartsType | null>(null)
   const lastFocusRef = useRef<ChartFocusEventDetail | null>(null)
+  const [highlightTheme, setHighlightTheme] = useState({
+    borderColor: "#111827",
+    shadowColor: "rgba(17, 24, 39, 0.2)",
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const parseToRgba = (input: string, alpha: number) => {
+      const color = input.trim()
+      if (!color) {
+        return null
+      }
+
+      if (color.startsWith("#")) {
+        const hex = color.replace("#", "")
+        const normalized =
+          hex.length === 3
+            ? hex
+                .split("")
+                .map((char) => char + char)
+                .join("")
+            : hex
+        if (normalized.length === 6) {
+          const r = Number.parseInt(normalized.slice(0, 2), 16)
+          const g = Number.parseInt(normalized.slice(2, 4), 16)
+          const b = Number.parseInt(normalized.slice(4, 6), 16)
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
+      }
+
+      if (color.startsWith("rgb")) {
+        const matches = color.match(/rgba?\(([^)]+)\)/i)
+        if (!matches) {
+          return null
+        }
+        const [r, g, b] = matches[1]
+          .split(",")
+          .map((part) => Number(part.trim()))
+        if ([r, g, b].some((value) => Number.isNaN(value))) {
+          return null
+        }
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`
+      }
+
+      return null
+    }
+
+    const style = window.getComputedStyle(document.documentElement)
+    const candidateVars = ["--ring", "--primary", "--copilot-kit-primary-color"]
+    const candidateValues = candidateVars
+      .map((variable) => style.getPropertyValue(variable).trim())
+      .filter((value) => value.length > 0)
+
+    const parsedBorder = candidateValues
+      .map((value) => parseToRgba(value, 1))
+      .find((converted) => converted !== null)
+
+    const resolvedBorder = parsedBorder ?? candidateValues[0] ?? "#111827"
+
+    const shadowColor =
+      candidateValues
+        .map((value) => parseToRgba(value, 0.35))
+        .find((converted) => converted !== null) ?? "rgba(17, 24, 39, 0.2)"
+
+    setHighlightTheme({
+      borderColor: resolvedBorder,
+      shadowColor,
+    })
+  }, [])
 
   const applyFocus = (chart: EChartsType, detail: ChartFocusEventDetail) => {
     lastFocusRef.current = detail
@@ -74,6 +146,7 @@ export function BarChart({
 
     const target = detail.target
     if (!target) {
+      chart.dispatchAction({ type: "hideTip" })
       return
     }
 
@@ -81,14 +154,41 @@ export function BarChart({
       type: "highlight",
       ...descriptor,
     }
+    const axisValues = data.map((item) => String(item[index]))
+    let resolvedIndex: number | undefined
     if (typeof target.dataIndex === "number") {
       payload.dataIndex = target.dataIndex
+      resolvedIndex = target.dataIndex
     }
     if (typeof target.dataName === "string") {
       payload.name = target.dataName
+      if (resolvedIndex === undefined) {
+        const lookupIndex = axisValues.indexOf(target.dataName)
+        if (lookupIndex !== -1) {
+          resolvedIndex = lookupIndex
+        }
+      }
+    }
+    if (resolvedIndex === undefined && typeof target.name === "string") {
+      const lookupIndex = axisValues.indexOf(target.name)
+      if (lookupIndex !== -1) {
+        resolvedIndex = lookupIndex
+        payload.dataIndex = lookupIndex
+        payload.name = axisValues[lookupIndex]
+      }
     }
 
     chart.dispatchAction(payload)
+
+    if (resolvedIndex !== undefined) {
+      chart.dispatchAction({
+        type: "showTip",
+        ...descriptor,
+        dataIndex: resolvedIndex,
+      })
+    } else {
+      chart.dispatchAction({ type: "hideTip" })
+    }
   }
 
   useEffect(() => {
@@ -208,7 +308,21 @@ export function BarChart({
       series: categories.map((category, idx) => ({
         name: category,
         type: "bar",
-        emphasis: { focus: "series" },
+        emphasis: {
+          focus: "self",
+          itemStyle: {
+            opacity: 1,
+            borderColor: highlightTheme.borderColor,
+            borderWidth: 2,
+            shadowBlur: 16,
+            shadowColor: highlightTheme.shadowColor,
+          },
+        },
+        blur: {
+          itemStyle: {
+            opacity: 0.2,
+          },
+        },
         barMaxWidth: isHorizontal ? 32 : 24,
         itemStyle: {
           color: colors[idx % colors.length],
@@ -218,7 +332,7 @@ export function BarChart({
         data: data.map((item) => Number(item[category] ?? 0)),
       })),
     }
-  }, [categories, colors, data, index, layout, showGrid, showLegend, showXAxis, showYAxis, valueFormatter, yAxisWidth])
+  }, [categories, colors, data, highlightTheme, index, layout, showGrid, showLegend, showXAxis, showYAxis, valueFormatter, yAxisWidth])
 
   return (
     <ReactEChartsCore
@@ -226,6 +340,9 @@ export function BarChart({
       option={option}
       onChartReady={(instance) => {
         chartRef.current = instance
+        if (typeof window !== "undefined" && chartId) {
+          ;(window as unknown as Record<string, EChartsType | undefined>)[`__chart_${chartId}`] = instance
+        }
         const pending = lastFocusRef.current
         if (pending && pending.chartId === chartId) {
           applyFocus(instance, pending)

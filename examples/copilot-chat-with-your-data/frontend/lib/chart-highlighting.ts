@@ -1,3 +1,5 @@
+import type { EChartsType } from "echarts/core";
+
 const HIGHLIGHT_CLASS = "chart-card-highlight";
 const highlights = new Map<HTMLElement, number>();
 const activeChartFocus = new Map<string, ChartFocusSpec | null>();
@@ -74,12 +76,152 @@ function isSameFocus(a: ChartFocusSpec | null | undefined, b: ChartFocusSpec | n
   );
 }
 
+function getChartInstance(chartId: string): EChartsType | undefined {
+  if (typeof window === "undefined" || !chartId) {
+    return undefined;
+  }
+  const key = `__chart_${chartId}`;
+  return (window as unknown as Record<string, EChartsType | undefined>)[key];
+}
+
+function resolveSeriesDescriptor(target: ChartFocusSpec | null | undefined) {
+  const descriptor: { seriesIndex?: number; seriesId?: string; seriesName?: string } = {};
+  if (target) {
+    if (typeof target.seriesId === "string") {
+      descriptor.seriesId = target.seriesId;
+    }
+    if (typeof target.seriesName === "string") {
+      descriptor.seriesName = target.seriesName;
+    }
+    if (typeof target.seriesIndex === "number") {
+      descriptor.seriesIndex = target.seriesIndex;
+    }
+  }
+  if (!("seriesIndex" in descriptor) && !descriptor.seriesId && !descriptor.seriesName) {
+    descriptor.seriesIndex = 0;
+  }
+  return descriptor;
+}
+
+function getSeriesModel(chart: EChartsType, target: ChartFocusSpec | null | undefined) {
+  const model = (chart as unknown as { getModel?: () => any }).getModel?.();
+  if (!model) {
+    return undefined;
+  }
+
+  if (target?.seriesId) {
+    const byId = model.getSeriesById?.(target.seriesId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  if (target?.seriesName) {
+    const byName = model.getSeriesByName?.(target.seriesName);
+    if (Array.isArray(byName)) {
+      if (byName.length > 0) {
+        return byName[0];
+      }
+    } else if (byName) {
+      return byName;
+    }
+  }
+
+  if (typeof target?.seriesIndex === "number") {
+    const byIndex = model.getSeriesByIndex?.(target.seriesIndex);
+    if (byIndex) {
+      return byIndex;
+    }
+  }
+
+  return model.getSeriesByIndex?.(0);
+}
+
+function resolveDataIndex(chart: EChartsType, target: ChartFocusSpec | null | undefined) {
+  if (!target) {
+    return undefined;
+  }
+  if (typeof target.dataIndex === "number") {
+    return target.dataIndex;
+  }
+  if (typeof target.dataName !== "string" || !target.dataName) {
+    return undefined;
+  }
+
+  const seriesModel = getSeriesModel(chart, target) as { getData?: () => any } | undefined;
+  const dataList = seriesModel?.getData?.();
+  if (!dataList) {
+    return undefined;
+  }
+
+  const dataAny = dataList as any;
+  if (typeof dataAny.indexOfName === "function") {
+    const index = dataAny.indexOfName(target.dataName);
+    if (typeof index === "number" && index >= 0) {
+      return index;
+    }
+  }
+
+  const count = typeof dataAny.count === "function" ? dataAny.count() : 0;
+  if (typeof dataAny.getName === "function") {
+    for (let i = 0; i < count; i++) {
+      if (dataAny.getName(i) === target.dataName) {
+        return i;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function applyChartTooltip(chartId: string, target: ChartFocusSpec | null) {
+  const chart = getChartInstance(chartId);
+  if (!chart) {
+    return;
+  }
+
+  const descriptor = resolveSeriesDescriptor(target);
+  const seriesModel = getSeriesModel(chart, target) as { seriesIndex?: number } | undefined;
+  if (seriesModel && typeof seriesModel.seriesIndex === "number") {
+    descriptor.seriesIndex = seriesModel.seriesIndex;
+  }
+
+  chart.dispatchAction({ type: "downplay", ...descriptor });
+
+  if (!target) {
+    chart.dispatchAction({ type: "hideTip" });
+    return;
+  }
+
+  const highlightPayload: Record<string, string | number> = {
+    type: "highlight",
+    ...descriptor,
+  };
+  if (typeof target.dataName === "string") {
+    highlightPayload.name = target.dataName;
+  }
+
+  const resolvedIndex = resolveDataIndex(chart, target);
+  if (typeof resolvedIndex === "number") {
+    highlightPayload.dataIndex = resolvedIndex;
+  }
+
+  chart.dispatchAction(highlightPayload);
+
+  if (typeof resolvedIndex === "number") {
+    chart.dispatchAction({ type: "showTip", ...descriptor, dataIndex: resolvedIndex });
+  } else if (typeof target.dataName === "string" && target.dataName) {
+    chart.dispatchAction({ type: "showTip", ...descriptor, name: target.dataName });
+  }
+}
+
 function dispatchChartFocus(chartId: string, target: ChartFocusSpec | null) {
   if (typeof window === "undefined") {
     return;
   }
   const detail: ChartFocusEventDetail = { chartId, target };
   window.dispatchEvent(new CustomEvent(CHART_FOCUS_EVENT, { detail }));
+  applyChartTooltip(chartId, target);
 }
 
 function escapeChartId(id: string): string {
@@ -186,5 +328,11 @@ export function applyHighlights(chartIds: string[], options?: HighlightOptions) 
     } else if (activeChartFocus.has(chartId)) {
       activeChartFocus.delete(chartId);
     }
+  });
+}
+
+if (typeof window !== "undefined") {
+  Object.assign(window as Record<string, unknown>, {
+    __applyHighlights: applyHighlights,
   });
 }

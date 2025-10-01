@@ -157,5 +157,29 @@ Introduce a guided "data story" experience that activates from the Copilot chat 
 - `components/ag-ui/AgUiProvider.tsx` now owns the data story state and exposes it through `hooks/useDataStory.ts`. Custom events update the state, and the provider shares highlight registries so review buttons can replay spotlight animations.
 - UI components `components/data-story/DataStorySuggestion.tsx` and `components/data-story/DataStoryTimeline.tsx` render the CTA and vertical timeline. Each timeline block includes a **Review** button wired to `replayHighlight(stepId)`.
 - `components/data-story/DataStoryTimeline.tsx` also embeds an `<audio>` player when narration is available. The backend’s `/ag-ui/action/generateDataStoryAudio` endpoint synthesizes speech using Azure `gpt-4o-mini-tts` (Alloy voice, MP3) with professional analyst instructions.
+- Strategic commentary steps now carry an `audioLeadIn` per section: `data_story_generator.py` tags the first bullet in Risks/Opportunities/Recommendations with cues such as “On risks…” or “Here are my recommendations…”, and `_story_steps_to_audio_segments` prepends that phrase before passing the script plus shared instructions to TTS. This keeps narration aligned with the active tab without changing the markdown payload rendered in the dashboard.
+- Prompt flow overview:
+
+```mermaid
+sequenceDiagram
+    participant UI as Dashboard
+    participant Runtime as FastAPI Runtime
+    participant Agent as Strategic Commentary Agent
+    participant Generator as data_story_generator.py
+    participant Audio as _story_steps_to_audio_segments
+    participant TTS as Azure TTS
+
+    UI->>Runtime: POST /ag-ui/action/generateStrategicCommentary
+    Runtime->>Agent: strategic_commentary_prompt + dashboard context
+    Agent-->>Runtime: Markdown (Risks / Opportunities / Recommendations)
+    Runtime->>Generator: generate_data_story_steps(markdown)
+    Generator-->>Runtime: Steps + talkingPoints (with audioLeadIn)
+    UI->>Runtime: POST /ag-ui/action/generateDataStoryAudio (steps)
+    Runtime->>Audio: Build narration segments
+    Audio->>Audio: Prepend audioLeadIn to first bullet per tab
+    Audio->>TTS: narration + DATA_STORY_AUDIO_INSTRUCTIONS
+    TTS-->>Runtime: MP3 segments
+    Runtime-->>UI: Audio response
+```
 - Audio narration is gated by the backend `DATA_STORY_AUDIO_ENABLED` flag (default `true`). When enabled, timeline progress syncs to playback so chart highlights advance as the narration moves through each section. The backend uses Azure TTS deployment `gpt-4o-mini-tts` and API version `2025-03-01-preview` (configurable via `AZURE_OPENAI_TTS_DEPLOYMENT` / `AZURE_OPENAI_TTS_API_VERSION`). A matching `NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED` flag can be exported if the UI should disable audio proactively.
 - Suggestion and timeline elements render alongside chat messages in `components/ag-ui/AgUiSidebar.tsx`; `remark-gfm` is used to display markdown tables inside assistant replies and timeline steps.

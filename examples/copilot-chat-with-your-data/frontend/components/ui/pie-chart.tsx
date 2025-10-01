@@ -51,8 +51,80 @@ export function PieChart({
   const centerPositionRef = useRef<{ left: number; top: number } | null>(null)
   const [isChartReady, setIsChartReady] = useState(false)
   const [centerOverride, setCenterOverride] = useState<[number, number] | null>(null)
+  const [highlightTheme, setHighlightTheme] = useState({
+    borderColor: "#111827",
+    shadowColor: "rgba(17, 24, 39, 0.2)",
+  })
 
   const centerGraphicId = useMemo(() => (chartId ? `${chartId}-center-text` : "pie-center-text"), [chartId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const parseToRgba = (input: string, alpha: number) => {
+      const color = input.trim()
+      if (!color) {
+        return null
+      }
+
+      if (color.startsWith("#")) {
+        const hex = color.replace("#", "")
+        const normalized =
+          hex.length === 3
+            ? hex
+                .split("")
+                .map((char) => char + char)
+                .join("")
+            : hex
+        if (normalized.length === 6) {
+          const r = Number.parseInt(normalized.slice(0, 2), 16)
+          const g = Number.parseInt(normalized.slice(2, 4), 16)
+          const b = Number.parseInt(normalized.slice(4, 6), 16)
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
+      }
+
+      if (color.startsWith("rgb")) {
+        const matches = color.match(/rgba?\(([^)]+)\)/i)
+        if (!matches) {
+          return null
+        }
+        const [r, g, b] = matches[1]
+          .split(",")
+          .map((part) => Number(part.trim()))
+        if ([r, g, b].some((value) => Number.isNaN(value))) {
+          return null
+        }
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`
+      }
+
+      return null
+    }
+
+    const style = window.getComputedStyle(document.documentElement)
+    const candidateVars = ["--ring", "--primary", "--copilot-kit-primary-color"]
+    const candidateValues = candidateVars
+      .map((variable) => style.getPropertyValue(variable).trim())
+      .filter((value) => value.length > 0)
+
+    const parsedBorder = candidateValues
+      .map((value) => parseToRgba(value, 1))
+      .find((converted) => converted !== null)
+
+    const resolvedBorder = parsedBorder ?? candidateValues[0] ?? "#111827"
+
+    const shadowColor =
+      candidateValues
+        .map((value) => parseToRgba(value, 0.35))
+        .find((converted) => converted !== null) ?? "rgba(17, 24, 39, 0.2)"
+
+    setHighlightTheme({
+      borderColor: resolvedBorder,
+      shadowColor,
+    })
+  }, [])
 
   // Keep the optional center label aligned with the pie's computed center.
   const updateCenterGraphic = useCallback(() => {
@@ -119,6 +191,7 @@ export function PieChart({
 
     const target = detail.target
     if (!target) {
+      chart.dispatchAction({ type: "hideTip" })
       return
     }
 
@@ -126,14 +199,41 @@ export function PieChart({
       type: "highlight",
       ...descriptor,
     }
+    const sliceNames = data.map((item) => String(item[index]))
+    let resolvedIndex: number | undefined
     if (typeof target.dataIndex === "number") {
       highlightPayload.dataIndex = target.dataIndex
+      resolvedIndex = target.dataIndex
     }
     if (typeof target.dataName === "string") {
       highlightPayload.name = target.dataName
+      if (resolvedIndex === undefined) {
+        const lookupIndex = sliceNames.indexOf(target.dataName)
+        if (lookupIndex !== -1) {
+          resolvedIndex = lookupIndex
+        }
+      }
+    }
+    if (resolvedIndex === undefined && typeof target.name === "string") {
+      const lookupIndex = sliceNames.indexOf(target.name)
+      if (lookupIndex !== -1) {
+        resolvedIndex = lookupIndex
+        highlightPayload.dataIndex = lookupIndex
+        highlightPayload.name = sliceNames[lookupIndex]
+      }
     }
 
     chart.dispatchAction(highlightPayload)
+
+    if (resolvedIndex !== undefined) {
+      chart.dispatchAction({
+        type: "showTip",
+        ...descriptor,
+        dataIndex: resolvedIndex,
+      })
+    } else {
+      chart.dispatchAction({ type: "hideTip" })
+    }
   }
 
   useEffect(() => {
@@ -299,6 +399,30 @@ export function PieChart({
             borderColor: "#ffffff",
             borderWidth: 2,
           },
+          emphasis: {
+            focus: "self",
+            scale: true,
+            scaleSize: 6,
+            itemStyle: {
+              borderColor: highlightTheme.borderColor,
+              borderWidth: 3,
+              shadowBlur: 24,
+              shadowOffsetX: 0,
+              shadowOffsetY: 8,
+              shadowColor: highlightTheme.shadowColor,
+            },
+            label: showLabel
+              ? {
+                  color: highlightTheme.borderColor,
+                  fontWeight: 600,
+                }
+              : undefined,
+          },
+          blur: {
+            itemStyle: {
+              opacity: 0.25,
+            },
+          },
           label: showLabel
             ? {
                 show: true,
@@ -332,6 +456,7 @@ export function PieChart({
     innerRadius,
     outerRadius,
     paddingAngle,
+    highlightTheme,
     showLabel,
     showLegend,
     valueFormatter,

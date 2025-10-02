@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   forwardRef,
   useImperativeHandle,
@@ -71,12 +72,28 @@ export const Header = forwardRef<HTMLElement, HeaderProps>(function Header(
       )}
       {...props}
     >
-      <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-4 px-4 py-4 sm:items-center sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-3 px-4 py-3 sm:items-center sm:px-6 lg:px-8">
         <div className="flex flex-col">
-          <h1 className="text-2xl font-medium text-foreground">Data Dashboard</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Interactive data visualization with AI assistance
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-medium text-foreground sm:text-2xl">
+              Data Dashboard
+            </h1>
+            <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+              <ol className="flex items-center gap-2">
+                <li>
+                  <Link href="/" className="hover:text-foreground">
+                    Home
+                  </Link>
+                </li>
+                <li aria-hidden="true" className="text-muted-foreground">
+                  /
+                </li>
+                <li aria-current="page" className="text-foreground">
+                  Data Dashboard
+                </li>
+              </ol>
+            </nav>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />

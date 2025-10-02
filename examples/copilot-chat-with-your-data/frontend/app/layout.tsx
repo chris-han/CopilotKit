@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { AgUiProvider } from "../components/ag-ui/AgUiProvider";
+import { AppShell } from "../components/AppShell";
 
 const sansFont = Inter({
   variable: "--font-geist-sans",
@@ -30,7 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${sansFont.variable} ${monoFont.variable} antialiased`}>
         <AgUiProvider runtimeUrl={runtimeUrl}>
-          {children}
+          <AppShell>{children}</AppShell>
         </AgUiProvider>
       </body>
     </html>

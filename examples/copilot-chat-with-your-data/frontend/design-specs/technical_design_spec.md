@@ -26,6 +26,8 @@ This consolidated specification captures the system design, architecture, and im
 - **AssistantMessage (`components/AssistantMessage.tsx`)** – Markdown renderer converting `highlight://` links into buttons that call `highlightCharts`; applies shadcn styling, streaming indications, and delegates to `normalizeMarkdownTables` so pipe-delimited model output is auto-upgraded into valid tables.
 - **Markdown Helpers (`lib/markdown.ts`)** – Normalises tables by inserting missing header separator rows (for example `| --- |`) and trimming stray whitespace so `react-markdown` emits structured `<table>` elements instead of paragraph fallbacks.
 - **Data Story Components (`components/data-story/*`)** – Timeline UI controlling audio playback, step highlighting, and review controls.
+- **AppShell (`components/AppShell.tsx`)** – Client layout wrapper rendered by `app/layout.tsx`; mounts the docked navigation sheet, handles responsive sidebar docking, toggles, and slots the active page into the shared chrome alongside `Header`, `Footer`, and `AgUiSidebar`.
+- **NavigationMenu (`components/NavigationMenu.tsx`)** – Left-aligned shadcn Sheet (modal disabled) with ABI logo link, navigation links, and footer copy; hidden below `md` breakpoint and exposes static width (18rem).
 - **Dashboard (`components/Dashboard.tsx`)** – KPI cards, chart panels, and strategic commentary card organised in shadcn Tabs (Risks/Opportunities/Recommendations); fetches commentary directly from the backend action with loading/error states.
 - **Highlight Helper (`lib/chart-highlighting.ts`)** – DOM utility applying/removing `chart-card-highlight` class used by assistant, timeline, and AG‑UI events.
 - **UI Primitives (`components/ui/tabs.tsx`, `components/ui/sheet.tsx`)** – shadcn-style wrappers around Radix primitives for commentary tabs and mobile sheet presentation.
@@ -35,6 +37,14 @@ This consolidated specification captures the system design, architecture, and im
 ### Frontend
 ```mermaid
 classDiagram
+    class AppShell {
+        file: components/AppShell.tsx
+        +wrap(children)
+    }
+    class NavigationMenu {
+        file: components/NavigationMenu.tsx
+        +render()
+    }
     class AgUiProvider {
         file: components/ag-ui/AgUiProvider.tsx
         +runtimeUrl
@@ -62,6 +72,10 @@ classDiagram
         file: lib/chart-highlighting.ts
         +applyHighlights()
     }
+    AgUiProvider --> AppShell : provides context
+    AppShell --> NavigationMenu : renders
+    AppShell --> AgUiSidebar : renders
+    AppShell --> Dashboard : main slot (page content)
     AgUiProvider --> AgUiSidebar : context value
     AgUiSidebar --> AssistantMessage : render delegate
     AgUiSidebar --> DataStoryTimeline : timeline props

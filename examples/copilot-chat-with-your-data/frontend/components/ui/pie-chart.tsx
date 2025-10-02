@@ -288,12 +288,14 @@ export function PieChart({
 
     chart.on("rendered", handleUpdate)
     chart.on("legendselectchanged", handleUpdate)
-    chart.getZr().on("resize", handleUpdate)
+    const zr = typeof chart.getZr === "function" ? chart.getZr() : null
+    zr?.on?.("resize", handleUpdate)
 
     return () => {
       chart.off("rendered", handleUpdate)
       chart.off("legendselectchanged", handleUpdate)
-      chart.getZr().off("resize", handleUpdate)
+      const cleanupZr = typeof chart.getZr === "function" ? chart.getZr() : null
+      cleanupZr?.off?.("resize", handleUpdate)
     }
   }, [centerText, isChartReady, updateCenterGraphic])
 

@@ -2,11 +2,41 @@
 
 ## Executive Summary
 
-This implementation plan leverages Microsoft's LIDA (Automatic Generation of Visualizations and Infographics using Large Language Models) as the foundation for a context-aware, agentic data visualization backend. We will enhance LIDA's proven data understanding and goal generation capabilities while replacing its static chart generation with ECharts MCP Server integration and adding enterprise-grade features like persona-aware selection, memory persistence, and semantic layer integration.
+This implementation plan enhances the existing AG-UI (Agentic UI) backend with Microsoft's LIDA (Automatic Generation of Visualizations and Infographics using Large Language Models) capabilities. We will integrate LIDA's proven data understanding and goal generation with the current AG-UI agent system, leveraging the existing sophisticated ECharts components and chart highlighting system while adding enterprise-grade features like FOCUS v1.2 compliance, persona-aware selection, and semantic layer integration.
 
-## Phase 1: Core Infrastructure Setup
+## 🏗️ Integration with Existing Architecture
 
-### 1.1 Backend Foundation Migration (1-2 weeks)
+### Current System Analysis
+
+The existing project already has a sophisticated foundation that we will enhance rather than replace:
+
+**Backend Infrastructure:**
+- **AG-UI Protocol**: FastAPI backend with streaming SSE support via `/ag-ui/run` endpoint
+- **Pydantic AI Agents**: `analysis_agent` with Azure OpenAI integration for intelligent analysis
+- **Data Story Generation**: Sophisticated data story creation with audio narration and TTS
+- **Chart Highlighting System**: Advanced chart focus and highlighting capabilities
+- **Dashboard Context Management**: Structured data management via `dashboard_data.py`
+
+**Frontend Infrastructure:**
+- **AG-UI Provider**: React context for agent communication with streaming support
+- **Professional ECharts Components**: Pre-built `bar-chart.tsx`, `pie-chart.tsx` with advanced theming
+- **Chart Highlighting System**: Interactive chart focus with `applyHighlights()` and focus targets
+- **Data Story Visualization**: Audio-enhanced data stories with timeline progression
+- **Tremor React Integration**: Additional data visualization component library
+
+### LIDA Enhancement Strategy
+
+Instead of replacing the existing system, we will:
+
+1. **Enhance AG-UI Agents**: Integrate LIDA intelligence with existing `analysis_agent`
+2. **Extend Chart System**: Add LIDA-powered recommendations to existing chart highlighting
+3. **Augment Data Stories**: Enhance existing data story generation with LIDA semantic understanding
+4. **Leverage Existing Components**: Extend current ECharts components with LIDA intelligence
+5. **Integrate with Current Workflows**: Use existing `/ag-ui/action/*` pattern for new capabilities
+
+## Sequential Implementation Tasks
+
+### Task 1: Backend Foundation Migration
 - [ ] **Adapt LIDA Manager class** to integrate with your FastAPI backend
   - Fork LIDA's core manager functionality
   - Replace synchronous operations with async/await patterns
@@ -37,7 +67,7 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Add context injection for business domain knowledge
   - Implement cost optimization and prompt caching
 
-### 1.2 ECharts Integration Layer (1 week)
+### Task 2: ECharts Integration Layer
 - [ ] **Create ECharts MCP adapter** to replace LIDA's code generation
   ```python
   class EChartsLidaAdapter:
@@ -75,7 +105,7 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Create export functionality (PNG, SVG, PDF)
   - Enable chart editing and customization
 
-### 1.3 Semantic Layer Integration (1 week)
+### Task 3: Semantic Layer Integration
 - [ ] **Connect LIDA's data summarization** to your dbt MCP server
   - Replace LIDA's basic CSV analysis with dbt metric queries
   - Implement semantic model awareness in data summarization
@@ -100,9 +130,7 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Add domain-specific knowledge injection
   - Implement entity-aware visualization suggestions
 
-## Phase 2: Architecture Enhancement
-
-### 2.1 Persona-Aware Visualization Selection (2 weeks)
+### Task 4: Persona-Aware Visualization Selection
 - [ ] **Extend LIDA's persona parameter** with your detailed persona profiles
   ```python
   class PersonaAwareManager(Manager):
@@ -134,7 +162,7 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Add accessibility compliance checking
   - Generate simplification recommendations
 
-### 2.2 Memory and Context Integration (1-2 weeks)
+### Task 5: Memory and Context Integration
 - [ ] **Replace LIDA's stateless design** with Mem0 context persistence
   ```python
   class ContextAwareLidaManager:
@@ -168,7 +196,7 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Create evaluation metrics and dashboards
   - Add automated model retraining triggers
 
-### 2.3 CopilotKit Frontend Integration (1 week)
+### Task 6: Frontend Integration with AG-UI System
 - [ ] **Adapt LIDA's web API** to work with CopilotKit actions
   ```typescript
   useCopilotAction({
@@ -205,36 +233,23 @@ This implementation plan leverages Microsoft's LIDA (Automatic Generation of Vis
   - Implement chart customization controls
   - Create export and sharing features
 
-## Phase 3: FinOps Solution Implementation - Two-Phase Approach
+### Task 7: FOCUS Sample Data Integration
 
-### Overview: Phased FinOps Implementation Strategy
+**Dependencies**: Tasks 1-6 must be completed first
+**Scope**: Use sample CSV datasets from FOCUS specification to build core analytics
 
-This implementation follows a two-phase approach to minimize risk and ensure rapid value delivery:
-
-**Phase 3A (6-8 weeks)**: FOCUS CSV Integration & Core Analytics
-- Use sample CSV datasets from FOCUS specification
-- Build core LIDA-ECharts visualization capabilities
-- Implement FOCUS v1.2 compliant analytics
-- Deliver working FinOps dashboard with standard datasets
-
-**Phase 3B (8-10 weeks)**: ClickHouse Integration & Production Deployment
-- Add ClickHouse MCP integration
-- Implement data migration and mapping UI
-- Deploy production-ready solution
-- Enable real-time data ingestion
-
-### Complete Two-Phase Architecture Flow
+### Implementation Architecture Flow
 
 ```mermaid
 graph TB
-    subgraph "Phase 3A: CSV Integration (6-8 weeks)"
+    subgraph "FOCUS CSV Integration (Tasks 7-10)"
         A1[FOCUS Sample CSVs] --> B1[CSV Loader]
         B1 --> C1[LIDA Enhanced]
         C1 --> D1[ECharts MCP]
         D1 --> E1[FinOps Dashboard]
     end
 
-    subgraph "Phase 3B: ClickHouse Integration (8-10 weeks)"
+    subgraph "ClickHouse Production Integration (Tasks 11-14)"
         A2[ClickHouse dbo/workloads] --> B2[MCP Discovery]
         B2 --> C2[React Flow Mapping]
         C2 --> D2[dbt Transformations]
@@ -265,9 +280,6 @@ graph TB
 
 ---
 
-## Phase 3A: FOCUS CSV Integration & Core Analytics (6-8 weeks)
-
-### 3A.1 FOCUS Sample Data Integration (1-2 weeks)
 - [ ] **Download and analyze FOCUS specification sample datasets**
   ```python
   class FocusCsvDataLoader:
@@ -345,7 +357,7 @@ graph TB
   - Add data preview and exploration capabilities
   - Enable dataset comparison and benchmarking
 
-### 3A.2 Enhanced LIDA Integration with FOCUS Data (2-3 weeks)
+### Task 8: Enhanced LIDA Integration with FOCUS Data
 - [ ] **Extend LIDA's data summarization for FOCUS datasets**
   ```python
   class FocusLidaDataSummarizer(DataSummarizer):
@@ -420,7 +432,7 @@ graph TB
   - Create cost efficiency metrics
   - Build anomaly detection algorithms
 
-### 3A.3 ECharts Visualization for FinOps Analytics (2-3 weeks)
+### Task 9: ECharts Visualization for FinOps Analytics
 - [ ] **Create FinOps-specific ECharts visualization templates**
   ```typescript
   class FinOpsEChartsTemplates {
@@ -507,7 +519,7 @@ graph TB
   - Cross-account cost comparison
   - Commitment discount analysis flows
 
-### 3A.4 FinOps Analytics Web Application (2 weeks)
+### Task 10: FinOps Analytics Web Application
 - [ ] **Build sample dataset selection interface**
   ```typescript
   // components/SampleDatasetSelector.tsx
@@ -576,34 +588,38 @@ graph TB
   - Data quality assessment display
   - Sample data preview capabilities
 
-### Phase 3A: Detailed Interaction Flow
+### Phase 3A: Enhanced AG-UI Interaction Flow
 
 ```mermaid
 sequenceDiagram
     participant User as User
-    participant Frontend as React Frontend
-    participant LIDA as Enhanced LIDA Manager
-    participant CSVLoader as FOCUS CSV Loader
-    participant ECharts as ECharts MCP
+    participant AgUI as AG-UI Provider
+    participant Backend as FastAPI Backend
+    participant LIDA as LIDA-Enhanced Agent
+    participant FocusData as FOCUS Data Loader
+    participant Charts as Enhanced Chart System
     participant Mem0 as Mem0 Context Store
 
-    User->>Frontend: Request FinOps analysis
-    Frontend->>CSVLoader: Load FOCUS sample dataset
-    CSVLoader->>CSVLoader: Validate FOCUS v1.2 compliance
-    CSVLoader->>LIDA: Provide FOCUS-compliant data
-    LIDA->>LIDA: Generate data summary & FinOps goals
-    LIDA->>ECharts: Request visualization with persona context
-    ECharts->>Frontend: Return ECharts configuration
-    Frontend->>User: Display interactive FinOps dashboard
-    User->>Frontend: Provide feedback/drill-down
-    Frontend->>Mem0: Store user context & preferences
+    User->>AgUI: Request FinOps analysis via chat
+    AgUI->>Backend: Send message via /ag-ui/run
+    Backend->>LIDA: Analyze with FOCUS context
+    LIDA->>FocusData: Load FOCUS sample dataset
+    FocusData->>LIDA: Return FOCUS-compliant data
+    LIDA->>LIDA: Generate semantic summary & goals
+    LIDA->>Backend: Return enhanced analysis with chart recommendations
+    Backend->>AgUI: Stream response with chart highlights
+    AgUI->>Charts: Apply chart highlighting with LIDA context
+    Charts->>User: Display enhanced FinOps dashboard
+    User->>AgUI: Provide feedback/drill-down
+    AgUI->>Mem0: Store interaction context & preferences
 ```
 
 ---
 
-## Phase 3B: ClickHouse Integration & Production Deployment (8-10 weeks)
+### Task 11: ClickHouse MCP Discovery and Analysis
 
-### 3B.1 ClickHouse MCP Discovery and Analysis (2-3 weeks)
+**Dependencies**: Tasks 7-10 must be completed first
+**Scope**: Production database integration with discovery and mapping
 - [ ] **Implement ClickHouse MCP integration for database discovery**
   ```python
   class ClickHouseMCPDiscoveryService:
@@ -667,7 +683,7 @@ sequenceDiagram
   - Add data pattern recognition for field classification
   - Generate confidence scores for mapping suggestions
 
-### 3.2 React Flow-Based Mapping Interface (3-4 weeks)
+### Task 12: React Flow-Based Mapping Interface
 - [ ] **Develop React Flow drag-and-drop mapping UI**
   ```typescript
   // components/DataMigrationFlow.tsx
@@ -778,12 +794,12 @@ sequenceDiagram
   ```
 
 - [ ] **Create data lineage visualization components**
-  - Build lineage trace from source tables to FOCUS model
+  - Build lineage trace from source tables to FOCUS model to LIDA model
   - Add transformation step visualization
   - Implement data flow impact analysis
   - Create dependency mapping visualization
 
-### 3.3 dbt Backend Integration for Data Lineage (2-3 weeks)
+### Task 13: dbt Backend Integration for Data Lineage
 - [ ] **Sync mapping configurations with dbt semantic layer**
   ```python
   class DbtMappingSyncService:
@@ -845,7 +861,7 @@ sequenceDiagram
   - Build mart models for FOCUS v1.2 compliance
   - Auto-generate metric definitions and tests
 
-### 3.4 Migration Validation and Testing (2 weeks)
+### Task 14: Migration Validation and Testing
 - [ ] **Implement comprehensive migration validation**
   ```python
   class MigrationValidator:
@@ -931,9 +947,7 @@ sequenceDiagram
 
 ---
 
-## Phase 4: Domain-Specific Customization
-
-### 4.1 FinOps Domain Template (2-3 weeks)
+### Task 15: FinOps Domain Template Enhancement
 - [ ] **Extend LIDA's data summarization** with FinOps-specific entity recognition
   ```python
   class FocusCompliantFinOpsDataSummarizer(DataSummarizer):
@@ -967,7 +981,7 @@ sequenceDiagram
   - Implement waste detection using service_category groupings
   - Add commitment discount optimization using FOCUS discount fields
 
-### 3.2 Advanced Analytics Features (2 weeks)
+### Task 16: Advanced Analytics Features
 - [ ] **Enhance LIDA's basic statistical summaries** with your advanced metrics
   - Add time-series analysis capabilities
   - Implement statistical significance testing
@@ -992,7 +1006,7 @@ sequenceDiagram
   - Create control chart and SPC analysis
   - Add root cause analysis suggestions
 
-### 3.3 Visualization Intelligence (2 weeks)
+### Task 17: Visualization Intelligence Enhancement
 - [ ] **Replace LIDA's simple chart evaluation** with your comprehensive scoring
   ```python
   class EnhancedVisualizationEvaluator:
@@ -1025,9 +1039,7 @@ sequenceDiagram
   - Create misleading visualization detection
   - Add ethical visualization guidelines
 
-## Phase 4: Production Features
-
-### 4.1 Scalability Enhancements (1-2 weeks)
+### Task 18: Scalability Enhancements
 - [ ] **Replace LIDA's synchronous processing** with async/await patterns
   ```python
   class AsyncLidaManager:
@@ -1058,7 +1070,7 @@ sequenceDiagram
   - Create batch processing for multiple requests
   - Implement prompt template optimization
 
-### 4.2 Monitoring and Observability (1 week)
+### Task 19: Monitoring and Observability
 - [ ] **Implement performance metrics** for visualization generation time
   - Add Prometheus metrics collection
   - Create Grafana dashboards
@@ -1083,9 +1095,7 @@ sequenceDiagram
   - Implement A/B testing infrastructure
   - Add model performance tracking
 
-## Phase 5: Advanced Features
-
-### 5.1 Natural Language Enhancement (2 weeks)
+### Task 20: Natural Language Enhancement
 - [ ] **Extend LIDA's goal generation** with your context-aware prompting
   ```python
   class ContextAwareGoalGenerator:
@@ -1117,7 +1127,7 @@ sequenceDiagram
   - Create adaptive interaction patterns
   - Add recommendation personalization
 
-### 5.2 Automated Insight Generation (2-3 weeks)
+### Task 21: Automated Insight Generation
 - [ ] **Enhance LIDA's explanation module** with actionable insights
   ```python
   class InsightGenerator:
@@ -1153,7 +1163,7 @@ sequenceDiagram
   - Add business impact assessment
   - Create action-oriented recommendations
 
-### 5.3 Multi-Domain Support (3-4 weeks)
+### Task 22: Multi-Domain Support
 - [ ] **Abstract LIDA's domain logic** into pluggable modules
   ```python
   class DomainTemplate:
@@ -1188,7 +1198,7 @@ sequenceDiagram
   - Add marketing-specific chart types (attribution models, journey maps)
   - Implement marketing automation platform integrations
 
-### 5.4 Enterprise Integration (2 weeks) - **⚠️ REQUIRES APPROVAL BEFORE IMPLEMENTATION**
+### Task 23: Enterprise Integration - **⚠️ REQUIRES APPROVAL BEFORE IMPLEMENTATION**
 
 > **IMPORTANT**: This phase includes enterprise security and compliance features that require stakeholder approval, security review, and compliance team involvement before implementation. Do not proceed without explicit approval.
 
@@ -1326,37 +1336,111 @@ backend/
     └── performance/              # Performance tests
 
 frontend/
-├── src/
-│   ├── components/
-│   │   ├── migration/            # Data Migration Components
-│   │   │   ├── DataMigrationFlow.tsx # React Flow mapping interface
-│   │   │   ├── TableDiscovery.tsx # ClickHouse table discovery UI
-│   │   │   ├── SchemaMapper.tsx  # Field mapping interface
-│   │   │   ├── ConfidenceIndicator.tsx # Mapping confidence display
-│   │   │   ├── TransformationPanel.tsx # Data transformation UI
-│   │   │   ├── LineageVisualization.tsx # Data lineage visualization
-│   │   │   └── MigrationDashboard.tsx # Migration monitoring
-│   │   ├── visualization/        # Enhanced Visualization Components
-│   │   │   ├── AgenticDashboard.tsx # LIDA-enhanced dashboard
-│   │   │   ├── VisualizationCard.tsx # ECharts visualization cards
-│   │   │   └── PersonaSelector.tsx # User persona selection
-│   │   └── common/
-│   │       ├── Loading.tsx       # Loading components
-│   │       └── ErrorBoundary.tsx # Error handling
-│   ├── hooks/
-│   │   ├── useMigration.tsx      # Migration state management
-│   │   ├── useClickHouseMCP.tsx  # ClickHouse MCP integration
-│   │   ├── useFocusValidation.tsx # FOCUS validation hooks
-│   │   └── useDataLineage.tsx    # Data lineage tracking
-│   ├── services/
-│   │   ├── migrationAPI.ts       # Migration API service
-│   │   ├── clickhouseService.ts  # ClickHouse service
-│   │   └── focusValidationService.ts # FOCUS validation service
-│   └── types/
-│       ├── migration.ts          # Migration type definitions
-│       ├── focus.ts              # FOCUS v1.2 type definitions
-│       └── lineage.ts            # Data lineage types
+├── app/                          # Next.js App Router
+│   ├── layout.tsx                # Root layout with AgUiProvider
+│   ├── page.tsx                  # Home page
+│   ├── dynamic-dashboard/        # Dynamic dashboard route
+│   │   └── page.tsx              # Dynamic dashboard page
+│   ├── migration/                # New route for data migration
+│   │   └── page.tsx              # Data migration interface
+│   ├── globals.css               # Global styles
+│   └── favicon.ico
+├── components/
+│   ├── ag-ui/                    # Existing AG-UI components
+│   │   ├── AgUiProvider.tsx      # AG-UI provider (existing)
+│   │   ├── AgUiSidebar.tsx       # AG-UI sidebar (existing)
+│   │   └── LidaEnhancedProvider.tsx # New LIDA integration
+│   ├── data-story/               # Existing data story components
+│   │   ├── DataStoryTimeline.tsx # Data story timeline (existing)
+│   │   └── DataStorySuggestion.tsx # Data story suggestions (existing)
+│   ├── ui/                       # Existing UI components + new migration components
+│   │   ├── echarts-base.ts       # ECharts base configuration (existing)
+│   │   ├── bar-chart.tsx         # Bar chart component (existing)
+│   │   ├── pie-chart.tsx         # Pie chart component (existing)
+│   │   ├── area-chart.tsx        # Area chart component (existing)
+│   │   ├── card.tsx              # Card component (existing)
+│   │   ├── sheet.tsx             # Sheet component (existing)
+│   │   ├── tabs.tsx              # Tabs component (existing)
+│   │   ├── button.tsx            # Button component
+│   │   ├── badge.tsx             # Badge component
+│   │   ├── textarea.tsx          # Textarea component
+│   │   ├── select.tsx            # Select component
+│   │   └── tooltip.tsx           # Tooltip component
+│   ├── migration/                # New data migration components
+│   │   ├── DataMigrationFlow.tsx # React Flow mapping interface
+│   │   ├── TableDiscovery.tsx    # ClickHouse table discovery UI
+│   │   ├── SchemaMapper.tsx      # Field mapping interface
+│   │   ├── ConfidenceIndicator.tsx # Mapping confidence display
+│   │   ├── TransformationPanel.tsx # Data transformation UI
+│   │   ├── LineageVisualization.tsx # Data lineage visualization
+│   │   └── MigrationDashboard.tsx # Migration monitoring
+│   ├── visualization/            # Enhanced visualization components
+│   │   ├── VisualizationCard.tsx # ECharts visualization cards
+│   │   ├── PersonaSelector.tsx   # User persona selection
+│   │   └── AgenticDashboard.tsx  # LIDA-enhanced dashboard
+│   ├── generative-ui/            # Existing generative UI components
+│   │   └── SearchResults.tsx     # Search results (existing)
+│   ├── Dashboard.tsx             # Main dashboard (existing)
+│   ├── Header.tsx                # Header component (existing)
+│   ├── Footer.tsx                # Footer component (existing)
+│   ├── NavigationMenu.tsx        # Navigation menu (existing)
+│   ├── AppShell.tsx              # App shell (existing)
+│   ├── ThemeToggle.tsx           # Theme toggle (existing)
+│   └── AssistantMessage.tsx      # Assistant message (existing)
+├── hooks/
+│   ├── useMigration.tsx          # Migration state management
+│   ├── useClickHouseMCP.tsx      # ClickHouse MCP integration
+│   ├── useFocusValidation.tsx    # FOCUS validation hooks
+│   ├── useDataLineage.tsx        # Data lineage tracking
+│   └── useAgenticAnalytics.tsx   # Agentic analytics hooks
+├── lib/
+│   ├── chart-highlighting.ts     # Chart highlighting utilities (existing)
+│   ├── utils.ts                  # Utility functions
+│   └── types.ts                  # Common type definitions
+├── services/
+│   ├── migrationAPI.ts           # Migration API service
+│   ├── clickhouseService.ts      # ClickHouse service
+│   └── focusValidationService.ts # FOCUS validation service
+└── types/
+    ├── migration.ts              # Migration type definitions
+    ├── focus.ts                  # FOCUS v1.2 type definitions
+    └── lineage.ts                # Data lineage types
 ```
+
+### Integration with Existing Next.js Structure
+
+The proposed file structure builds upon the existing Next.js App Router architecture while preserving all current functionality:
+
+#### **Existing Components (Preserved)**
+- `components/ag-ui/AgUiProvider.tsx` - Current AG-UI provider with streaming SSE support
+- `components/ag-ui/AgUiSidebar.tsx` - Existing AG-UI sidebar component
+- `components/data-story/` - Current data story components (timeline, suggestions)
+- `components/ui/` - All existing chart components (bar-chart.tsx, pie-chart.tsx, area-chart.tsx)
+- `components/ui/echarts-base.ts` - Current ECharts configuration and setup
+- `components/Dashboard.tsx` - Main dashboard component
+- `components/AppShell.tsx` - App shell layout component
+- `lib/chart-highlighting.ts` - Existing chart highlighting system
+
+#### **New Components (Added)**
+- `components/migration/` - New data migration components for Phase 3B
+- `components/visualization/` - Enhanced visualization components with LIDA integration
+- `components/ag-ui/LidaEnhancedProvider.tsx` - LIDA integration hook
+- `app/migration/page.tsx` - New route for data migration interface
+- `hooks/useMigration.tsx`, `hooks/useClickHouseMCP.tsx` - Migration-specific hooks
+
+#### **Integration Strategy**
+1. **Preserve Existing Functionality**: All current AG-UI, data story, and chart components remain unchanged
+2. **Extend with LIDA Intelligence**: Add `LidaEnhancedProvider` that works alongside existing `AgUiProvider`
+3. **Add Migration Workflow**: New `/migration` route and components for Phase 3B ClickHouse integration
+4. **Enhance Chart System**: Extend existing chart highlighting with LIDA-powered recommendations
+5. **Maintain Import Patterns**: Use established `@/` alias for component imports and existing utility patterns
+
+#### **Migration Path**
+- **Phase 3A**: Primarily backend changes with minimal frontend additions
+- **Phase 3B**: Add migration components without disrupting existing dashboard
+- **Gradual Enhancement**: LIDA features can be enabled progressively without breaking current workflows
+
+This approach ensures zero downtime and allows teams to continue using existing functionality while gradually adopting LIDA-enhanced features.
 
 ### Key Integration Points
 
@@ -1869,87 +1953,317 @@ class MemoryAwareLidaManager:
    - Mitigation: Thorough testing and staged deployment
    - Contingency: Manual fallback processes
 
-## Timeline Summary
+## Implementation Overview
 
-| Phase | Duration | Key Deliverables |
-|-------|----------|------------------|
-| Phase 1: Core Infrastructure | 3-4 weeks | LIDA-ECharts integration, semantic layer connection |
-| Phase 2: Architecture Enhancement | 4-5 weeks | Persona-aware selection, memory integration, CopilotKit frontend |
-| **Phase 3A: FOCUS CSV Integration** | **6-8 weeks** | **Sample data integration, FinOps dashboards, FOCUS analytics** |
-| **Phase 3B: ClickHouse Integration** | **8-10 weeks** | **Data migration UI, production database integration** |
-| Phase 4: Production Features | 2-3 weeks | Scalability, monitoring, observability |
-| Phase 5: Advanced Features | 9-13 weeks | NLP enhancement, automated insights, multi-domain support, **enterprise integration (approval required)** |
+The implementation is organized into sequential tasks ordered by dependencies. Each task builds upon the previous tasks to ensure a solid foundation:
 
-**Total Estimated Duration: 30-39 weeks (7.5-9.5 months)**
-*Note: Timeline reduced by 2 weeks with Enterprise Integration moved to optional final phase*
+**Tasks 1-6**: Core LIDA integration with existing AG-UI system
+**Tasks 7-10**: FOCUS CSV integration and sample data analytics
+**Tasks 11-14**: ClickHouse integration and production database features
+**Tasks 15-17**: Domain-specific enhancements and advanced analytics
+**Tasks 18-19**: Production scalability and monitoring
+**Tasks 20-22**: Advanced features and multi-domain support
+**Task 23**: Enterprise integration (requires stakeholder approval)
 
-### FinOps Implementation Phases
+## Task Dependencies
 
-**Phase 3A Benefits (6-8 weeks to value):**
-- ✅ Working FinOps dashboard with FOCUS sample data
-- ✅ Proven LIDA-ECharts integration
-- ✅ Standard FinOps KPIs and visualizations
-- ✅ User feedback and iteration capability
-- ✅ Demonstration-ready solution
+### Core Foundation (Tasks 1-6)
+These tasks must be completed sequentially as each builds upon the previous:
+- **Task 1**: LIDA Manager integration with FastAPI backend
+- **Task 2**: ECharts MCP adapter implementation
+- **Task 3**: Semantic layer integration with dbt MCP
+- **Task 4**: Persona-aware visualization selection
+- **Task 5**: Memory and context integration with Mem0
+- **Task 6**: Frontend integration with existing AG-UI system
 
-**Phase 3B Benefits (Additional 8-10 weeks):**
-- ✅ Production-ready ClickHouse integration
-- ✅ Real-time data ingestion and analysis
-- ✅ Drag-and-drop data mapping interface
-- ✅ Enterprise-scale data processing
-- ✅ Custom data source integration
+### FOCUS Analytics (Tasks 7-10)
+**Dependencies**: All core foundation tasks (1-6) must be completed first
+- **Task 7**: FOCUS sample data integration and validation
+- **Task 8**: Enhanced LIDA integration with FOCUS data structures
+- **Task 9**: FinOps-specific ECharts visualization templates
+- **Task 10**: Complete FinOps analytics web application
 
-## Next Steps
+### Production Database Integration (Tasks 11-14)
+**Dependencies**: FOCUS analytics tasks (7-10) must be completed first
+- **Task 11**: ClickHouse MCP discovery and analysis
+- **Task 12**: React Flow-based mapping interface
+- **Task 13**: dbt backend integration for data lineage
+- **Task 14**: Migration validation and testing
 
-### Immediate Actions (Week 1-2)
-1. **Development Environment Setup**: Fork LIDA and set up development environment
-2. **FOCUS Sample Data Acquisition**: Download and catalog FOCUS v1.2 sample datasets
-3. **Architecture Review**: Validate two-phase approach with stakeholders
-4. **Team Alignment**: Brief team on phased implementation strategy
+### Advanced Features (Tasks 15-23)
+**Dependencies**: All previous tasks must be completed
+- **Tasks 15-17**: Domain-specific customization and visualization intelligence
+- **Tasks 18-19**: Production scalability and monitoring
+- **Tasks 20-22**: Advanced NLP and multi-domain support
+- **Task 23**: Enterprise integration (requires approval)
 
-### Phase 3A Implementation Path (Weeks 3-10)
-1. **Sprint 1 (Weeks 3-4)**: FOCUS CSV integration and validation
-2. **Sprint 2 (Weeks 5-6)**: Enhanced LIDA integration with FOCUS data
-3. **Sprint 3 (Weeks 7-8)**: ECharts FinOps visualization templates
-4. **Sprint 4 (Weeks 9-10)**: Complete FinOps analytics web application
+## Implementation Validation
 
-### Phase 3A Success Criteria
-- ✅ Working dashboard with all FOCUS sample datasets
-- ✅ Standard FinOps KPIs calculated and visualized
-- ✅ Interactive drill-down capabilities
-- ✅ Persona-aware visualization selection
-- ✅ Export and sharing functionality
+### Success Criteria by Task Group
 
-### Phase 3B Decision Point (Week 11)
-**Evaluation Criteria for Phase 3B:**
-- User satisfaction with Phase 3A deliverables
-- Business value demonstration with sample data
-- Stakeholder approval for production database integration
-- Resource availability for ClickHouse implementation
+**Core Foundation (Tasks 1-6)**
+- ✅ LIDA manager successfully integrated with existing FastAPI backend
+- ✅ ECharts MCP adapter generates interactive visualizations
+- ✅ Semantic layer queries execute correctly through dbt MCP
+- ✅ Persona-aware chart selection functions properly
+- ✅ Memory system stores and retrieves user context
+- ✅ Frontend integration preserves existing AG-UI functionality
 
-### Phase 3B Implementation Path (Weeks 12-22) - *If Approved*
-1. **Months 3-4**: ClickHouse MCP integration and discovery
-2. **Months 4-5**: React Flow mapping interface development
-3. **Months 5-6**: Data migration and validation systems
-4. **Month 6**: Production deployment and testing
+**FOCUS Analytics (Tasks 7-10)**
+- ✅ All FOCUS sample datasets load and validate correctly
+- ✅ LIDA generates appropriate goals for FinOps data
+- ✅ ECharts templates render FinOps-specific visualizations
+- ✅ Complete dashboard provides interactive analytics experience
 
-## Risk Mitigation Strategy
+**Production Database Integration (Tasks 11-14)**
+- ✅ ClickHouse discovery identifies available tables
+- ✅ React Flow interface enables intuitive field mapping
+- ✅ dbt transformations generate FOCUS-compliant data
+- ✅ Migration validation confirms data quality and compliance
 
-### Phase 3A Risks (Lower Risk)
-- **CSV Data Quality**: Mitigated by using official FOCUS samples
-- **LIDA Integration**: Lower risk with proven technology
-- **Timeline Predictability**: Higher with simpler data pipeline
+**Advanced Features (Tasks 15-23)**
+- ✅ Domain templates extend to multiple analytics domains
+- ✅ System scales to handle production workloads
+- ✅ Advanced NLP features enhance user experience
+- ✅ Enterprise features meet security and compliance requirements
 
-### Phase 3B Risks (Higher Risk)
-- **ClickHouse Complexity**: Mitigated by proven Phase 3A foundation
-- **Data Migration Challenges**: Addressed by comprehensive testing
-- **UI Complexity**: Reduced risk with React Flow experience
+---
 
-## Value Delivery Timeline
+## 🚀 Quick Start Implementation Example
 
-**Week 6-8**: First working FinOps dashboard demo
-**Week 10**: Complete Phase 3A with production-quality sample data analytics
-**Week 16**: React Flow data mapping interface (if Phase 3B approved)
-**Week 22**: Full production ClickHouse integration (if Phase 3B completed)
+### Practical First Step: Enhance Existing Analysis Agent with LIDA
 
-This two-phase approach provides rapid value delivery while minimizing risk, allowing stakeholders to evaluate ROI before committing to full production database integration.
+Here's a concrete example of how to integrate LIDA intelligence with the existing AG-UI system:
+
+#### 1. Backend Integration
+
+```python
+# backend/lida_enhanced/agents/lida_analysis_agent.py
+import asyncio
+from typing import Dict, Any, List
+from lida import Manager, llm
+from lida.datamodel import Goal
+from pydantic_ai import Agent
+
+class LidaEnhancedAnalysisAgent:
+    def __init__(self, existing_analysis_agent, dashboard_context):
+        self.base_agent = existing_analysis_agent
+        self.dashboard_context = dashboard_context
+
+        # Initialize LIDA with the same Azure OpenAI client
+        self.lida_manager = Manager(text_gen=llm("azure_openai_chat"))
+
+    async def enhanced_analysis(self, user_query: str, thread_id: str) -> Dict[str, Any]:
+        """Enhanced analysis combining existing agent with LIDA intelligence"""
+
+        # 1. Use LIDA to understand data and generate goals
+        data_summary = self.lida_manager.summarize(
+            self.dashboard_context,
+            summary_method="default"
+        )
+
+        lida_goals = self.lida_manager.goals(
+            data_summary,
+            n=3,
+            persona="executive"
+        )
+
+        # 2. Run existing analysis agent with LIDA context
+        enhanced_prompt = self._create_enhanced_prompt(
+            user_query,
+            data_summary,
+            lida_goals
+        )
+
+        base_result = await self.base_agent.run(enhanced_prompt)
+
+        # 3. Generate smart chart recommendations
+        chart_recommendations = self._map_goals_to_existing_charts(lida_goals)
+
+        return {
+            "analysis": base_result.data,
+            "chart_recommendations": chart_recommendations,
+            "semantic_goals": [goal.question for goal in lida_goals],
+            "data_insights": data_summary.insights
+        }
+
+    def _create_enhanced_prompt(self, query: str, summary, goals: List[Goal]) -> str:
+        """Combine user query with LIDA insights"""
+        goal_text = "\n".join([f"- {goal.question}" for goal in goals])
+
+        return f"""
+        User Query: {query}
+
+        Data Context: {summary.summary}
+
+        Suggested Analysis Goals:
+        {goal_text}
+
+        Available Charts: sales-overview, product-performance, sales-by-category,
+        regional-sales, customer-demographics
+
+        Provide analysis and suggest which charts to highlight.
+        Use format: "Highlight chart cards: chart-id-1, chart-id-2"
+        """
+
+    def _map_goals_to_existing_charts(self, goals: List[Goal]) -> List[str]:
+        """Map LIDA goals to existing chart IDs"""
+        chart_mapping = {
+            "sales": ["sales-overview", "regional-sales"],
+            "product": ["product-performance", "sales-by-category"],
+            "customer": ["customer-demographics"],
+            "trend": ["sales-overview"],
+            "comparison": ["product-performance", "regional-sales"]
+        }
+
+        recommended_charts = []
+        for goal in goals:
+            goal_text = goal.question.lower()
+            for keyword, charts in chart_mapping.items():
+                if keyword in goal_text:
+                    recommended_charts.extend(charts)
+
+        return list(set(recommended_charts))  # Remove duplicates
+```
+
+#### 2. Backend Action Integration
+
+```python
+# backend/enhanced_actions/lida_enhanced_analysis.py
+from fastapi import Request
+from typing import Dict, Any
+from .lida_enhanced.agents.lida_analysis_agent import LidaEnhancedAnalysisAgent
+
+@app.post("/ag-ui/action/lidaEnhancedAnalysis")
+async def action_lida_enhanced_analysis(request: Request) -> Dict[str, Any]:
+    """New AG-UI action that combines LIDA with existing analysis"""
+
+    payload = await request.json()
+    user_query = payload.get("query", "")
+    thread_id = payload.get("threadId", "")
+
+    # Initialize enhanced agent with existing components
+    enhanced_agent = LidaEnhancedAnalysisAgent(
+        existing_analysis_agent=analysis_agent,  # From main.py
+        dashboard_context=DASHBOARD_CONTEXT       # From dashboard_data.py
+    )
+
+    try:
+        result = await enhanced_agent.enhanced_analysis(user_query, thread_id)
+
+        return {
+            "enhanced_analysis": result["analysis"],
+            "recommended_charts": result["chart_recommendations"],
+            "semantic_insights": result["data_insights"],
+            "suggested_goals": result["semantic_goals"]
+        }
+
+    except Exception as exc:
+        logger.exception("LIDA enhanced analysis failed")
+        raise HTTPException(status_code=500, detail=f"Analysis error: {exc}")
+```
+
+#### 3. Frontend Integration
+
+```typescript
+// components/ag-ui/LidaEnhancedProvider.tsx
+import { useAgUiAgent } from './AgUiProvider';
+import { useCallback } from 'react';
+
+export function useLidaEnhancedAnalysis() {
+  const { sendMessage, highlightCharts } = useAgUiAgent();
+
+  const analyzeWithLida = useCallback(async (query: string) => {
+    // Send regular message through existing AG-UI system
+    sendMessage(`Please analyze: ${query} [Use LIDA intelligence]`);
+
+    // The enhanced backend will automatically use LIDA if it detects this pattern
+    // and return chart highlighting suggestions through existing system
+  }, [sendMessage]);
+
+  const requestLidaEnhancement = useCallback(async (query: string) => {
+    try {
+      // Call the new action directly
+      const response = await fetch('/ag-ui/action/lidaEnhancedAnalysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, threadId: 'current-thread' })
+      });
+
+      const result = await response.json();
+
+      // Use existing chart highlighting system
+      if (result.recommended_charts?.length > 0) {
+        highlightCharts(result.recommended_charts);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('LIDA enhancement failed:', error);
+      return null;
+    }
+  }, [highlightCharts]);
+
+  return {
+    analyzeWithLida,
+    requestLidaEnhancement
+  };
+}
+```
+
+#### 4. Usage Example
+
+```typescript
+// components/visualization/AgenticDashboard.tsx
+import { useLidaEnhancedAnalysis } from '../ag-ui/LidaEnhancedProvider';
+import { Button } from '../ui/button';
+
+export function EnhancedDashboard() {
+  const { analyzeWithLida, requestLidaEnhancement } = useLidaEnhancedAnalysis();
+
+  const handleSmartAnalysis = async () => {
+    // Option 1: Use through existing chat system
+    analyzeWithLida("Show me key insights about sales performance");
+
+    // Option 2: Direct LIDA enhancement
+    const result = await requestLidaEnhancement(
+      "What are the most important trends in our data?"
+    );
+
+    if (result) {
+      console.log('LIDA Insights:', result.semantic_insights);
+      console.log('Suggested Goals:', result.suggested_goals);
+    }
+  };
+
+  return (
+    <div className="dashboard">
+      <div className="mb-4">
+        <Button onClick={handleSmartAnalysis}>
+          🧠 Get Smart Insights with LIDA
+        </Button>
+      </div>
+
+      {/* Rest of existing dashboard components */}
+    </div>
+  );
+}
+```
+
+### Implementation Steps
+
+1. **Install LIDA**: `pip install lida` in backend requirements
+2. **Create Enhanced Agent**: Implement `LidaEnhancedAnalysisAgent`
+3. **Add Backend Action**: Create `/ag-ui/action/lidaEnhancedAnalysis` endpoint
+4. **Extend Frontend**: Add LIDA integration hooks
+5. **Test Integration**: Verify LIDA insights enhance existing chart highlighting
+
+### Expected Results
+
+- **Smarter Chart Recommendations**: LIDA analyzes data relationships and suggests optimal visualizations
+- **Semantic Goal Generation**: Automatic generation of meaningful analysis questions
+- **Enhanced Data Stories**: Current data story system gets LIDA-powered insights
+- **Preserved Functionality**: All existing features continue to work unchanged
+- **Incremental Enhancement**: Can be developed and tested alongside existing system
+
+This approach allows you to start benefiting from LIDA intelligence immediately while preserving all existing functionality and gradually expanding the integration.

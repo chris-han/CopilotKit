@@ -1768,7 +1768,7 @@ async def progressive_analysis(context):
 ### Frontend Integration
 
 ```typescript
-// hooks/useAgenticAnalytics.ts
+// hooks/useAgenticAnalytics.tsx
 import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
 
 export function useAgenticAnalytics() {
@@ -1857,7 +1857,7 @@ export function useAgenticAnalytics() {
 ```
 
 ```typescript
-// components/AgenticDashboard.tsx
+// components/visualization/AgenticDashboard.tsx
 import { CopilotKit } from '@copilotkit/react-core';
 import { CopilotSidebar } from '@copilotkit/react-ui';
 import ReactECharts from 'echarts-for-react';
@@ -1912,7 +1912,7 @@ export function AgenticDashboard() {
 ```
 
 ```typescript
-// components/VisualizationCard.tsx
+// components/visualization/VisualizationCard.tsx
 import ReactECharts from 'echarts-for-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';

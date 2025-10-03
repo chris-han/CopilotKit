@@ -2,25 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { ChevronLeft, ChevronRight, Home, LineChart } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
-const NAV_WIDTH_CLASS = "w-72"; // 18rem
+const NAV_EXPANDED_CLASS = "w-72"; // 18rem
+const NAV_COLLAPSED_CLASS = "w-20"; // 5rem
+const NAV_EXPANDED_WIDTH = "18rem";
+const NAV_COLLAPSED_WIDTH = "5rem";
 
 type NavigationItem = {
   label: string;
   href: string;
+  icon: LucideIcon;
 };
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
-  { label: "Overview", href: "/" },
-  { label: "Dynamic Dashboard", href: "/dynamic-dashboard" },
+  { label: "Overview", href: "/", icon: Home },
+  { label: "Dynamic Dashboard", href: "/dynamic-dashboard", icon: LineChart },
 ];
 
 export function NavigationMenu() {
   const pathname = usePathname();
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const normalizedPath = useMemo(() => {
     if (!pathname) {
@@ -31,23 +38,46 @@ export function NavigationMenu() {
       : pathname;
   }, [pathname]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.style.setProperty(
+      "--navigation-width",
+      isCollapsed ? NAV_COLLAPSED_WIDTH : NAV_EXPANDED_WIDTH,
+    );
+  }, [isCollapsed]);
+
   return (
     <Sheet open modal={false} onOpenChange={() => {}}>
       <SheetContent
         side="left"
         hideOverlay
         className={clsx(
-          NAV_WIDTH_CLASS,
-          "inset-y-0 left-0 h-full border-r border-border/50 bg-background px-4 py-6",
-          "hidden gap-6 md:flex"
+          isCollapsed ? NAV_COLLAPSED_CLASS : NAV_EXPANDED_CLASS,
+          "inset-y-0 left-0 h-full border-r border-border/50 bg-background py-6",
+          isCollapsed ? "px-2" : "px-4",
+          "hidden md:flex"
         )}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Navigation Menu</SheetTitle>
         </SheetHeader>
         <div className="flex h-full w-full flex-col">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2" aria-label="ABI Home">
+          <div
+            className={clsx(
+              "flex w-full items-center justify-between",
+              !isCollapsed && "gap-3",
+            )}
+          >
+            <Link
+              href="/"
+              className={clsx(
+                "flex flex-1 items-center gap-2",
+                isCollapsed ? "justify-center" : "justify-start",
+              )}
+              aria-label="ABI Home"
+            >
               <svg
                 width="40"
                 height="40"
@@ -69,15 +99,41 @@ export function NavigationMenu() {
                   ABI
                 </text>
               </svg>
-              <span className="text-lg font-semibold text-foreground">ABI Analytics</span>
+              {!isCollapsed && (
+                <span className="text-lg font-semibold text-foreground">
+                  ABI Analytics
+                </span>
+              )}
             </Link>
+            <button
+              type="button"
+              onClick={() => setIsCollapsed((previous) => !previous)}
+              className="ml-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-muted"
+              aria-pressed={isCollapsed}
+              aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
           </div>
 
-          <nav className="mt-8 flex-1">
-            <ul className="flex flex-col gap-1">
+          <nav
+            className={clsx("mt-8 flex-1", isCollapsed && "mt-6 w-full")}
+            aria-label="Primary navigation"
+          >
+            <ul
+              className={clsx(
+                "flex flex-col gap-1",
+                isCollapsed && "items-center gap-2",
+              )}
+            >
               {NAVIGATION_ITEMS.map((item) => {
                 const href = item.href === "/" ? "/" : item.href.replace(/\/$/, "");
                 const isActive = normalizedPath === href;
+                const Icon = item.icon;
                 return (
                   <li key={item.href}>
                     <Link
@@ -85,10 +141,13 @@ export function NavigationMenu() {
                       className={clsx(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                         "text-muted-foreground hover:text-foreground hover:bg-muted",
-                        isActive && "bg-muted text-foreground"
+                        isActive && "bg-muted text-foreground",
+                        isCollapsed && "justify-center gap-0 px-2"
                       )}
+                      aria-label={item.label}
                     >
-                      {item.label}
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      {!isCollapsed && <span>{item.label}</span>}
                     </Link>
                   </li>
                 );
@@ -96,9 +155,11 @@ export function NavigationMenu() {
             </ul>
           </nav>
 
-          <div className="text-xs text-muted-foreground">
-            <p>© {new Date().getFullYear()} ABI Analytics Intelligence.</p>
-          </div>
+          {!isCollapsed && (
+            <div className="mt-auto text-xs text-muted-foreground">
+              <p>© {new Date().getFullYear()} ABI Analytics Intelligence.</p>
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

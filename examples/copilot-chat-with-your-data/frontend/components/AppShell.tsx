@@ -42,7 +42,10 @@ export function AppShell({ children }: AppShellProps) {
     setIsSidebarOpen(windowWidth >= MIN_DASHBOARD_WIDTH_PX + SIDEBAR_WIDTH_PX);
   }, [windowWidth]);
 
-  const layoutClasses = "min-h-screen bg-background flex flex-col transition-[padding] duration-300 md:pl-72";
+  const layoutClasses = clsx(
+    "min-h-screen bg-background flex flex-col transition-[padding] duration-300",
+    "md:pl-[var(--navigation-width,18rem)]",
+  );
 
   const mainClasses = `w-full max-w-7xl lg:min-w-[64rem] mx-auto py-6 px-4 sm:px-6 lg:px-8 flex-grow transition-[padding] duration-300 ${
     shouldOffsetLayout ? "pr-8" : ""

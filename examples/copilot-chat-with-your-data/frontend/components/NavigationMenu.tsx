@@ -13,6 +13,11 @@ const NAV_EXPANDED_CLASS = "w-72"; // 18rem
 const NAV_COLLAPSED_CLASS = "w-20"; // 5rem
 const NAV_EXPANDED_WIDTH = "18rem";
 const NAV_COLLAPSED_WIDTH = "5rem";
+const NAV_EXPANDED_HORIZONTAL_PADDING_REM = 1; // px-4
+const NAV_COLLAPSED_HORIZONTAL_PADDING_REM = 0.5; // px-2
+const TOGGLE_RADIUS_REM = 1.125; // half of w-9 (2.25rem)
+const TOGGLE_CLIP_PATH_EXPANDED = "inset(0 50% 0 0 round 999px 0 0 999px)";
+const TOGGLE_CLIP_PATH_COLLAPSED = "inset(0 0 0 50% round 0 999px 999px 0)";
 
 type NavigationItem = {
   label: string;
@@ -48,6 +53,12 @@ export function NavigationMenu() {
     );
   }, [isCollapsed]);
 
+  const toggleRightOffsetRem = -(
+    TOGGLE_RADIUS_REM +
+      (isCollapsed ? NAV_COLLAPSED_HORIZONTAL_PADDING_REM : NAV_EXPANDED_HORIZONTAL_PADDING_REM)
+  );
+  const toggleClipPath = isCollapsed ? TOGGLE_CLIP_PATH_COLLAPSED : TOGGLE_CLIP_PATH_EXPANDED;
+
   return (
     <Sheet open modal={false} onOpenChange={() => {}}>
       <SheetContent
@@ -66,8 +77,8 @@ export function NavigationMenu() {
         <div className="flex h-full w-full flex-col">
           <div
             className={clsx(
-              "flex w-full items-center justify-between",
-              !isCollapsed && "gap-3",
+              "relative flex w-full items-center",
+              !isCollapsed ? "justify-start gap-3" : "justify-center",
             )}
           >
             <Link
@@ -75,6 +86,7 @@ export function NavigationMenu() {
               className={clsx(
                 "flex flex-1 items-center gap-2",
                 isCollapsed ? "justify-center" : "justify-start",
+                !isCollapsed && "pr-14",
               )}
               aria-label="ABI Home"
             >
@@ -108,14 +120,15 @@ export function NavigationMenu() {
             <button
               type="button"
               onClick={() => setIsCollapsed((previous) => !previous)}
-              className="ml-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-muted"
+              className="absolute top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground shadow-lg transition hover:bg-muted"
               aria-pressed={isCollapsed}
               aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
+              style={{ right: `${toggleRightOffsetRem}rem`, clipPath: toggleClipPath }}
             >
               {isCollapsed ? (
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                <ChevronRight className="h-4 w-4 translate-x-1" aria-hidden="true" />
               ) : (
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                <ChevronLeft className="h-4 w-4 -translate-x-1" aria-hidden="true" />
               )}
             </button>
           </div>

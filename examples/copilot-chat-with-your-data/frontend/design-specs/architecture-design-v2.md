@@ -76,8 +76,9 @@ graph TB
     
     subgraph "Data Sources"
         T[ClickHouse OLAP]
-        U[Cloud Cost APIs]
-        V[Operational Databases]
+        U[FOCUS v1.2 Compliant Tables]
+        V[Data Onboarding Interface]
+        W[ClickHouse MCP Server]
     end
     
     A --> D
@@ -118,6 +119,336 @@ graph TB
 
 ---
 
+## 🔄 FOCUS v1.2 Data Onboarding Process
+
+### ClickHouse Integration Architecture
+
+```mermaid
+graph TD
+    A[Data Onboarding Interface] --> B{ClickHouse MCP Discovery}
+    B --> C[List Available Databases]
+    B --> D[List Available Tables]
+    C --> E[Schema Analysis]
+    D --> E
+    E --> F{FOCUS v1.2 Compliance Check}
+    F -->|Compliant| G[Direct Mapping]
+    F -->|Non-Compliant| H[Transformation Required]
+    G --> I[Semantic Model Generation]
+    H --> J[Data Transformation Pipeline]
+    J --> I
+    I --> K[Metric Definition Creation]
+    K --> L[Validation & Testing]
+    L --> M[Production Deployment]
+```
+
+### Data Discovery and Mapping Workflow
+
+#### Phase 1: ClickHouse Discovery
+```python
+class FocusDataOnboardingService:
+    def __init__(self, clickhouse_mcp_client):
+        self.clickhouse_client = clickhouse_mcp_client
+        self.focus_schema_validator = FocusSchemaValidator()
+
+    async def discover_available_data(self):
+        """Discover all available ClickHouse databases and tables"""
+        discovery_result = {
+            'databases': await self.clickhouse_client.list_databases(),
+            'tables': {},
+            'focus_compliance': {}
+        }
+
+        for db in discovery_result['databases']:
+            tables = await self.clickhouse_client.list_tables(database=db)
+            discovery_result['tables'][db] = []
+
+            for table in tables:
+                table_schema = await self.clickhouse_client.describe_table(
+                    database=db,
+                    table=table
+                )
+
+                compliance_score = await self.assess_focus_compliance(table_schema)
+
+                discovery_result['tables'][db].append({
+                    'name': table,
+                    'schema': table_schema,
+                    'focus_compliance_score': compliance_score,
+                    'estimated_mapping_effort': self.estimate_mapping_effort(compliance_score)
+                })
+
+        return discovery_result
+
+    async def assess_focus_compliance(self, table_schema):
+        """Assess how well a table aligns with FOCUS v1.2 specification"""
+        required_fields = [
+            'billing_account_id', 'billing_currency', 'billing_period_start',
+            'billing_period_end', 'charge_category', 'charge_frequency',
+            'charge_period_start', 'charge_period_end', 'billed_cost', 'service_name'
+        ]
+
+        present_fields = [col['name'].lower() for col in table_schema['columns']]
+        compliance_score = 0
+
+        # Check required fields presence
+        required_score = sum(1 for field in required_fields if field in present_fields) / len(required_fields)
+
+        # Check data types compatibility
+        type_score = await self.assess_data_type_compatibility(table_schema)
+
+        # Check field naming conventions
+        naming_score = await self.assess_naming_conventions(table_schema)
+
+        compliance_score = (required_score * 0.6 + type_score * 0.3 + naming_score * 0.1)
+
+        return {
+            'overall_score': compliance_score,
+            'required_fields_score': required_score,
+            'data_type_score': type_score,
+            'naming_score': naming_score,
+            'missing_required_fields': [f for f in required_fields if f not in present_fields],
+            'recommendations': await self.generate_mapping_recommendations(table_schema)
+        }
+```
+
+#### Phase 2: Interactive Table Mapping Interface
+
+```yaml
+# Frontend Data Onboarding Configuration
+onboarding_interface:
+  sections:
+    - name: discovery
+      title: "Available Data Discovery"
+      components:
+        - type: database_selector
+          description: "Select ClickHouse databases to analyze"
+          multi_select: true
+
+        - type: table_grid
+          description: "Available tables with FOCUS compliance scores"
+          columns:
+            - database
+            - table_name
+            - row_count
+            - focus_compliance_score
+            - mapping_complexity
+            - recommended_action
+
+    - name: schema_mapping
+      title: "Schema Mapping Configuration"
+      components:
+        - type: field_mapper
+          description: "Map table columns to FOCUS v1.2 fields"
+          mapping_pairs:
+            - source_field: "account_id"
+              target_field: "billing_account_id"
+              transformation: "direct"
+              confidence: 0.95
+
+            - source_field: "cost_amount"
+              target_field: "billed_cost"
+              transformation: "type_cast(Decimal64(4))"
+              confidence: 0.90
+
+            - source_field: "service"
+              target_field: "service_name"
+              transformation: "direct"
+              confidence: 1.0
+
+        - type: transformation_builder
+          description: "Define data transformations for non-compliant fields"
+          transformations:
+            - field: charge_category
+              source_logic: |
+                CASE
+                  WHEN usage_type = 'compute' THEN 'Usage'
+                  WHEN usage_type = 'storage' THEN 'Usage'
+                  WHEN usage_type = 'reserved' THEN 'Purchase'
+                  ELSE 'Usage'
+                END
+              target_enum: ['Usage', 'Purchase', 'Tax', 'Credit', 'Adjustment', 'Rounding']
+
+    - name: validation
+      title: "Data Quality Validation"
+      components:
+        - type: sample_data_preview
+          description: "Preview transformed data sample"
+          sample_size: 1000
+
+        - type: validation_results
+          description: "FOCUS v1.2 compliance validation results"
+          checks:
+            - name: required_fields_present
+              status: passed
+              message: "All required FOCUS fields are present"
+
+            - name: data_type_compatibility
+              status: warning
+              message: "2 fields require type conversion"
+
+            - name: referential_integrity
+              status: passed
+              message: "All foreign key relationships valid"
+
+        - type: quality_metrics
+          description: "Data quality assessment"
+          metrics:
+            - name: completeness
+              score: 0.95
+              description: "95% of records have all required fields"
+
+            - name: consistency
+              score: 0.88
+              description: "88% of records follow expected patterns"
+
+            - name: accuracy
+              score: 0.92
+              description: "92% of cost values pass validation checks"
+
+# Expected vs Available Tables Comparison
+table_requirements:
+  expected_tables:
+    - name: focus_cost_usage_v1_2
+      description: "Main FOCUS v1.2 compliant cost and usage data"
+      required: true
+      schema: focus_v1_2_core
+      estimated_size: "10M+ rows/month"
+
+    - name: focus_resource_attributes
+      description: "Extended resource attributes and tags"
+      required: false
+      schema: focus_v1_2_extended
+      estimated_size: "1M+ rows/month"
+
+    - name: focus_commitment_discounts
+      description: "Commitment discount details and utilization"
+      required: false
+      schema: focus_v1_2_commitments
+      estimated_size: "10K+ rows/month"
+
+  available_tables:
+    - database: finops_prod
+      tables:
+        - name: aws_cost_usage_hourly
+          focus_compliance: 0.75
+          mapping_status: requires_transformation
+          estimated_effort: medium
+
+        - name: azure_consumption_daily
+          focus_compliance: 0.65
+          mapping_status: requires_significant_transformation
+          estimated_effort: high
+
+        - name: gcp_billing_export
+          focus_compliance: 0.85
+          mapping_status: minor_adjustments_needed
+          estimated_effort: low
+
+# Automated Mapping Suggestions
+mapping_suggestions:
+  high_confidence:
+    - source: "aws_cost_usage_hourly.line_item_blended_cost"
+      target: "focus_cost_usage_v1_2.billed_cost"
+      transformation: "CAST(line_item_blended_cost AS Decimal64(4))"
+      confidence: 0.95
+
+    - source: "aws_cost_usage_hourly.product_product_name"
+      target: "focus_cost_usage_v1_2.service_name"
+      transformation: "product_product_name"
+      confidence: 0.90
+
+  medium_confidence:
+    - source: "aws_cost_usage_hourly.line_item_usage_start_date"
+      target: "focus_cost_usage_v1_2.charge_period_start"
+      transformation: "CAST(line_item_usage_start_date AS DateTime64(3))"
+      confidence: 0.80
+      requires_validation: true
+
+  low_confidence:
+    - source: "aws_cost_usage_hourly.line_item_operation"
+      target: "focus_cost_usage_v1_2.charge_category"
+      transformation: "complex_categorization_logic"
+      confidence: 0.60
+      requires_manual_review: true
+```
+
+#### Phase 3: Data Transformation Pipeline
+
+```sql
+-- Example ClickHouse Materialized View for FOCUS v1.2 Transformation
+CREATE MATERIALIZED VIEW focus_cost_usage_v1_2_mv
+TO focus_cost_usage_v1_2
+AS SELECT
+    -- FOCUS Required Fields
+    payer_account_id AS billing_account_id,
+    'USD' AS billing_currency,
+    toDate(bill_billing_period_start_date) AS billing_period_start,
+    toDate(bill_billing_period_end_date) AS billing_period_end,
+
+    -- Charge Category Mapping
+    CASE
+        WHEN line_item_line_item_type = 'Usage' THEN 'Usage'
+        WHEN line_item_line_item_type = 'RIFee' THEN 'Purchase'
+        WHEN line_item_line_item_type = 'Tax' THEN 'Tax'
+        WHEN line_item_line_item_type = 'Credit' THEN 'Credit'
+        ELSE 'Usage'
+    END AS charge_category,
+
+    -- Charge Frequency Mapping
+    CASE
+        WHEN line_item_line_item_type IN ('RIFee', 'SavingsPlansRecurringFee') THEN 'Recurring'
+        WHEN line_item_line_item_type = 'Usage' THEN 'Usage-Based'
+        ELSE 'One-Time'
+    END AS charge_frequency,
+
+    toDateTime64(line_item_usage_start_date, 3) AS charge_period_start,
+    toDateTime64(line_item_usage_end_date, 3) AS charge_period_end,
+
+    -- Core Metrics
+    CAST(line_item_blended_cost AS Decimal64(4)) AS billed_cost,
+    CAST(COALESCE(reservation_effective_cost, line_item_blended_cost) AS Decimal64(4)) AS effective_cost,
+    CAST(line_item_unblended_cost AS Decimal64(4)) AS list_cost,
+
+    -- Service and Resource Information
+    product_product_name AS service_name,
+    line_item_resource_id AS resource_id,
+    resource_tags_user_name AS resource_name,
+    product_product_family AS service_category,
+
+    -- Usage Metrics
+    CAST(line_item_usage_amount AS Decimal64(8)) AS usage_quantity,
+    line_item_usage_type AS usage_unit,
+    CAST(line_item_usage_amount AS Decimal64(8)) AS pricing_quantity,
+    line_item_usage_type AS pricing_unit,
+
+    -- Enhanced Analytics Fields
+    resource_tags_cost_center AS allocation_cost_center,
+    resource_tags_project AS allocation_project_id,
+    resource_tags_team AS allocation_team,
+    CASE
+        WHEN resource_tags_environment = 'prod' THEN 'production'
+        WHEN resource_tags_environment = 'stage' THEN 'staging'
+        WHEN resource_tags_environment = 'dev' THEN 'development'
+        WHEN resource_tags_environment = 'test' THEN 'test'
+        ELSE NULL
+    END AS allocation_environment,
+
+    -- Commitment Discount Information
+    savings_plans_savings_plans_arn AS commitment_discount_id,
+    reservation_reservation_arn AS commitment_discount_id_backup,
+    CASE
+        WHEN savings_plans_savings_plans_arn IS NOT NULL THEN 'Usage'
+        WHEN reservation_reservation_arn IS NOT NULL THEN 'Spend'
+        ELSE NULL
+    END AS commitment_discount_category
+
+FROM aws_cost_usage_hourly
+WHERE line_item_blended_cost > 0
+    AND bill_billing_period_start_date >= '2024-01-01';
+```
+
+---
+
 ## 📊 Semantic Layer Design Process
 
 ### Phase 1: Business Context Modeling
@@ -138,74 +469,396 @@ flowchart LR
     end
 ```
 
-#### 1.1 Entity & Relationship Mapping
+#### 1.1 FOCUS v1.2 Compliant Entity & Relationship Mapping
 
 ```yaml
 domain: cloud_finops
-entities:
-  - name: cloud_resource
-    attributes:
-      - resource_id
-      - resource_type
-      - service_name
-      - region
-      - tags
-      
-  - name: cost_allocation
-    attributes:
-      - cost_center
-      - project_id
-      - team
-      - environment
-      
-  - name: usage_metrics
-    attributes:
-      - cpu_hours
-      - storage_gb
-      - network_gb
-      - api_calls
+focus_version: 1.2
+semantic_model:
+  base_table: focus_cost_and_usage
+
+# FOCUS v1.2 Core Dimensions (Required)
+core_dimensions:
+  - name: billing_account_id
+    type: string
+    required: true
+    description: "Unique identifier for the billing account"
+
+  - name: billing_account_name
+    type: string
+    required: false
+    description: "Display name for the billing account"
+
+  - name: billing_currency
+    type: string
+    required: true
+    description: "Currency used for billing (ISO 4217)"
+
+  - name: billing_period_start
+    type: date
+    required: true
+    description: "Start date of the billing period"
+
+  - name: billing_period_end
+    type: date
+    required: true
+    description: "End date of the billing period"
+
+  - name: charge_category
+    type: string
+    required: true
+    enum: [Usage, Purchase, Tax, Credit, Adjustment, Rounding]
+    description: "High-level categorization of the charge"
+
+  - name: charge_frequency
+    type: string
+    required: true
+    enum: [One-Time, Recurring, Usage-Based]
+    description: "Frequency of the charge"
+
+  - name: charge_period_start
+    type: datetime
+    required: true
+    description: "Start of the time period the charge covers"
+
+  - name: charge_period_end
+    type: datetime
+    required: true
+    description: "End of the time period the charge covers"
+
+# FOCUS v1.2 Resource Identification
+resource_dimensions:
+  - name: resource_id
+    type: string
+    required: false
+    description: "Unique identifier for the resource"
+
+  - name: resource_name
+    type: string
+    required: false
+    description: "Display name for the resource"
+
+  - name: resource_type
+    type: string
+    required: false
+    description: "Type or category of the resource"
+
+  - name: service_category
+    type: string
+    required: false
+    description: "Highest-level grouping of services"
+
+  - name: service_name
+    type: string
+    required: true
+    description: "Name of the service as defined by the provider"
+
+# FOCUS v1.2 Core Metrics (Required)
+core_metrics:
+  - name: billed_cost
+    type: decimal
+    required: true
+    description: "Cost after applying all adjustments, discounts, and taxes"
+
+  - name: effective_cost
+    type: decimal
+    required: false
+    description: "Amortized cost reflecting the true economic impact"
+
+  - name: list_cost
+    type: decimal
+    required: false
+    description: "Cost at public list prices before any discounts"
+
+  - name: pricing_quantity
+    type: decimal
+    required: false
+    description: "Quantity of units used for pricing calculations"
+
+  - name: pricing_unit
+    type: string
+    required: false
+    description: "Unit of measurement for pricing_quantity"
+
+  - name: usage_quantity
+    type: decimal
+    required: false
+    description: "Quantity of units consumed"
+
+  - name: usage_unit
+    type: string
+    required: false
+    description: "Unit of measurement for usage_quantity"
+
+# Enhanced FinOps Dimensions for Analytics
+enhanced_dimensions:
+  - name: allocation_cost_center
+    type: string
+    required: false
+    description: "Cost center for chargeback/showback"
+
+  - name: allocation_project_id
+    type: string
+    required: false
+    description: "Project identifier for cost allocation"
+
+  - name: allocation_team
+    type: string
+    required: false
+    description: "Team responsible for the resource"
+
+  - name: allocation_environment
+    type: string
+    required: false
+    enum: [production, staging, development, test]
+    description: "Environment classification"
+
+  - name: commitment_discount_category
+    type: string
+    required: false
+    enum: [Spend, Usage]
+    description: "Type of commitment discount applied"
+
+  - name: commitment_discount_id
+    type: string
+    required: false
+    description: "Identifier for the commitment discount"
+
+  - name: commitment_discount_name
+    type: string
+    required: false
+    description: "Display name for the commitment discount"
 
 relationships:
   - type: one_to_many
-    from: cost_allocation
-    to: cloud_resource
-    
+    from: billing_account_id
+    to: resource_id
+    description: "Billing account contains multiple resources"
+
+  - type: many_to_one
+    from: resource_id
+    to: service_name
+    description: "Resources belong to specific services"
+
   - type: one_to_many
-    from: cloud_resource
-    to: usage_metrics
+    from: allocation_cost_center
+    to: resource_id
+    description: "Cost centers contain multiple resources"
+
+# ClickHouse Table Schema
+clickhouse_schema:
+  table_name: focus_cost_usage_v1_2
+  engine: MergeTree()
+  order_by: [billing_account_id, charge_period_start, service_name]
+  partition_by: toYYYYMM(charge_period_start)
+
+  columns:
+    # FOCUS Required Fields
+    - name: billing_account_id
+      type: String
+      codec: ZSTD(1)
+    - name: billing_currency
+      type: FixedString(3)
+    - name: billing_period_start
+      type: Date
+    - name: billing_period_end
+      type: Date
+    - name: charge_category
+      type: Enum8('Usage'=1, 'Purchase'=2, 'Tax'=3, 'Credit'=4, 'Adjustment'=5, 'Rounding'=6)
+    - name: charge_frequency
+      type: Enum8('One-Time'=1, 'Recurring'=2, 'Usage-Based'=3)
+    - name: charge_period_start
+      type: DateTime64(3)
+    - name: charge_period_end
+      type: DateTime64(3)
+    - name: billed_cost
+      type: Decimal64(4)
+      codec: ZSTD(1)
+    - name: service_name
+      type: String
+      codec: ZSTD(1)
+
+    # FOCUS Optional Fields
+    - name: effective_cost
+      type: Nullable(Decimal64(4))
+    - name: list_cost
+      type: Nullable(Decimal64(4))
+    - name: resource_id
+      type: Nullable(String)
+    - name: resource_name
+      type: Nullable(String)
+    - name: pricing_quantity
+      type: Nullable(Decimal64(8))
+    - name: usage_quantity
+      type: Nullable(Decimal64(8))
+
+    # Enhanced Analytics Fields
+    - name: allocation_cost_center
+      type: Nullable(String)
+    - name: allocation_project_id
+      type: Nullable(String)
+    - name: allocation_environment
+      type: Nullable(Enum8('production'=1, 'staging'=2, 'development'=3, 'test'=4))
 ```
 
-#### 1.2 Metric Repository Definition
+#### 1.2 FOCUS v1.2 Compliant Metric Repository Definition
 
 ```yaml
-metrics:
-  - name: total_cloud_cost
+# FOCUS-Based Core Metrics
+focus_core_metrics:
+  - name: total_billed_cost
     type: sum
-    sql: "SUM(cost_amount)"
-    dimensions: [cost_center, region, service]
+    sql: "SUM(billed_cost)"
+    base_field: billed_cost
+    dimensions: [billing_account_id, service_name, charge_category]
     narrative_goal: magnitude_comparison
     recommended_chart: bar_chart
-    
-  - name: cost_trend_monthly
+    focus_compliant: true
+    description: "Total cost after all adjustments, discounts, and taxes"
+
+  - name: effective_cost_trend
     type: time_series
-    sql: "SUM(cost_amount) OVER (ORDER BY month)"
-    dimensions: [month]
+    sql: "SUM(COALESCE(effective_cost, billed_cost)) OVER (ORDER BY charge_period_start)"
+    base_field: effective_cost
+    dimensions: [charge_period_start]
     narrative_goal: change_over_time
     recommended_chart: line_chart
-    
-  - name: cost_variance
+    focus_compliant: true
+    description: "Amortized cost trend reflecting true economic impact"
+
+  - name: commitment_discount_coverage
+    type: ratio
+    sql: "SUM(CASE WHEN commitment_discount_id IS NOT NULL THEN billed_cost ELSE 0 END) / SUM(billed_cost)"
+    base_field: [billed_cost, commitment_discount_id]
+    dimensions: [billing_account_id, service_name]
+    narrative_goal: magnitude_comparison
+    recommended_chart: bar_chart
+    focus_compliant: true
+    description: "Percentage of spend covered by commitment discounts"
+
+# Enhanced FinOps Analytics Metrics
+finops_enhanced_metrics:
+  - name: cost_center_variance
     type: deviation
     sql: "(actual_cost - budgeted_cost) / budgeted_cost"
-    dimensions: [cost_center]
+    base_field: billed_cost
+    dimensions: [allocation_cost_center, charge_period_start]
     narrative_goal: deviation
     recommended_chart: bullet_chart
-    
-  - name: resource_utilization_distribution
+    focus_compliant: false
+    description: "Budget variance by cost center"
+
+  - name: service_cost_distribution
     type: distribution
-    sql: "cpu_utilization_percent"
-    dimensions: [resource_type]
+    sql: "billed_cost"
+    base_field: billed_cost
+    dimensions: [service_name, charge_category]
     narrative_goal: distribution
-    recommended_chart: violin_plot
+    recommended_chart: treemap
+    focus_compliant: true
+    description: "Distribution of costs across services and charge types"
+
+  - name: usage_efficiency_ratio
+    type: calculated
+    sql: "CASE WHEN usage_quantity > 0 THEN billed_cost / usage_quantity ELSE NULL END"
+    base_field: [billed_cost, usage_quantity, usage_unit]
+    dimensions: [service_name, resource_type, usage_unit]
+    narrative_goal: correlation
+    recommended_chart: scatter_plot
+    focus_compliant: true
+    description: "Cost per unit of usage for efficiency analysis"
+
+# Time-Based Aggregation Metrics
+temporal_metrics:
+  - name: monthly_cost_trend
+    type: time_series_aggregated
+    sql: "SUM(billed_cost)"
+    base_field: billed_cost
+    time_dimension: charge_period_start
+    time_grain: month
+    dimensions: [service_name, allocation_environment]
+    narrative_goal: change_over_time
+    recommended_chart: line_chart
+    focus_compliant: true
+
+  - name: daily_cost_anomalies
+    type: anomaly_detection
+    sql: "SUM(billed_cost)"
+    base_field: billed_cost
+    time_dimension: charge_period_start
+    time_grain: day
+    dimensions: [billing_account_id, service_name]
+    narrative_goal: deviation
+    recommended_chart: line_chart_with_bands
+    focus_compliant: true
+    anomaly_threshold: 2_standard_deviations
+
+# Cross-Dimensional Analysis Metrics
+analytical_metrics:
+  - name: service_cost_concentration
+    type: concentration_index
+    sql: "POWER(SUM(billed_cost * billed_cost) / POWER(SUM(billed_cost), 2), 0.5)"
+    base_field: billed_cost
+    dimensions: [billing_account_id, charge_period_start]
+    narrative_goal: magnitude_comparison
+    recommended_chart: bar_chart
+    focus_compliant: true
+    description: "Herfindahl index for cost concentration across services"
+
+  - name: commitment_discount_utilization
+    type: utilization_rate
+    sql: "SUM(CASE WHEN commitment_discount_category = 'Usage' THEN usage_quantity ELSE 0 END) / SUM(commitment_capacity)"
+    base_field: [usage_quantity, commitment_discount_category]
+    dimensions: [commitment_discount_id, charge_period_start]
+    narrative_goal: magnitude_comparison
+    recommended_chart: bullet_chart
+    focus_compliant: true
+    description: "Utilization rate of usage-based commitment discounts"
+
+# Data Quality and Compliance Metrics
+data_quality_metrics:
+  - name: focus_compliance_score
+    type: data_quality
+    sql: "COUNT(CASE WHEN billing_account_id IS NOT NULL AND service_name IS NOT NULL AND billed_cost IS NOT NULL THEN 1 END) / COUNT(*)"
+    base_field: [billing_account_id, service_name, billed_cost]
+    dimensions: [billing_account_id, charge_period_start]
+    narrative_goal: magnitude_comparison
+    recommended_chart: bar_chart
+    focus_compliant: true
+    description: "Percentage of records meeting FOCUS v1.2 minimum requirements"
+
+  - name: allocation_coverage
+    type: coverage_metric
+    sql: "SUM(CASE WHEN allocation_cost_center IS NOT NULL THEN billed_cost ELSE 0 END) / SUM(billed_cost)"
+    base_field: [billed_cost, allocation_cost_center]
+    dimensions: [billing_account_id, service_name]
+    narrative_goal: magnitude_comparison
+    recommended_chart: bar_chart
+    focus_compliant: false
+    description: "Percentage of costs allocated to cost centers"
+
+# Metric Validation Rules
+metric_validation:
+  - metric: total_billed_cost
+    validations:
+      - type: non_negative
+        message: "Billed cost cannot be negative"
+      - type: currency_match
+        field: billing_currency
+        message: "Currency must be consistent within billing period"
+
+  - metric: effective_cost_trend
+    validations:
+      - type: logical_consistency
+        rule: "effective_cost >= 0 OR effective_cost IS NULL"
+        message: "Effective cost must be non-negative or null"
+
+  - metric: commitment_discount_coverage
+    validations:
+      - type: range_check
+        min: 0
+        max: 1
+        message: "Coverage ratio must be between 0 and 1"
 ```
 
 #### 1.3 User Persona Profiles
@@ -251,7 +904,49 @@ personas:
 
 ## 🎨 Visualization Selection Engine
 
-### Architecture Components
+### Two-Phase Implementation Architecture
+
+#### Complete Two-Phase Architecture Flow
+
+```mermaid
+graph TB
+    subgraph "Phase 3A: CSV Integration (6-8 weeks)"
+        A1[FOCUS Sample CSVs] --> B1[CSV Loader]
+        B1 --> C1[LIDA Enhanced]
+        C1 --> D1[ECharts MCP]
+        D1 --> E1[FinOps Dashboard]
+    end
+
+    subgraph "Phase 3B: ClickHouse Integration (8-10 weeks)"
+        A2[ClickHouse dbo/workloads] --> B2[MCP Discovery]
+        B2 --> C2[React Flow Mapping]
+        C2 --> D2[dbt Transformations]
+        D2 --> E2[FOCUS Tables]
+        E2 --> F2[LIDA Enhanced]
+        F2 --> G2[ECharts MCP]
+        G2 --> H2[Production Dashboard]
+    end
+
+    subgraph "Shared Components"
+        I[Mem0 Context Store]
+        J[Persona Engine]
+        K[FTVV Selection]
+    end
+
+    E1 --> I
+    H2 --> I
+    C1 --> J
+    F2 --> J
+    D1 --> K
+    G2 --> K
+
+    style A1 fill:#e1f5fe
+    style A2 fill:#f3e5f5
+    style E1 fill:#e8f5e8
+    style H2 fill:#e8f5e8
+```
+
+### Visualization Selection Engine Architecture
 
 ```mermaid
 graph TD
@@ -280,14 +975,73 @@ graph TD
     P --> B
 ```
 
-### Selection Algorithm Workflow
+### Phase 3A: FOCUS CSV Integration Workflow
+
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant Frontend as React Frontend
+    participant LIDA as Enhanced LIDA Manager
+    participant CSVLoader as FOCUS CSV Loader
+    participant ECharts as ECharts MCP
+    participant Mem0 as Mem0 Context Store
+
+    User->>Frontend: Request FinOps analysis
+    Frontend->>CSVLoader: Load FOCUS sample dataset
+    CSVLoader->>CSVLoader: Validate FOCUS v1.2 compliance
+    CSVLoader->>LIDA: Provide FOCUS-compliant data
+    LIDA->>LIDA: Generate data summary & FinOps goals
+    LIDA->>ECharts: Request visualization with persona context
+    ECharts->>Frontend: Return ECharts configuration
+    Frontend->>User: Display interactive FinOps dashboard
+    User->>Frontend: Provide feedback/drill-down
+    Frontend->>Mem0: Store user context & preferences
+```
+
+### Phase 3B: ClickHouse Production Integration Workflow
+
+```mermaid
+sequenceDiagram
+    participant CloudVendor as Cloud Vendor (AWS/GCP/Azure)
+    participant ClickHouse as ClickHouse Database
+    participant CHDiscovery as ClickHouse MCP Discovery
+    participant ReactFlow as React Flow Mapping UI
+    participant dbt as dbt MCP
+    participant LIDA as Enhanced LIDA Manager
+    participant ECharts as ECharts MCP
+    participant Mem0 as Mem0 Context Store
+    participant User as User
+
+    Note over CloudVendor,ClickHouse: Data Ingestion (External)
+    CloudVendor->>ClickHouse: Raw cost data in dbo/workloads tables
+
+    Note over User,Mem0: Data Discovery & Mapping
+    User->>ReactFlow: Initiate data migration
+    ReactFlow->>CHDiscovery: Discover tables in dbo/workloads
+    CHDiscovery->>ReactFlow: Return table schemas & compliance scores
+    User->>ReactFlow: Configure field mappings via drag-drop
+    ReactFlow->>dbt: Generate transformation models
+    dbt->>dbt: Apply FOCUS v1.2 transformations
+    dbt->>ClickHouse: Materialize FOCUS-compliant tables
+
+    Note over User,Mem0: Analytics & Visualization
+    User->>LIDA: Request FinOps analysis
+    LIDA->>ClickHouse: Query FOCUS-compliant data
+    LIDA->>LIDA: Generate semantic summary & goals
+    LIDA->>ECharts: Request visualization with context
+    ECharts->>User: Interactive FinOps dashboard
+    User->>Mem0: Store context for future queries
+    Mem0->>LIDA: Provide historical context for enhanced analysis
+```
+
+### Selection Algorithm Workflow (Shared Component)
 
 ```mermaid
 sequenceDiagram
     participant U as User
     participant F as Frontend
     participant E as Selection Engine
-    participant L as LLM (GPT-4)
+    participant L as LLM (GPT-4o)
     participant S as Semantic Layer
     participant M as Mem0
     participant EC as ECharts MCP

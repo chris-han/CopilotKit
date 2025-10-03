@@ -172,8 +172,11 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
   const emitStepEvents = useCallback(
     (stepId: string, { skipHighlight }: { skipHighlight?: boolean } = {}) => {
       const registryEntry = highlightRegistryRef.current[stepId];
-      const events = registryEntry?.events ?? [];
-      if (!events.length) {
+      if (!registryEntry) {
+        return;
+      }
+      const { events } = registryEntry;
+      if (!Array.isArray(events) || events.length === 0) {
         return;
       }
       events.forEach((event) => {

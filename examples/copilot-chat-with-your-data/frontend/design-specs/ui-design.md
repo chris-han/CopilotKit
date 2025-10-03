@@ -38,7 +38,7 @@ graph TD
 
 - `app/layout.tsx` renders the global HTML shell, attaches font variables, wraps children with `AgUiProvider`, and mounts the `AppShell` client component so header/footer/sidebar chrome surrounds every page.
 - `app/page.tsx` (the dashboard route) now simply returns the `Dashboard` component—the shared chrome is supplied by `AppShell`.
-- `components/NavigationMenu.tsx` renders a docked shadcn Sheet on the left with the ABI logo and navigation links (Overview, Dynamic Dashboard); hidden on sub-md screens.
+- `components/NavigationMenu.tsx` renders a docked shadcn Sheet on the left with the ABI logo and navigation links (Overview, Dynamic Dashboard); hidden on sub-md screens. The sheet can collapse to an icon-only rail—when folded the ABI wordmark hides, the navigation items show Lucide icons, and the toggle becomes a pill that the sheet edge bisects so only the outer half remains visible. Expanding restores the full-width menu, text labels, and an interior half of the same circular toggle.
 - `components/Header.tsx` provides navigation, branding, and sidebar toggles that remain visible at the top of the dashboard page.
 - `components/Dashboard.tsx` fills the main content region with metrics, charts, and strategic commentary panels.
 - `components/Footer.tsx` anchors persistent footer details beneath the main dashboard panel.

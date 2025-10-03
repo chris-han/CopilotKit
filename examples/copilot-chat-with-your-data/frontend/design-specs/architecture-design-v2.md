@@ -50,8 +50,9 @@ graph TB
         E[Context Manager]
         F[Visualization Selection Engine]
         G[Semantic Query Builder]
+        H1[ECharts MCP Server]
     end
-    
+
     subgraph "Intelligence Layer"
         H[LLM Orchestrator GPT-4]
         I[Goal Explorer Module]
@@ -84,13 +85,17 @@ graph TB
     C --> A
     D --> G
     D --> F
+    D --> H1
     E --> H
     F --> I
     F --> J
+    F --> H1
     G --> L
     H --> K
+    H1 --> N
     I --> J
     J --> P
+    J --> H1
     L --> M
     L --> N
     L --> O
@@ -108,6 +113,7 @@ graph TB
     style L fill:#99ccff
     style P fill:#99ff99
     style F fill:#ffcc99
+    style H1 fill:#ffcc99
 ```
 
 ---
@@ -253,24 +259,25 @@ graph TD
     B --> C[Data Relationship Classifier]
     B --> D[Narrative Goal Mapper]
     B --> E[Audience Profiler]
-    
+
     C --> F[FTVV Category Match]
     D --> F
     E --> F
-    
+
     F --> G{Perceptual Hierarchy Filter}
     G --> H[Cleveland-McGill Scoring]
     H --> I[Chart Candidate Pool]
-    
+
     I --> J{Persona Constraints}
     J --> K[Final Chart Selection]
-    
-    K --> L[Generate Specification]
-    L --> M[Memory Store]
-    L --> N[Render Visualization]
-    
-    M --> O[Opik Feedback Loop]
-    O --> B
+
+    K --> L[ECharts MCP Server]
+    L --> M[Generate ECharts Specification]
+    M --> N[Memory Store]
+    M --> O[Render Visualization]
+
+    N --> P[Opik Feedback Loop]
+    P --> B
 ```
 
 ### Selection Algorithm Workflow
@@ -283,8 +290,8 @@ sequenceDiagram
     participant L as LLM (GPT-4)
     participant S as Semantic Layer
     participant M as Mem0
-    participant V as VIS Generator
-    
+    participant EC as ECharts MCP
+
     U->>F: Request "Show cloud cost trends by region"
     F->>E: Context Payload + User Persona
     E->>M: Retrieve Historical Context
@@ -297,9 +304,11 @@ sequenceDiagram
     E->>L: Generate Chart Candidates
     L-->>E: [line_chart, area_chart, column_chart]
     E->>E: Score by Persona (executive_stakeholder)
-    E-->>F: Selected: line_chart with region facets
-    F->>V: Render Spec
-    V-->>U: Display Visualization
+    E->>EC: Generate ECharts Config (line, data, options)
+    EC-->>E: ECharts Specification with Options
+    E-->>F: ECharts Config + Data
+    F->>F: Render with ECharts Library
+    F-->>U: Display Visualization
     U->>F: Provide Feedback (thumbs up)
     F->>M: Store Interaction
     F->>E: Update Opik
@@ -355,14 +364,14 @@ class VisualizationSelector:
         
         # Step 6: Select Optimal Chart
         optimal_chart = max(scored_candidates, key=lambda x: x[1])
-        
-        # Step 7: Generate Specification
-        spec = self.generate_vega_lite_spec(
-            optimal_chart[0], 
-            metric_def, 
+
+        # Step 7: Generate ECharts Specification via MCP
+        spec = self.generate_echarts_spec(
+            optimal_chart[0],
+            metric_def,
             context_payload
         )
-        
+
         # Step 8: Store in Memory
         self.memory.store({
             'context': context_payload,
@@ -400,6 +409,43 @@ class VisualizationSelector:
         # Use LLM to refine based on intent nuances
         candidates = mapping.get(data_relationship, [])
         return self.llm.select_narrative_goal(candidates, intent)
+
+    def generate_echarts_spec(self, chart_type, metric_def, context_payload):
+        """Generate ECharts configuration via MCP Server"""
+        # Map chart type to ECharts type
+        chart_type_mapping = {
+            'bar_chart': 'bar',
+            'line_chart': 'line',
+            'area_chart': 'line',  # with areaStyle
+            'pie_chart': 'pie',
+            'scatter_plot': 'scatter',
+            'heatmap': 'heatmap',
+            'funnel': 'funnel',
+            'sankey_diagram': 'sankey',
+            'tree': 'tree',
+            'treemap': 'treemap',
+            'sunburst': 'sunburst'
+        }
+
+        echarts_type = chart_type_mapping.get(chart_type, 'bar')
+
+        # Prepare data for ECharts MCP Server
+        title = f"{metric_def.name} - {context_payload.narrative_goal}"
+        series_name = metric_def.name
+        x_axis_name = context_payload.dimensions[0] if context_payload.dimensions else "Category"
+        y_axis_name = metric_def.display_name or metric_def.name
+
+        # Call ECharts MCP Server
+        echarts_spec = self.echarts_mcp.get_chart(
+            type=echarts_type,
+            data=context_payload.data,
+            title=title,
+            series_name=series_name,
+            x_axis_name=x_axis_name,
+            y_axis_name=y_axis_name
+        )
+
+        return echarts_spec
 ```
 
 ---
@@ -435,18 +481,19 @@ flowchart TD
     N --> O[Chart Candidate Scoring]
     O --> P[Generate Vega-Lite Spec]
     
-    P --> Q[SSE Stream to Frontend]
-    Q --> R[Render Visualization]
-    
-    R --> S{User Feedback}
-    S -->|Positive| T[Store Pattern in Mem0]
-    S -->|Negative| U[Log to Opik for Optimization]
-    S -->|Drill Down| V[Update Context]
-    
-    T --> End([Dashboard Updated])
-    U --> W[Retrain Selection Model]
-    V --> A
-    W --> End
+    P --> Q[Generate via ECharts MCP]
+    Q --> R[SSE Stream to Frontend]
+    R --> S[Render with ECharts]
+
+    S --> T{User Feedback}
+    T -->|Positive| U[Store Pattern in Mem0]
+    T -->|Negative| V[Log to Opik for Optimization]
+    T -->|Drill Down| W[Update Context]
+
+    U --> End([Dashboard Updated])
+    V --> X[Retrain Selection Model]
+    W --> A
+    X --> End
 ```
 
 ---
@@ -730,6 +777,80 @@ class ContextAwareSuggestionEngine:
 
 ## 🛠️ Technical Implementation Stack
 
+### MCP Server Integration
+
+#### ECharts MCP Server
+
+The ECharts MCP Server provides a standardized interface for generating professional, interactive charts. It supports multiple chart types optimized for data storytelling:
+
+**Supported Chart Types:**
+- **Bar/Column Charts**: For magnitude comparisons and rankings (Cleveland-McGill position encoding)
+- **Line/Area Charts**: For temporal trends and change over time
+- **Pie Charts**: For part-to-whole composition (limited to high-level personas)
+- **Scatter Plots**: For correlation and relationship analysis
+- **Funnel Charts**: For conversion and process flow visualization
+- **Tree/Treemap/Sunburst**: For hierarchical data and drill-down analysis
+- **Heatmaps**: For multi-dimensional pattern detection
+
+**Integration Pattern:**
+```python
+# ECharts MCP Client Wrapper
+class EChartsMCPClient:
+    def __init__(self, mcp_session):
+        self.session = mcp_session
+
+    async def generate_chart(self, chart_type, data, title, series_name,
+                            x_axis_name, y_axis_name, options=None):
+        """
+        Generate ECharts configuration via MCP Server
+
+        Args:
+            chart_type: Type of chart (bar, line, pie, scatter, etc.)
+            data: Chart data in format [[x1, y1], [x2, y2], ...]
+            title: Chart title
+            series_name: Name of the data series
+            x_axis_name: Label for X-axis with units
+            y_axis_name: Label for Y-axis with units
+            options: Additional ECharts options for customization
+
+        Returns:
+            ECharts configuration object
+        """
+        result = await self.session.call_tool(
+            "get-chart",
+            arguments={
+                "type": chart_type,
+                "data": data,
+                "title": title,
+                "seriesName": series_name,
+                "xAxisName": x_axis_name,
+                "yAxisName": y_axis_name
+            }
+        )
+
+        # Merge with custom options if provided
+        if options:
+            echarts_config = result.content[0].text
+            echarts_config.update(options)
+
+        return echarts_config
+
+    def map_narrative_goal_to_chart_type(self, narrative_goal, data_shape):
+        """Map FTVV narrative goal to optimal ECharts type"""
+        mapping = {
+            'magnitude': 'bar',
+            'ranking': 'bar',
+            'change_over_time': 'line',
+            'distribution': 'bar',  # or violin via custom series
+            'correlation': 'scatter',
+            'part_to_whole': 'pie',
+            'deviation': 'bar',  # with reference lines
+            'flow': 'sankey',
+            'hierarchy': 'tree' if data_shape.is_tree else 'treemap'
+        }
+        return mapping.get(narrative_goal, 'bar')
+```
+
 ### Backend Service Layer
 
 ```python
@@ -738,6 +859,21 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import asyncio
+from mcp import ClientSession
+from mcp.client.stdio import stdio_client
+
+app = FastAPI(title="Agentic Analytics API")
+
+# Initialize ECharts MCP Client
+echarts_mcp_client = None
+
+async def init_echarts_mcp():
+    """Initialize connection to ECharts MCP Server"""
+    global echarts_mcp_client
+    server_params = stdio_client("mcp-echarts")
+    async with ClientSession(*server_params) as session:
+        echarts_mcp_client = session
+        return session
 
 app = FastAPI(title="Agentic Analytics API")
 
@@ -788,23 +924,37 @@ async def analyze(context: AnalyticsContext):
         dimensions=context.dimensions,
         filters=context.filters
     )
-    
-    # 5. Generate final specification
+
+    # 5. Generate ECharts specification via MCP
+    echarts_config = await echarts_mcp_client.call_tool(
+        "get-chart",
+        arguments={
+            "type": viz_spec.chart_type,
+            "data": query_result.data,
+            "title": f"{context.metrics[0]} - {viz_spec.narrative_goal}",
+            "seriesName": context.metrics[0],
+            "xAxisName": context.dimensions[0] if context.dimensions else "Category",
+            "yAxisName": context.metrics[0]
+        }
+    )
+
+    # 6. Generate final specification
     final_spec = {
         'chart_type': viz_spec.chart_type,
         'data': query_result.data,
+        'echarts_config': echarts_config,
         'config': viz_spec.config,
         'narrative_goal': viz_spec.narrative_goal,
         'insight_summary': await generate_insight_summary(query_result)
     }
     
-    # 6. Store interaction in Mem0
+    # 7. Store interaction in Mem0
     await mem0_client.store_interaction(
         user_id=context.user_id,
         context=context,
         result=final_spec
     )
-    
+
     return final_spec
 
 @app.websocket("/ws/stream-analysis")
@@ -841,9 +991,24 @@ async def progressive_analysis(context):
     yield {'type': 'data', 'data': data, 'progress': 0.7}
     
     yield {'type': 'status', 'data': 'Selecting optimal visualization...', 'progress': 0.8}
-    
+
     viz_spec = await select_visualization(context, data)
-    yield {'type': 'visualization', 'data': viz_spec, 'progress': 1.0}
+
+    yield {'type': 'status', 'data': 'Generating ECharts configuration...', 'progress': 0.9}
+
+    echarts_config = await echarts_mcp_client.generate_chart(
+        chart_type=viz_spec.chart_type,
+        data=data,
+        title=viz_spec.title,
+        series_name=context.metrics[0],
+        x_axis_name=context.dimensions[0],
+        y_axis_name=context.metrics[0]
+    )
+
+    yield {'type': 'visualization', 'data': {
+        'spec': viz_spec,
+        'echarts_config': echarts_config
+    }, 'progress': 1.0}
 ```
 
 ### Frontend Integration
@@ -885,9 +1050,16 @@ export function useAgenticAnalytics() {
           query
         })
       });
-      
-      const vizSpec = await response.json();
-      return vizSpec;
+
+      const result = await response.json();
+
+      // Result includes both viz spec and ECharts config
+      return {
+        spec: result.spec,
+        echartsConfig: result.echarts_config,
+        data: result.data,
+        insights: result.insight_summary
+      };
     }
   });
 
@@ -934,6 +1106,7 @@ export function useAgenticAnalytics() {
 // components/AgenticDashboard.tsx
 import { CopilotKit } from '@copilotkit/react-core';
 import { CopilotSidebar } from '@copilotkit/react-ui';
+import ReactECharts from 'echarts-for-react';
 
 export function AgenticDashboard() {
   const { context, analyzeData } = useAgenticAnalytics();
@@ -943,18 +1116,19 @@ export function AgenticDashboard() {
     <CopilotKit runtimeUrl="/api/copilotkit">
       <div className="dashboard-layout">
         <header>
-          <FilterBar 
+          <FilterBar
             filters={context.filters}
             onChange={(filters) => updateContext({ filters })}
           />
         </header>
-        
+
         <main className="visualization-grid">
           {visualizations.map((viz) => (
             <VisualizationCard
               key={viz.id}
               spec={viz.spec}
               data={viz.data}
+              echartsConfig={viz.echartsConfig}
               onDrillDown={(dim, val) => drillDown(dim, val)}
               onFeedback={(rating) => submitFeedback(viz.id, rating)}
             />
@@ -979,6 +1153,94 @@ export function AgenticDashboard() {
         />
       </div>
     </CopilotKit>
+  );
+}
+```
+
+```typescript
+// components/VisualizationCard.tsx
+import ReactECharts from 'echarts-for-react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
+
+interface VisualizationCardProps {
+  spec: VisualizationSpec;
+  echartsConfig: any;
+  data: any[];
+  onDrillDown: (dimension: string, value: string) => void;
+  onFeedback: (rating: 'positive' | 'negative') => void;
+}
+
+export function VisualizationCard({
+  spec,
+  echartsConfig,
+  data,
+  onDrillDown,
+  onFeedback
+}: VisualizationCardProps) {
+  // Add click handler for drill-down
+  const onChartClick = (params: any) => {
+    if (params.componentType === 'series' && params.name) {
+      const dimension = spec.dimensions[0];
+      onDrillDown(dimension, params.name);
+    }
+  };
+
+  // Enhance ECharts config with interactivity
+  const enhancedConfig = {
+    ...echartsConfig,
+    tooltip: {
+      ...echartsConfig.tooltip,
+      trigger: 'item',
+      formatter: (params: any) => {
+        return `${params.name}: ${params.value}`;
+      }
+    },
+    toolbox: {
+      feature: {
+        saveAsImage: { title: 'Save as Image' },
+        dataView: { title: 'View Data', readOnly: true },
+        restore: { title: 'Restore' }
+      }
+    }
+  };
+
+  return (
+    <Card className="visualization-card">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>{spec.title}</CardTitle>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onFeedback('positive')}
+            className="p-2 hover:bg-green-100 rounded"
+          >
+            <ThumbsUp size={16} />
+          </button>
+          <button
+            onClick={() => onFeedback('negative')}
+            className="p-2 hover:bg-red-100 rounded"
+          >
+            <ThumbsDown size={16} />
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <ReactECharts
+          option={enhancedConfig}
+          style={{ height: '400px', width: '100%' }}
+          onEvents={{
+            click: onChartClick
+          }}
+        />
+        {spec.insight_summary && (
+          <div className="mt-4 p-3 bg-blue-50 rounded">
+            <p className="text-sm text-blue-900">
+              <strong>Insight:</strong> {spec.insight_summary}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 ```
@@ -1190,6 +1452,7 @@ governance_policies:
 | Feature | Traditional BI | Agentic Analytics Solution |
 |---------|----------------|---------------------------|
 | **Chart Selection** | Manual, analyst-driven | Automated via FTVV + Cleveland-McGill + LLM |
+| **Chart Generation** | Hard-coded configurations | Dynamic via ECharts MCP Server |
 | **Semantic Layer** | Static, pre-defined | Dynamic, context-aware via dbt MCP |
 | **User Guidance** | Documentation | Embedded AI copilot with memory |
 | **Optimization** | Ad-hoc | Continuous via Opik + Mem0 feedback loops |
@@ -1197,6 +1460,7 @@ governance_policies:
 | **Personalization** | Role-based dashboards | Persona-adaptive visualizations |
 | **Cognitive Load** | Not measured | Actively minimized via perceptual hierarchy |
 | **Narrative Clarity** | Implicit | Explicitly engineered via FTVV categories |
+| **Interactivity** | Limited drill-down | Full ECharts interactivity + agent-driven exploration |
 
 ### Future Roadmap
 
@@ -1229,9 +1493,10 @@ This **Context-Aware Agentic Data Visualization Solution** represents a paradigm
 
 1. **Formalizing the Art**: Applying cognitive science (Cleveland-McGill) and structured frameworks (FTVV) to ensure every visualization maximizes comprehension
 2. **Automating Expertise**: Using LLM-powered agents to replicate expert-level visualization selection and narrative design
-3. **Personalizing Experience**: Adapting complexity and chart types to audience personas for optimal cognitive efficiency
-4. **Enabling Continuous Improvement**: Leveraging Mem0 and Opik to learn from user behavior and optimize over time
-5. **Accelerating Deployment**: Providing LLM-guided onboarding that reduces time-to-value from weeks to days
+3. **Leveraging Professional Charting**: Integrating ECharts MCP Server for production-grade, interactive visualizations with enterprise features
+4. **Personalizing Experience**: Adapting complexity and chart types to audience personas for optimal cognitive efficiency
+5. **Enabling Continuous Improvement**: Leveraging Mem0 and Opik to learn from user behavior and optimize over time
+6. **Accelerating Deployment**: Providing LLM-guided onboarding that reduces time-to-value from weeks to days
 
 By unifying semantic layer governance with perceptually-optimized visualization selection, organizations can transform data exploration from a technical exercise into a strategic communication tool that drives decisive management action.
 

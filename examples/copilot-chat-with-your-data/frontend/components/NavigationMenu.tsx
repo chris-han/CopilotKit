@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { ChevronLeft, ChevronRight, Home, LineChart, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, LineChart, Sparkles, LayoutDashboard } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -27,6 +27,7 @@ type NavigationItem = {
 
 const NAVIGATION_ITEMS: NavigationItem[] = [
   { label: "Overview", href: "/", icon: Home },
+  { label: "Dashboards", href: "/dashboards", icon: LayoutDashboard },
   { label: "Dynamic Dashboard", href: "/dynamic-dashboard", icon: LineChart },
   { label: "LIDA Analytics", href: "/lida", icon: Sparkles },
 ];

@@ -196,7 +196,148 @@ Instead of replacing the existing system, we will:
   - Create evaluation metrics and dashboards
   - Add automated model retraining triggers
 
-### Task 6: Frontend Integration with AG-UI System
+### Task 6: Dashboard Persistence and Template System
+- [ ] **Implement PostgreSQL dashboard persistence** for LIDA-generated visualizations
+  ```python
+  class LidaDashboardService:
+      def __init__(self, postgres_mcp_client, lida_manager):
+          self.postgres_client = postgres_mcp_client
+          self.lida_manager = lida_manager
+
+      async def save_lida_visualization(self, goal, echarts_config, user_id):
+          """Save LIDA-generated visualization to PostgreSQL"""
+          visualization_data = {
+              'name': goal.question,
+              'description': f'Auto-generated visualization: {goal.rationale}',
+              'chart_type': self.extract_chart_type(echarts_config),
+              'echarts_config': echarts_config,
+              'data_query': goal.query_context,
+              'semantic_mapping': {
+                  'lida_goal': goal.to_dict(),
+                  'narrative_category': goal.narrative_category,
+                  'persona_target': goal.persona
+              },
+              'created_by': user_id
+          }
+
+          result = await self.postgres_client.execute_sql(
+              sql="""INSERT INTO dashboards.visualizations
+                     (name, description, chart_type, echarts_config,
+                      data_query, semantic_mapping, created_by)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     RETURNING id""",
+              params=[
+                  visualization_data['name'],
+                  visualization_data['description'],
+                  visualization_data['chart_type'],
+                  json.dumps(visualization_data['echarts_config']),
+                  json.dumps(visualization_data['data_query']),
+                  json.dumps(visualization_data['semantic_mapping']),
+                  visualization_data['created_by']
+              ]
+          )
+          return result.rows[0]['id']
+  ```
+
+- [ ] **Create LIDA-powered dashboard templates** for different FinOps scenarios
+  - Generate template configurations using LIDA's goal generation
+  - Create persona-specific dashboard layouts
+  - Implement template validation against FOCUS v1.2 compliance
+  - Add template thumbnail generation from ECharts configurations
+
+- [ ] **Implement dashboard composition** from multiple LIDA visualizations
+  ```typescript
+  interface LidaDashboardTemplate {
+    id: string;
+    name: string;
+    category: 'finops-executive' | 'cost-optimization' | 'resource-analysis';
+    layout_config: {
+      grid: { cols: number; rows: 'auto' };
+      items: LidaDashboardItem[];
+    };
+    lida_goals: {
+      primary_goals: string[];      // Main analytical questions
+      secondary_goals: string[];    // Follow-up drill-down questions
+      persona_target: PersonaType;
+    };
+  }
+
+  interface LidaDashboardItem {
+    id: string;
+    lida_goal: string;           // Natural language goal for LIDA
+    expected_chart_type: string; // Anticipated chart type
+    position: GridPosition;
+    fallback_config?: any;       // Static config if LIDA fails
+  }
+  ```
+
+- [ ] **Integrate dashboard persistence** with LIDA visualization generation workflow
+  - Auto-save LIDA visualizations to database
+  - Create dashboard composition from multiple LIDA outputs
+  - Implement template instantiation with real data
+  - Add dashboard sharing and collaboration features
+
+### Task 7: Dashboard Edit/View Mode Integration with LIDA
+- [ ] **Enhance dashboard edit mode** with LIDA-powered suggestions
+  ```typescript
+  // Enhanced dashboard editor with LIDA intelligence
+  export function LidaEnhancedDashboardEditor({ dashboard, onSave }) {
+    const [lidaSuggestions, setLidaSuggestions] = useState([]);
+
+    const generateLidaSuggestions = async (currentLayout) => {
+      // Analyze current dashboard layout
+      const context = {
+        existing_charts: currentLayout.items.map(item => item.chart_type),
+        data_domain: dashboard.metadata.domain || 'finops',
+        user_persona: dashboard.metadata.persona || 'analyst'
+      };
+
+      // Request LIDA to suggest complementary visualizations
+      const response = await fetch('/api/lida/suggest-charts', {
+        method: 'POST',
+        body: JSON.stringify({
+          context,
+          query: `Suggest additional charts to complement this ${context.data_domain} dashboard`
+        })
+      });
+
+      const suggestions = await response.json();
+      setLidaSuggestions(suggestions);
+    };
+
+    return (
+      <div className="lida-enhanced-editor">
+        <DashboardGrid
+          items={dashboard.layout_config.items}
+          onItemChange={handleItemChange}
+        />
+
+        <LidaSuggestionPanel
+          suggestions={lidaSuggestions}
+          onAddSuggestion={handleAddLidaChart}
+        />
+
+        <button onClick={() => generateLidaSuggestions(dashboard.layout_config)}>
+          Get LIDA Suggestions
+        </button>
+      </div>
+    );
+  }
+  ```
+
+- [ ] **Implement real-time dashboard generation** from natural language
+  - Create conversational dashboard builder interface
+  - Enable voice-to-dashboard functionality
+  - Add progressive dashboard assembly
+  - Implement collaborative dashboard creation
+
+- [ ] **Add LIDA-powered dashboard optimization** suggestions
+  - Analyze existing dashboard effectiveness
+  - Suggest layout improvements using perceptual hierarchy
+  - Recommend chart type changes for better comprehension
+  - Implement automated accessibility enhancements
+
+### Task 8: Frontend Integration with AG-UI System
 - [ ] **Adapt LIDA's web API** to work with CopilotKit actions
   ```typescript
   useCopilotAction({
@@ -233,9 +374,56 @@ Instead of replacing the existing system, we will:
   - Implement chart customization controls
   - Create export and sharing features
 
-### Task 7: FOCUS Sample Data Integration
+### Task 9: Template Gallery Enhancement with LIDA Intelligence
+- [ ] **Create intelligent template recommendation** system
+  ```python
+  class LidaTemplateRecommendationEngine:
+      def __init__(self, lida_manager, postgres_client):
+          self.lida = lida_manager
+          self.postgres = postgres_client
 
-**Dependencies**: Tasks 1-6 must be completed first
+      async def recommend_templates(self, user_context, data_sample):
+          """Use LIDA to analyze data and recommend appropriate templates"""
+          # Generate data summary using LIDA
+          data_summary = await self.lida.summarize(data_sample)
+
+          # Generate potential goals using LIDA
+          goals = await self.lida.goals(
+              summary=data_summary,
+              n=10,
+              persona=user_context.persona
+          )
+
+          # Map goals to existing templates
+          template_scores = []
+          for template in await self.get_available_templates():
+              similarity_score = self.calculate_goal_template_similarity(
+                  goals, template.lida_goals
+              )
+              template_scores.append({
+                  'template': template,
+                  'score': similarity_score,
+                  'matching_goals': self.find_matching_goals(goals, template)
+              })
+
+          return sorted(template_scores, key=lambda x: x['score'], reverse=True)
+  ```
+
+- [ ] **Generate templates dynamically** using LIDA goal generation
+  - Create templates from user queries using LIDA
+  - Auto-generate template descriptions and metadata
+  - Implement template validation and quality scoring
+  - Add template versioning and evolution tracking
+
+- [ ] **Implement template customization** with LIDA guidance
+  - Use LIDA to suggest template modifications
+  - Enable natural language template editing
+  - Add template preview generation with sample data
+  - Create template sharing and community features
+
+### Task 10: FOCUS Sample Data Integration
+
+**Dependencies**: Tasks 1-9 must be completed first
 **Scope**: Use sample CSV datasets from FOCUS specification to build core analytics
 
 ### Implementation Architecture Flow
@@ -246,6 +434,8 @@ graph TB
         A1[FOCUS Sample CSVs] --> B1[CSV Loader]
         B1 --> C1[LIDA Enhanced]
         C1 --> D1[ECharts MCP]
+        D1 --> E1[Dashboard Persistence]
+        E1 --> F1[Template Gallery]
         D1 --> E1[FinOps Dashboard]
     end
 

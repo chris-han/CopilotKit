@@ -6,13 +6,11 @@ python-multipart==0.0.19
 python-dotenv>=1.0.1
 
 # HTTP and Networking
-httpx[standard]
+httpx
 httpcore
 httptools
 websockets
-sse-starlettePID=$(sudo lsof -t -i :8004)
-CHILDREN=$(ps -o pid= --ppid $PID)
-sudo kill -9 $CHILDREN $PID
+sse-starlette==2.4.0
 
 idna==3.10
 h11==0.16.0
@@ -22,16 +20,20 @@ anyio==4.11.0
 
 # AI/ML and LLM Dependencies
 openai
-pydantic-ai[openai]
+pydantic-ai
 pydantic-ai-slim
 pydantic
 pydantic-core
 pydantic-settings
 tiktoken
 
+# Memory and Context Management
+mem0ai==0.1.118
+opik>=0.4
+
 # AG-UI Protocol and CopilotKit
 ag-ui-protocol==0.1.9
-ag-ui-langgraph==0.0.14
+ag-ui-langgraph==0.0.13
 copilotkit==0.1.54
 
 # Search and External APIs
@@ -40,11 +42,13 @@ tavily-python==0.5.0
 # Database and Data Storage
 clickhouse-connect==0.9.2
 SQLAlchemy==2.0.43
+psycopg2-binary==2.9.10
+asyncpg==0.30.0
 
 # Data Processing and Visualization
 lida==0.0.10
 pandas==2.3.3
-numpy==2.3.3
+numpy==1.26.4
 plotly==6.3.1
 matplotlib==3.10.6
 altair==5.5.0
@@ -66,6 +70,8 @@ click==8.3.0
 rich==14.1.0
 tqdm==4.67.1
 filelock==3.19.1
+uuid==1.30
+python-slugify==8.0.4
 
 # Security and Authentication
 cryptography==46.0.2
@@ -78,8 +84,16 @@ pytest-timeout
 # Additional Dependencies for Enhanced Features
 Jinja2==3.1.6
 MarkupSafe==3.0.3
-pytz==2025.2
+pytz==2024.1
 python-dateutil==2.9.0.post0
 requests==2.32.5
 urllib3==2.5.0
 PyYAML==6.0.3
+
+# Dashboard System Dependencies
+# - psycopg2-binary: PostgreSQL synchronous client
+# - asyncpg: PostgreSQL asynchronous client for FastAPI
+# - mem0ai: Context memory and user interaction storage
+# - opik: LLM evaluation and feedback collection
+# - uuid: UUID generation for dashboard entities
+# - python-slugify: URL-safe slugs for dashboard names

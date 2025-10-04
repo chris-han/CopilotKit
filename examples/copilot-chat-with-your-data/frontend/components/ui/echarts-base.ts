@@ -10,6 +10,7 @@ import {
   DatasetComponent,
   TransformComponent,
   GraphicComponent,
+  TitleComponent,
 } from "echarts/components"
 import { CanvasRenderer } from "echarts/renderers"
 
@@ -21,6 +22,7 @@ echarts.use([
   DatasetComponent,
   TransformComponent,
   GraphicComponent,
+  TitleComponent,
   CanvasRenderer,
   LineChart,
   EChartsBarChart,

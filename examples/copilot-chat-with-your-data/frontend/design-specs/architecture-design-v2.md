@@ -1,4 +1,4 @@
-User: fileNode to-be-arch.md
+User: fileNode architecture-design-v2.md
 User: fileNode Selecting_Visualizations_for_Data_Stories.md
 User:  study these two doc thourouly , and relfect on it, then propose a data visualization design porcess which will maximum communication efficiency and effectiveness to the target audience, and drive the acions in next management. the process start with understanding data, metrics, audience and business goal, through building a semantic layout data model on business,data and user persona, then based on the understanding to dynamicly suggest visualizations to create a dashboard on each business domain and operational topic. Aslo leverage LLM and context engineering to guide the IT pro to onboarding the solution by config data sources and setup in order to make the solution works for a specific analytic domain such as cloud FinOps. output a solution proposal in md, with mermaid charts to clarify architecture and workflows.
 Model: # 🎯 Context-Aware Agentic Data Visualization Solution
@@ -80,6 +80,13 @@ graph TB
         V[Data Onboarding Interface]
         W[ClickHouse MCP Server]
     end
+
+    subgraph "Dashboard Persistence Layer"
+        X[PostgreSQL Database]
+        Y[Dashboard Schema]
+        Z[Template Repository]
+        AA[PostgreSQL MCP Server]
+    end
     
     A --> D
     B --> E
@@ -109,12 +116,410 @@ graph TB
     T --> L
     U --> T
     V --> T
-    
+    X --> AA
+    Y --> X
+    Z --> Y
+    AA --> D
+    D --> Y
+
     style H fill:#ff9999
     style L fill:#99ccff
     style P fill:#99ff99
     style F fill:#ffcc99
     style H1 fill:#ffcc99
+    style AA fill:#cc99ff
+```
+
+---
+
+## 🗂️ Dashboard Persistence Architecture
+
+The dashboard system utilizes a dedicated PostgreSQL `dashboards` schema to persist dashboard configurations, templates, and user customizations. This provides robust data integrity and enables sophisticated dashboard management features.
+
+### Database Schema Design
+
+```mermaid
+erDiagram
+    DASHBOARDS {
+        uuid id PK
+        varchar name
+        text description
+        jsonb layout_config
+        jsonb metadata
+        boolean is_public
+        varchar created_by
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DASHBOARD_TEMPLATES {
+        uuid id PK
+        varchar name
+        text description
+        varchar category
+        varchar thumbnail_url
+        jsonb layout_config
+        jsonb default_data
+        boolean is_featured
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    VISUALIZATIONS {
+        uuid id PK
+        varchar name
+        text description
+        varchar chart_type
+        jsonb echarts_config
+        jsonb data_query
+        jsonb semantic_mapping
+        varchar created_by
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DASHBOARD_ITEMS {
+        uuid id PK
+        uuid dashboard_id FK
+        uuid visualization_id FK
+        jsonb grid_position
+        jsonb custom_config
+        integer order_index
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DASHBOARDS ||--o{ DASHBOARD_ITEMS : contains
+    VISUALIZATIONS ||--o{ DASHBOARD_ITEMS : renders
+    DASHBOARD_TEMPLATES ||--o| DASHBOARDS : instantiates
+```
+
+### PostgreSQL Schema Implementation
+
+```sql
+-- Dashboard persistence schema
+CREATE SCHEMA IF NOT EXISTS dashboards;
+
+-- Main dashboards table
+CREATE TABLE dashboards.dashboards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    layout_config JSONB DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',
+    is_public BOOLEAN DEFAULT false,
+    created_by VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Dashboard templates gallery
+CREATE TABLE dashboards.dashboard_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    thumbnail_url VARCHAR(500),
+    layout_config JSONB NOT NULL,
+    default_data JSONB DEFAULT '{}',
+    is_featured BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Individual visualizations catalog
+CREATE TABLE dashboards.visualizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    chart_type VARCHAR(100) NOT NULL,
+    echarts_config JSONB NOT NULL,
+    data_query JSONB NOT NULL,
+    semantic_mapping JSONB DEFAULT '{}',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Dashboard composition (many-to-many relationship)
+CREATE TABLE dashboards.dashboard_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dashboard_id UUID NOT NULL REFERENCES dashboards.dashboards(id) ON DELETE CASCADE,
+    visualization_id UUID NOT NULL REFERENCES dashboards.visualizations(id) ON DELETE CASCADE,
+    grid_position JSONB NOT NULL, -- {x, y, width, height}
+    custom_config JSONB DEFAULT '{}',
+    order_index INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX idx_dashboards_created_by ON dashboards.dashboards(created_by);
+CREATE INDEX idx_dashboards_is_public ON dashboards.dashboards(is_public);
+CREATE INDEX idx_dashboard_templates_category ON dashboards.dashboard_templates(category);
+CREATE INDEX idx_dashboard_templates_featured ON dashboards.dashboard_templates(is_featured);
+CREATE INDEX idx_dashboard_items_dashboard_id ON dashboards.dashboard_items(dashboard_id);
+CREATE INDEX idx_dashboard_items_order ON dashboards.dashboard_items(dashboard_id, order_index);
+```
+
+### Dashboard Template Gallery System
+
+The template gallery provides pre-configured dashboard layouts optimized for different FinOps use cases and user personas.
+
+```typescript
+// Template structure for dashboard configuration
+interface DashboardTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: 'financial-overview' | 'cost-optimization' | 'resource-utilization' | 'executive-summary';
+  thumbnail_url?: string;
+  layout_config: {
+    grid: {
+      cols: number;
+      rows: 'auto' | number;
+      gap: number;
+    };
+    items: DashboardItem[];
+  };
+  default_data: {
+    sample_metrics: string[];
+    sample_filters: Record<string, any>;
+  };
+  is_featured: boolean;
+  persona_target: 'executive_stakeholder' | 'finops_analyst' | 'engineering_manager';
+}
+
+interface DashboardItem {
+  id: string;
+  type: 'visualization' | 'kpi_card' | 'text_widget';
+  position: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  config: {
+    chart_type?: string;
+    metric?: string;
+    dimensions?: string[];
+    filters?: Record<string, any>;
+    echarts_options?: any;
+  };
+}
+```
+
+### Dashboard Edit/View Mode Architecture
+
+The dashboard system supports seamless transitions between view and edit modes, enabling non-technical users to customize layouts while preserving data integrity.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ViewMode
+    ViewMode --> EditMode : Edit Button
+    EditMode --> ViewMode : Save Changes
+    EditMode --> ViewMode : Cancel/Discard
+
+    state ViewMode {
+        [*] --> LoadingDashboard
+        LoadingDashboard --> RenderingCharts
+        RenderingCharts --> InteractiveView
+        InteractiveView --> DrillDown
+        DrillDown --> InteractiveView
+        InteractiveView --> FilterApplication
+        FilterApplication --> InteractiveView
+    }
+
+    state EditMode {
+        [*] --> DragDropEditor
+        DragDropEditor --> ChartConfiguration
+        ChartConfiguration --> PreviewChanges
+        PreviewChanges --> DragDropEditor
+        PreviewChanges --> SaveToDB
+        SaveToDB --> [*]
+    }
+```
+
+### Frontend Dashboard Integration
+
+```typescript
+// Dashboard view/edit component integration
+// /app/dashboard/[id]/page.tsx
+export default function DashboardPage({ params }: { params: { id: string } }) {
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+
+  // Load dashboard configuration from PostgreSQL
+  useEffect(() => {
+    const loadDashboard = async () => {
+      const response = await fetch(`/api/dashboards/${params.id}`);
+      const dashboardData = await response.json();
+      setDashboard(dashboardData);
+    };
+    loadDashboard();
+  }, [params.id]);
+
+  return (
+    <div className="dashboard-container">
+      <DashboardHeader
+        dashboard={dashboard}
+        mode={mode}
+        onModeChange={setMode}
+      />
+
+      {mode === 'view' ? (
+        <DashboardRenderer
+          layout={dashboard?.layout_config}
+          readonly={true}
+        />
+      ) : (
+        <DashboardEditor
+          layout={dashboard?.layout_config}
+          onSave={async (config) => {
+            await fetch(`/api/dashboards/${params.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ layout_config: config })
+            });
+            setMode('view');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Template gallery component integration
+// /app/dashboards/page.tsx
+export default function DashboardsPage() {
+  const [templates, setTemplates] = useState<DashboardTemplate[]>([]);
+  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+
+  const handleCreateFromTemplate = async (template: DashboardTemplate, name: string) => {
+    const response = await fetch('/api/dashboards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        description: `Dashboard created from ${template.name} template`,
+        layout_config: template.layout_config,
+        metadata: { template_id: template.id }
+      })
+    });
+
+    if (response.ok) {
+      const newDashboard = await response.json();
+      router.push(`/dashboard/${newDashboard.id}?mode=edit`);
+    }
+  };
+
+  return (
+    <Tabs defaultValue="my-dashboards">
+      <TabsList>
+        <TabsTrigger value="my-dashboards">My Dashboards</TabsTrigger>
+        <TabsTrigger value="templates">Templates</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="my-dashboards">
+        <DashboardGrid dashboards={dashboards} />
+      </TabsContent>
+
+      <TabsContent value="templates">
+        <DashboardTemplateGallery onCreateFromTemplate={handleCreateFromTemplate} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+```
+
+### API Integration with PostgreSQL MCP
+
+```python
+# Backend API routes leveraging PostgreSQL MCP
+from fastapi import FastAPI, HTTPException
+from typing import Optional, List
+import asyncio
+
+app = FastAPI()
+
+@app.get("/api/dashboards")
+async def get_dashboards(
+    created_by: Optional[str] = None,
+    is_public: Optional[bool] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """Retrieve dashboards from PostgreSQL"""
+    query = """
+    SELECT id, name, description, layout_config, metadata,
+           is_public, created_by, created_at, updated_at
+    FROM dashboards.dashboards
+    WHERE ($1::varchar IS NULL OR created_by = $1)
+      AND ($2::boolean IS NULL OR is_public = $2)
+    ORDER BY updated_at DESC
+    LIMIT $3 OFFSET $4
+    """
+
+    result = await postgres_mcp_client.execute_sql(
+        sql=query,
+        params=[created_by, is_public, limit, offset]
+    )
+
+    return result.rows
+
+@app.post("/api/dashboards")
+async def create_dashboard(dashboard_data: dict):
+    """Create new dashboard"""
+    query = """
+    INSERT INTO dashboards.dashboards
+    (name, description, layout_config, metadata, is_public, created_by)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, name, description, layout_config, metadata,
+              is_public, created_by, created_at, updated_at
+    """
+
+    result = await postgres_mcp_client.execute_sql(
+        sql=query,
+        params=[
+            dashboard_data['name'],
+            dashboard_data.get('description'),
+            json.dumps(dashboard_data['layout_config']),
+            json.dumps(dashboard_data.get('metadata', {})),
+            dashboard_data.get('is_public', False),
+            dashboard_data.get('created_by', 'anonymous')
+        ]
+    )
+
+    return result.rows[0]
+
+@app.get("/api/dashboard-templates")
+async def get_dashboard_templates(
+    category: Optional[str] = None,
+    is_featured: Optional[bool] = None
+):
+    """Retrieve dashboard templates from gallery"""
+    query = """
+    SELECT id, name, description, category, thumbnail_url,
+           layout_config, default_data, is_featured, created_at, updated_at
+    FROM dashboards.dashboard_templates
+    WHERE ($1::varchar IS NULL OR category = $1)
+      AND ($2::boolean IS NULL OR is_featured = $2)
+    ORDER BY is_featured DESC, name ASC
+    """
+
+    result = await postgres_mcp_client.execute_sql(
+        sql=query,
+        params=[category, is_featured]
+    )
+
+    return [
+        {
+            **row,
+            'layout_config': json.loads(row['layout_config']),
+            'default_data': json.loads(row['default_data'])
+        }
+        for row in result.rows
+    ]
 ```
 
 ---

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb } from "lucide-react";
+import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
@@ -20,6 +20,7 @@ interface GeneratedVisualization {
 interface ChartGalleryProps {
   visualizations: GeneratedVisualization[];
   onVisualizationSelect: (visualization: GeneratedVisualization) => void;
+  onAddToDashboard?: (visualization: GeneratedVisualization) => void;
 }
 
 const CHART_TYPE_ICONS = {
@@ -32,7 +33,7 @@ const CHART_TYPE_ICONS = {
   auto: Sparkles,
 };
 
-export function ChartGallery({ visualizations, onVisualizationSelect }: ChartGalleryProps) {
+export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
@@ -69,6 +70,18 @@ export function ChartGallery({ visualizations, onVisualizationSelect }: ChartGal
   const handleCodeView = (viz: GeneratedVisualization) => {
     // Show code in a modal or expand in place
     console.log("Viewing code for:", viz.title);
+  };
+
+  const handleAddToDashboard = (viz: GeneratedVisualization) => {
+    console.log("Add to Dashboard button clicked for:", viz.title);
+    if (onAddToDashboard) {
+      console.log("Calling onAddToDashboard handler");
+      onAddToDashboard(viz);
+    } else {
+      // Default behavior if no handler provided
+      console.log("No onAddToDashboard handler provided");
+      alert("Dashboard functionality not connected. Please check the component setup.");
+    }
   };
 
   const renderVisualizationCard = (viz: GeneratedVisualization) => {
@@ -307,11 +320,23 @@ export function ChartGallery({ visualizations, onVisualizationSelect }: ChartGal
       {selectedViz && (
         <Card className="border-primary">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Eye className="h-5 w-5" />
-              <span>Selected Visualization</span>
-            </CardTitle>
-            <CardDescription>{selectedViz.title}</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center space-x-2">
+                  <Eye className="h-5 w-5" />
+                  <span>Selected Visualization</span>
+                </CardTitle>
+                <CardDescription>{selectedViz.title}</CardDescription>
+              </div>
+              <button
+                onClick={() => handleAddToDashboard(selectedViz)}
+                className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                title="Add to Dashboard"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add to Dashboard</span>
+              </button>
+            </div>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="preview" className="w-full">

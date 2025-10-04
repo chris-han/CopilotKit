@@ -365,35 +365,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     setHasChanges(false);
   };
 
-  if (mode === "edit") {
-    return (
-      <div className="space-y-4">
-        {hasChanges && (
-          <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
-            <span className="text-sm text-orange-800">You have unsaved changes</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleReset}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Reset
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Save className="mr-2 h-4 w-4" />
-                {saving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        )}
-        <DashboardEditor
-          config={currentConfig}
-          onChange={handleConfigChange}
-          data={data}
-          dataLoading={dataLoading}
-        />
-      </div>
-    );
-  }
-
-  // View mode - render dashboard similar to dynamic-dashboard page
+  // Move all useMemo hooks before the early return to maintain consistent hook order
   const chartBlueprints = useMemo(() => {
     if (!data) return [];
     // Use existing chart blueprint logic
@@ -423,6 +395,37 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   }, [data]);
 
   const commentarySections = useMemo(() => parseStrategicCommentary(commentary), [commentary]);
+
+  if (mode === "edit") {
+    return (
+      <div className="space-y-4">
+        {hasChanges && (
+          <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
+            <span className="text-sm text-orange-800">You have unsaved changes</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleReset}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                <Save className="mr-2 h-4 w-4" />
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        )}
+        <DashboardEditor
+          config={currentConfig}
+          onChange={handleConfigChange}
+          data={data}
+          dataLoading={dataLoading}
+        />
+      </div>
+    );
+  }
+
+  // View mode - render dashboard similar to dynamic-dashboard page
+  // (useMemo hooks moved above to maintain consistent hook order)
 
   // Same as dynamic-dashboard for the view rendering
   return (

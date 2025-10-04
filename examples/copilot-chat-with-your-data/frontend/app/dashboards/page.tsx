@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DashboardTemplateGallery } from "@/components/dashboard/DashboardTemplateGallery";
 import {
   Plus,
@@ -52,6 +53,10 @@ export default function DashboardsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("my-dashboards");
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dashboardToDelete, setDashboardToDelete] = useState<Dashboard | null>(null);
 
   useEffect(() => {
     const fetchDashboards = async () => {
@@ -111,13 +116,16 @@ export default function DashboardsPage() {
     }
   };
 
-  const handleDeleteDashboard = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this dashboard?")) {
-      return;
-    }
+  const handleDeleteDashboard = (dashboard: Dashboard) => {
+    setDashboardToDelete(dashboard);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteDashboard = async () => {
+    if (!dashboardToDelete) return;
 
     try {
-      const response = await fetch(`/api/dashboards/${id}`, {
+      const response = await fetch(`/api/dashboards/${dashboardToDelete.id}`, {
         method: "DELETE",
       });
 
@@ -125,10 +133,18 @@ export default function DashboardsPage() {
         throw new Error("Failed to delete dashboard");
       }
 
-      setDashboards(dashboards.filter(d => d.id !== id));
+      setDashboards(dashboards.filter(d => d.id !== dashboardToDelete.id));
+      setDeleteDialogOpen(false);
+      setDashboardToDelete(null);
     } catch (err) {
       console.error("Failed to delete dashboard:", err);
+      // Could add error state here if needed
     }
+  };
+
+  const cancelDeleteDashboard = () => {
+    setDeleteDialogOpen(false);
+    setDashboardToDelete(null);
   };
 
   const createBlankDashboard = async () => {
@@ -255,13 +271,33 @@ export default function DashboardsPage() {
           <DashboardTemplateGallery onCreateFromTemplate={handleCreateFromTemplate} />
         </TabsContent>
       </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Dashboard</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{dashboardToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelDeleteDashboard}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteDashboard}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 interface DashboardCardProps {
   dashboard: Dashboard;
-  onDelete: (id: string) => void;
+  onDelete: (dashboard: Dashboard) => void;
 }
 
 function DashboardCard({ dashboard, onDelete }: DashboardCardProps) {
@@ -334,7 +370,7 @@ function DashboardCard({ dashboard, onDelete }: DashboardCardProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onDelete(dashboard.id)}
+              onClick={() => onDelete(dashboard)}
               className="text-destructive hover:text-destructive"
             >
               <Trash2 className="h-4 w-4" />

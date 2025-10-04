@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Button } from "../ui/button";
 import { FileUpload } from "./FileUpload";
 import { DataSummary } from "./DataSummary";
 import { VisualizationChat } from "./VisualizationChat";
 import { ChartGallery } from "./ChartGallery";
 import { DatasetSelector } from "./DatasetSelector";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
 
 interface DataSummaryData {
   name: string;
@@ -50,6 +53,7 @@ interface Dashboard {
 }
 
 export function LidaInterface() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("upload");
   const [currentDataset, setCurrentDataset] = useState<string | null>(null);
   const [dataSummary, setDataSummary] = useState<DataSummaryData | null>(null);
@@ -62,6 +66,11 @@ export function LidaInterface() {
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [selectedDashboard, setSelectedDashboard] = useState<Dashboard | null>(null);
 
+  // Dialog state management
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogType, setDialogType] = useState<'success' | 'error'>('success');
+  const [dialogMessage, setDialogMessage] = useState('');
+
   // Cache for insights based on query key
   const [insightsCache, setInsightsCache] = useState<Map<string, {
     insights: string[];
@@ -71,6 +80,41 @@ export function LidaInterface() {
 
   const baseApiUrl = useMemo(() => {
     return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8004";
+  }, []);
+
+  // Load dashboards from API on component mount
+  useEffect(() => {
+    const loadDashboards = async () => {
+      try {
+        const response = await fetch('/api/dashboards');
+        if (response.ok) {
+          const apiDashboards = await response.json();
+          // Convert API dashboard format to LIDA dashboard format
+          const lidaDashboards = apiDashboards.map((apiDash: any) => ({
+            id: apiDash.id,
+            name: apiDash.name,
+            description: apiDash.description,
+            visualizations: apiDash.layout_config?.items?.map((item: any) => ({
+              id: item.id || `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              title: item.title || 'Visualization',
+              description: item.description || '',
+              chart_type: item.chart_type || 'auto',
+              chart_config: item.echarts_config || {},
+              code: item.code || '',
+              insights: item.insights || [],
+              created_at: apiDash.created_at
+            })) || [],
+            created_at: apiDash.created_at,
+            updated_at: apiDash.updated_at
+          }));
+          setDashboards(lidaDashboards);
+        }
+      } catch (error) {
+        console.error('Failed to load dashboards:', error);
+      }
+    };
+
+    loadDashboards();
   }, []);
 
   // Generate cache key for insights
@@ -226,42 +270,105 @@ export function LidaInterface() {
   }, [handleVisualizationGenerated, currentBackendInsights]);
 
   // Dashboard management handlers
-  const handleCreateDashboard = useCallback((name: string, description?: string) => {
-    const newDashboard: Dashboard = {
-      id: `dashboard-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name,
-      description,
-      visualizations: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+  const handleCreateDashboard = useCallback(async (name: string, description?: string) => {
+    try {
+      const response = await fetch('/api/dashboards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          description: description || undefined,
+          layout_config: {
+            grid: { cols: 4, rows: 'auto' },
+            items: []
+          },
+          metadata: { created_from: 'lida' }
+        })
+      });
 
-    setDashboards(prev => [newDashboard, ...prev]);
-    setSelectedDashboard(newDashboard);
-    return newDashboard;
+      if (!response.ok) {
+        throw new Error('Failed to create dashboard');
+      }
+
+      const apiDashboard = await response.json();
+
+      // Convert to LIDA dashboard format
+      const newDashboard: Dashboard = {
+        id: apiDashboard.id,
+        name: apiDashboard.name,
+        description: apiDashboard.description,
+        visualizations: [],
+        created_at: apiDashboard.created_at,
+        updated_at: apiDashboard.updated_at,
+      };
+
+      setDashboards(prev => [newDashboard, ...prev]);
+      setSelectedDashboard(newDashboard);
+      return newDashboard;
+    } catch (error) {
+      console.error('Failed to create dashboard:', error);
+      // Fallback to local creation if API fails
+      const newDashboard: Dashboard = {
+        id: `dashboard-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name,
+        description,
+        visualizations: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setDashboards(prev => [newDashboard, ...prev]);
+      setSelectedDashboard(newDashboard);
+      return newDashboard;
+    }
   }, []);
 
-  const handleAddToDashboard = useCallback((visualization: GeneratedVisualization, dashboardId?: string) => {
+  const handleAddToDashboard = useCallback(async (visualization: GeneratedVisualization, dashboardId?: string) => {
+    console.log('handleAddToDashboard called with:', { visualization: visualization.title, dashboardId, selectedDashboard: selectedDashboard?.name });
+
     let targetDashboard = selectedDashboard;
 
     // If no dashboard is selected or specified, create a default one
     if (!targetDashboard && !dashboardId) {
-      targetDashboard = handleCreateDashboard("My Dashboard", "Dashboard created from LIDA visualizations");
+      console.log('Creating new dashboard');
+      try {
+        targetDashboard = await handleCreateDashboard("My Dashboard", "Dashboard created from LIDA visualizations");
+        console.log('New dashboard created:', targetDashboard);
+      } catch (error) {
+        console.error('Failed to create dashboard:', error);
+        setDialogType('error');
+        setDialogMessage('Failed to create dashboard. Please try again.');
+        setDialogOpen(true);
+        return;
+      }
     } else if (dashboardId) {
       targetDashboard = dashboards.find(d => d.id === dashboardId) || null;
     }
 
-    if (!targetDashboard) return;
+    if (!targetDashboard) {
+      console.error('No target dashboard available');
+      setDialogType('error');
+      setDialogMessage('No dashboard available. Please create a dashboard first.');
+      setDialogOpen(true);
+      return;
+    }
+
+    console.log('Target dashboard:', targetDashboard);
 
     // Check if visualization already exists in dashboard
     const vizExists = targetDashboard.visualizations.some(v => v.id === visualization.id);
     if (vizExists) {
       console.log("Visualization already exists in dashboard");
-      alert("This visualization is already in the dashboard!");
+      setDialogType('error');
+      setDialogMessage('This visualization is already in the dashboard!');
+      setDialogOpen(true);
       return;
     }
 
-    // Update the dashboard
+    // For now, just update local state - database persistence can be added later
+    console.log('Adding visualization to local state');
+
+    // Update local state
     setDashboards(prev => prev.map(dashboard =>
       dashboard.id === targetDashboard!.id
         ? {
@@ -283,12 +390,32 @@ export function LidaInterface() {
 
     console.log(`Added "${visualization.title}" to dashboard "${targetDashboard.name}"`);
 
-    // Show success feedback and switch to dashboard tab
-    alert(`Successfully added "${visualization.title}" to dashboard "${targetDashboard.name}"!`);
+    // Show success feedback and navigate to dashboard edit page
+    setDialogType('success');
+    setDialogMessage(`Successfully added "${visualization.title}" to dashboard "${targetDashboard.name}"!`);
+    setDialogOpen(true);
     setTimeout(() => {
-      setActiveTab("dashboard");
-    }, 500);
+      // Navigate to the dashboard page in edit mode
+      router.push(`/dashboard/${targetDashboard.id}?mode=edit`);
+    }, 1500);
   }, [selectedDashboard, dashboards, handleCreateDashboard]);
+
+  // Wrapper functions for button onClick handlers
+  const handleCreateFirstDashboard = async () => {
+    try {
+      await handleCreateDashboard("My First Dashboard", "Dashboard created manually");
+    } catch (error) {
+      console.error('Failed to create first dashboard:', error);
+    }
+  };
+
+  const handleCreateNewDashboard = async () => {
+    try {
+      await handleCreateDashboard("New Dashboard", "Dashboard created manually");
+    } catch (error) {
+      console.error('Failed to create new dashboard:', error);
+    }
+  };
 
   const canExplore = currentDataset && dataSummary;
 
@@ -478,7 +605,7 @@ export function LidaInterface() {
                   Create your first dashboard by adding visualizations from the Gallery tab.
                 </p>
                 <button
-                  onClick={() => handleCreateDashboard("My First Dashboard", "Dashboard created manually")}
+                  onClick={handleCreateFirstDashboard}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
                 >
                   Create Dashboard
@@ -496,7 +623,7 @@ export function LidaInterface() {
                   </p>
                 </div>
                 <button
-                  onClick={() => handleCreateDashboard("New Dashboard", "Dashboard created manually")}
+                  onClick={handleCreateNewDashboard}
                   className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
                 >
                   <Plus className="h-4 w-4" />
@@ -554,6 +681,38 @@ export function LidaInterface() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Success/Error Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center space-x-2">
+              {dialogType === 'success' ? (
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              ) : (
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              )}
+              <DialogTitle className={dialogType === 'success' ? 'text-green-800' : 'text-red-800'}>
+                {dialogType === 'success' ? 'Success!' : 'Already Added'}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-left pt-2">
+              {dialogMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end pt-4">
+            <Button
+              onClick={() => setDialogOpen(false)}
+              className={dialogType === 'success'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-red-600 hover:bg-red-700 text-white'
+              }
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

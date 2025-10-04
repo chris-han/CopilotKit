@@ -121,6 +121,40 @@ export function DashboardTemplateGallery({ onCreateFromTemplate }: DashboardTemp
     fetchTemplates();
   }, []);
 
+  // Early returns before any computations to avoid hook order issues
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-full animate-pulse rounded bg-muted" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-32 animate-pulse rounded bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Card>
+          <CardContent className="py-8 text-center">
+            <h3 className="text-lg font-semibold text-destructive">Error Loading Templates</h3>
+            <p className="mt-2 text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const categories = Array.from(new Set(templates.map(t => t.category))).sort();
   const featuredTemplates = templates.filter(t => t.is_featured);
 
@@ -176,39 +210,6 @@ export function DashboardTemplateGallery({ onCreateFromTemplate }: DashboardTemp
     setDashboardDescription(template.description);
     setCreateDialogOpen(true);
   };
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-                <div className="h-3 w-full animate-pulse rounded bg-muted" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-32 animate-pulse rounded bg-muted" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Card>
-          <CardContent className="py-8 text-center">
-            <h3 className="text-lg font-semibold text-destructive">Error Loading Templates</h3>
-            <p className="mt-2 text-muted-foreground">{error}</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

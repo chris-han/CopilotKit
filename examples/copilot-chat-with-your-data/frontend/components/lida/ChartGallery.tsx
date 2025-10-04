@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus } from "lucide-react";
+import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Button } from "../ui/button";
 
 interface GeneratedVisualization {
   id: string;
@@ -36,6 +38,8 @@ const CHART_TYPE_ICONS = {
 export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const sortedVisualizations = useMemo(() => {
     return [...visualizations].sort((a, b) =>
@@ -72,15 +76,26 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
     console.log("Viewing code for:", viz.title);
   };
 
-  const handleAddToDashboard = (viz: GeneratedVisualization) => {
-    console.log("Add to Dashboard button clicked for:", viz.title);
+  const handleAddToDashboard = async (viz: GeneratedVisualization) => {
+    console.log("ChartGallery: Add to Dashboard button clicked for:", viz.title);
+    console.log("ChartGallery: onAddToDashboard handler available:", !!onAddToDashboard);
+
     if (onAddToDashboard) {
-      console.log("Calling onAddToDashboard handler");
-      onAddToDashboard(viz);
+      try {
+        console.log("ChartGallery: Calling onAddToDashboard handler");
+        await onAddToDashboard(viz);
+        console.log("ChartGallery: onAddToDashboard completed successfully");
+        // Don't show success message here since parent will handle it
+      } catch (error) {
+        console.error("ChartGallery: Failed to add to dashboard:", error);
+        setSuccessMessage(`Failed to add "${viz.title}" to dashboard. Error: ${error.message || 'Unknown error'}`);
+        setSuccessDialogOpen(true);
+      }
     } else {
       // Default behavior if no handler provided
-      console.log("No onAddToDashboard handler provided");
-      alert("Dashboard functionality not connected. Please check the component setup.");
+      console.log("ChartGallery: No onAddToDashboard handler provided");
+      setSuccessMessage("Dashboard functionality not connected. Please check the component setup.");
+      setSuccessDialogOpen(true);
     }
   };
 
@@ -329,9 +344,17 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 <CardDescription>{selectedViz.title}</CardDescription>
               </div>
               <button
-                onClick={() => handleAddToDashboard(selectedViz)}
+                onClick={() => {
+                  console.log('Button clicked, selectedViz:', selectedViz?.title);
+                  if (selectedViz) {
+                    handleAddToDashboard(selectedViz);
+                  } else {
+                    console.error('No selectedViz available');
+                  }
+                }}
                 className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
                 title="Add to Dashboard"
+                disabled={!selectedViz}
               >
                 <Plus className="h-4 w-4" />
                 <span>Add to Dashboard</span>
@@ -423,6 +446,29 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
           </CardContent>
         </Card>
       )}
+
+      {/* Success Dialog */}
+      <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center space-x-2">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+              <DialogTitle className="text-green-800">Success!</DialogTitle>
+            </div>
+            <DialogDescription className="text-left pt-2">
+              {successMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end pt-4">
+            <Button
+              onClick={() => setSuccessDialogOpen(false)}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

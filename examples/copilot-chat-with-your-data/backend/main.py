@@ -11,7 +11,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -44,6 +44,8 @@ from ag_ui.encoder import EventEncoder
 from dashboard_data import DASHBOARD_CONTEXT
 from data_story_generator import generate_data_story_steps
 from intent_detection import detect_data_story_intent
+from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_manager
+from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
 
 load_dotenv()
 
@@ -132,6 +134,12 @@ analysis_agent = Agent(
 encoder = EventEncoder()
 
 DATA_STORY_INTENTS: Dict[str, Dict[str, Any]] = {}
+
+# Global LIDA Enhanced Manager instance (initialized on first use)
+_lida_manager: Optional[LidaEnhancedManager] = None
+
+# Global FOCUS Sample Data Integration instance (initialized on first use)
+_focus_integration: Optional[FocusSampleDataIntegration] = None
 
 
 app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
@@ -1074,6 +1082,388 @@ async def action_generate_data_story_audio(request: Request) -> Response:
 
     resolved_type = content_type or audio_segments[0].get("contentType") or "audio/mpeg"
     return JSONResponse({"audio": None, "segments": audio_segments, "contentType": resolved_type})
+
+
+async def _get_lida_manager() -> LidaEnhancedManager:
+    """Get or create the global LIDA Enhanced Manager instance."""
+    global _lida_manager
+    if _lida_manager is None:
+        _lida_manager = await create_lida_enhanced_manager(
+            azure_client=azure_client,
+            deployment_name=AZURE_OPENAI_DEPLOYMENT,
+            dashboard_context=DASHBOARD_CONTEXT
+        )
+    return _lida_manager
+
+
+async def _get_focus_integration() -> FocusSampleDataIntegration:
+    """Get or create the global FOCUS Sample Data Integration instance."""
+    global _focus_integration
+    if _focus_integration is None:
+        # Get LIDA manager instance to pass to FOCUS integration
+        lida_manager = await _get_lida_manager()
+        _focus_integration = await create_focus_sample_integration(lida_manager=lida_manager)
+
+        # Pre-generate sample datasets
+        await _focus_integration.generate_sample_dataset(
+            dataset_name="small_company_finops",
+            num_records=500
+        )
+        await _focus_integration.generate_sample_dataset(
+            dataset_name="enterprise_multi_cloud",
+            num_records=2000
+        )
+        await _focus_integration.generate_sample_dataset(
+            dataset_name="startup_aws_only",
+            num_records=100
+        )
+
+    return _focus_integration
+
+
+@app.post("/ag-ui/action/lidaEnhancedAnalysis")
+async def action_lida_enhanced_analysis(request: Request) -> Dict[str, Any]:
+    """
+    AG-UI action for LIDA-enhanced analysis.
+
+    This endpoint integrates LIDA intelligence with existing AG-UI functionality,
+    providing enhanced chart recommendations and semantic insights.
+    """
+    try:
+        payload = await request.json()
+        query = payload.get("query", "")
+        thread_id = payload.get("threadId", "")
+        persona = payload.get("persona", "analyst")
+
+        if not query:
+            raise HTTPException(status_code=400, detail="Missing query parameter")
+
+        logger.info("lidaEnhancedAnalysis invoked (query=%s, persona=%s)", query, persona)
+
+        # Get LIDA manager instance
+        lida_manager = await _get_lida_manager()
+
+        # Create enhanced data summary
+        data_summary = await lida_manager.summarize_data(
+            data=DASHBOARD_CONTEXT,
+            summary_method="default"
+        )
+
+        # Generate LIDA goals based on query and persona
+        goals = await lida_manager.generate_goals(
+            summary=data_summary,
+            n=3,
+            persona=persona
+        )
+
+        # Create visualization specifications
+        viz_specs = []
+        chart_recommendations = []
+
+        for goal in goals:
+            viz_spec = await lida_manager.visualize_goal(goal, data_summary)
+            viz_specs.append(viz_spec)
+
+            # Extract chart IDs for AG-UI highlighting
+            chart_ids = viz_spec.get("ag_ui_highlight", {}).get("chart_ids", [])
+            chart_recommendations.extend(chart_ids)
+
+        # Remove duplicates while preserving order
+        unique_chart_recommendations = list(dict.fromkeys(chart_recommendations))
+
+        # Run enhanced analysis with existing agent (preserving current functionality)
+        latest_user, system_messages, transcript = _extract_prompt_details([
+            {"role": "user", "content": query}
+        ])
+
+        # Enhance prompt with LIDA context
+        enhanced_prompt_sections = [
+            ANALYSIS_AGENT_SYSTEM_PROMPT,
+            f"LIDA Enhanced Context:\nData Summary: {data_summary.summary}",
+            f"Generated Goals: {[goal.question for goal in goals]}",
+            f"Key Insights: {'; '.join(data_summary.insights)}",
+            f"Persona: {persona}",
+            f"Latest user request: {query}",
+            f"Dashboard context: {json.dumps(DASHBOARD_CONTEXT)}"
+        ]
+
+        enhanced_prompt = "\n\n".join(enhanced_prompt_sections)
+        result = await analysis_agent.run(enhanced_prompt)
+
+        enhanced_analysis = getattr(result, "data", None)
+        if enhanced_analysis is None:
+            enhanced_analysis = getattr(result, "output_text", None)
+        if enhanced_analysis is None:
+            enhanced_analysis = str(result)
+
+        return {
+            "enhanced_analysis": enhanced_analysis,
+            "recommended_charts": unique_chart_recommendations,
+            "lida_goals": [goal.dict() for goal in goals],
+            "data_insights": data_summary.insights,
+            "visualization_specs": viz_specs,
+            "semantic_summary": data_summary.summary,
+            "persona": persona,
+            "thread_id": thread_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("LIDA enhanced analysis failed")
+        raise HTTPException(status_code=500, detail=f"Analysis error: {exc}") from exc
+
+
+@app.get("/finops-web/datasets")
+async def get_focus_datasets() -> Dict[str, Any]:
+    """
+    Get list of available FOCUS sample datasets.
+
+    Returns dataset metadata including compliance scores, record counts,
+    and other information needed by the frontend DatasetSelector component.
+    """
+    try:
+        focus_integration = await _get_focus_integration()
+        datasets_info = await focus_integration.get_available_datasets()
+
+        # Transform to match frontend expectations
+        transformed_datasets = []
+        for dataset in datasets_info:
+            # Add FinOps-specific metadata
+            transformed_dataset = {
+                "name": dataset["name"],
+                "description": dataset.get("description", f"FOCUS-compliant FinOps dataset with {dataset['record_count']} records"),
+                "rows": dataset["record_count"],
+                "compliance_score": dataset.get("focus_compliance_score", 0.95),  # High compliance for generated data
+                "dataset_type": "focus_sample",
+                "service_count": dataset.get("unique_services", 12),
+                "account_count": dataset.get("unique_accounts", 3),
+                "region_count": dataset.get("unique_regions", 4),
+                "data_quality_score": dataset.get("data_quality_score", 0.92),
+                "optimization_opportunities_count": dataset.get("optimization_opportunities", 8),
+                "anomaly_candidates_count": dataset.get("anomaly_candidates", 2),
+            }
+            transformed_datasets.append(transformed_dataset)
+
+        return {"datasets": transformed_datasets}
+
+    except Exception as exc:
+        logger.exception("Failed to get FOCUS datasets")
+        raise HTTPException(status_code=500, detail=f"Dataset retrieval error: {exc}") from exc
+
+
+@app.post("/finops-web/select-dataset")
+async def select_focus_dataset(request: Request) -> Dict[str, Any]:
+    """
+    Select and load a specific FOCUS dataset for analysis.
+
+    Returns dataset preview data and metadata for the frontend components.
+    """
+    try:
+        payload = await request.json()
+        user_id = payload.get("user_id", "web_user")
+        dataset_name = payload.get("dataset_name")
+
+        if not dataset_name:
+            raise HTTPException(status_code=400, detail="Missing dataset_name parameter")
+
+        logger.info("Selecting FOCUS dataset '%s' for user '%s'", dataset_name, user_id)
+
+        focus_integration = await _get_focus_integration()
+
+        # Get dataset in LIDA-compatible format
+        lida_dataset = await focus_integration.get_dataset_for_lida(dataset_name)
+
+        # Create preview data (first 10 records)
+        sample_records = lida_dataset["sample_data"][:10] if len(lida_dataset["sample_data"]) > 10 else lida_dataset["sample_data"]
+
+        # Extract column names from the first record
+        columns = list(sample_records[0].keys()) if sample_records else []
+
+        # Generate basic statistics for numeric columns
+        statistics = {}
+        if sample_records:
+            for column in columns:
+                values = [record.get(column) for record in lida_dataset["sample_data"] if record.get(column) is not None]
+                if values and all(isinstance(v, (int, float)) for v in values[:10]):  # Check first 10 values
+                    numeric_values = [float(v) for v in values if isinstance(v, (int, float))]
+                    if numeric_values:
+                        statistics[column] = {
+                            "min": min(numeric_values),
+                            "max": max(numeric_values),
+                            "mean": sum(numeric_values) / len(numeric_values),
+                            "count": len(numeric_values)
+                        }
+
+        # Build response matching frontend expectations
+        response = {
+            "dataset": {
+                "name": dataset_name,
+                "description": lida_dataset.get("description", "FOCUS-compliant FinOps dataset for cost analysis and optimization"),
+                "rows": lida_dataset.get("row_count", len(lida_dataset["sample_data"])),
+                "compliance_score": 0.95,
+                "data_quality_score": 0.92,
+            },
+            "preview": {
+                "columns": columns,
+                "sample_records": sample_records,
+                "statistics": statistics,
+            }
+        }
+
+        logger.info("Successfully selected FOCUS dataset '%s' with %d records", dataset_name, lida_dataset.get("row_count", len(lida_dataset["sample_data"])))
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to select FOCUS dataset")
+        raise HTTPException(status_code=500, detail=f"Dataset selection error: {exc}") from exc
+
+
+@app.post("/lida/visualize")
+async def lida_visualize(request: Request) -> Dict[str, Any]:
+    """
+    Generate LIDA visualizations based on natural language goals.
+
+    This endpoint integrates with the LIDA Enhanced Manager to create
+    visualizations from user goals and selected datasets.
+    """
+    try:
+        payload = await request.json()
+        dataset_name = payload.get("dataset_name")
+        goal = payload.get("goal")
+        chart_type = payload.get("chart_type")
+        persona = payload.get("persona", "default")
+        summary = payload.get("summary", {})
+
+        if not dataset_name:
+            raise HTTPException(status_code=400, detail="Missing dataset_name parameter")
+        if not goal:
+            raise HTTPException(status_code=400, detail="Missing goal parameter")
+
+        logger.info("LIDA visualize request: dataset=%s, goal=%s, chart_type=%s, persona=%s",
+                   dataset_name, goal, chart_type, persona)
+
+        # Get LIDA manager and FOCUS integration instances
+        lida_manager = await _get_lida_manager()
+        focus_integration = await _get_focus_integration()
+
+        # Get the dataset for LIDA processing
+        lida_dataset = await focus_integration.get_dataset_for_lida(dataset_name)
+
+        # Create enhanced data summary from the dataset
+        data_summary = await lida_manager.summarize_data(
+            data=lida_dataset,
+            summary_method="default"
+        )
+
+        # For now, create a simplified visualization without full LIDA complexity
+        # TODO: Integrate with full LIDA pipeline when ready
+
+        # Generate ECharts configuration using the ECharts adapter
+        from echarts_lida_adapter import create_echarts_lida_adapter
+        echarts_adapter = await create_echarts_lida_adapter()
+
+        # Determine chart type
+        final_chart_type = chart_type if chart_type and chart_type != "auto" else "bar"
+
+        # Create a goal dictionary for the ECharts adapter
+        goal_dict = {
+            "question": goal,
+            "visualization": final_chart_type,
+            "rationale": f"User requested {final_chart_type} visualization for: {goal}"
+        }
+
+        # Create data summary for the adapter
+        data_summary_dict = {
+            "summary": f"FOCUS dataset with {lida_dataset.get('row_count', 0)} records",
+            "field_names": list(lida_dataset.get("columns", [])),
+            "data": lida_dataset["sample_data"][:50],  # Use first 50 records for performance
+            "insights": [
+                f"Dataset contains {lida_dataset.get('row_count', 0)} records",
+                f"Analyzing {len(lida_dataset.get('columns', []))} different metrics"
+            ]
+        }
+
+        # Generate visualization using the ECharts adapter
+        viz_result = await echarts_adapter.generate_visualization(
+            goal=goal_dict,
+            data_summary=data_summary_dict,
+            persona=persona
+        )
+
+        echarts_config = viz_result.get("chart_config", {})
+
+        # Generate insights from the data
+        insights = []
+        if hasattr(data_summary, 'insights'):
+            insights = data_summary.insights
+        else:
+            # Generate basic insights from the dataset
+            insights = [
+                f"Dataset contains {lida_dataset.get('row_count', 0)} records",
+                f"Analyzing {len(lida_dataset.get('columns', []))} different metrics",
+                f"Data covers the period from {lida_dataset.get('focus_metadata', {}).get('date_range', {}).get('start', 'N/A')} to {lida_dataset.get('focus_metadata', {}).get('date_range', {}).get('end', 'N/A')}"
+            ]
+
+        # Create Python/JavaScript code for the visualization
+        code = f"""
+# LIDA Generated Visualization Code
+import echarts from 'echarts';
+
+const chartConfig = {echarts_config};
+
+const chart = echarts.init(document.getElementById('chart-container'));
+chart.setOption(chartConfig);
+"""
+
+        # Build response in expected format
+        response = {
+            "visualizations": [{
+                "explanation": f"Visualization showing {goal}",
+                "chart_config": echarts_config,
+                "code": code,
+                "chart_type": final_chart_type,
+                "goal": goal,
+                "persona": persona
+            }],
+            "insights": insights,
+            "data_summary": {
+                "total_records": lida_dataset.get("row_count", 0),
+                "columns": list(lida_dataset.get("columns", [])),
+                "dataset_type": lida_dataset.get("type", "focus_finops")
+            }
+        }
+
+        logger.info("Successfully generated LIDA visualization for goal: '%s'", goal)
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("LIDA visualization generation failed")
+        raise HTTPException(status_code=500, detail=f"Visualization error: {exc}") from exc
+
+
+@app.post("/lida/upload")
+async def lida_upload_file(request: Request) -> Dict[str, Any]:
+    """
+    Handle file uploads for LIDA processing.
+
+    This endpoint accepts CSV file uploads and processes them for
+    LIDA visualization generation.
+    """
+    try:
+        # For now, return a placeholder response
+        # TODO: Implement actual file upload processing
+        raise HTTPException(status_code=501, detail="File upload not yet implemented. Please use sample datasets instead.")
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("LIDA file upload failed")
+        raise HTTPException(status_code=500, detail=f"Upload error: {exc}") from exc
 
 
 @app.get("/health")

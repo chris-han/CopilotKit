@@ -2,7 +2,7 @@
 
 import ReactEChartsCore from "echarts-for-react/lib/core"
 import * as echarts from "echarts/core"
-import { BarChart as EChartsBarChart, LineChart, PieChart as EChartsPieChart } from "echarts/charts"
+import { BarChart as EChartsBarChart, LineChart, PieChart as EChartsPieChart, ScatterChart } from "echarts/charts"
 import {
   GridComponent,
   LegendComponent,
@@ -25,6 +25,7 @@ echarts.use([
   LineChart,
   EChartsBarChart,
   EChartsPieChart,
+  ScatterChart,
 ])
 
 export { ReactEChartsCore, echarts }

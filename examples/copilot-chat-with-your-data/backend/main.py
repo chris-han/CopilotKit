@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+from datetime import datetime
 import json
 import logging
 import os
@@ -46,6 +47,7 @@ from data_story_generator import generate_data_story_steps
 from intent_detection import detect_data_story_intent
 from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_manager
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
+from fastmcp import FastMCP
 
 load_dotenv()
 
@@ -140,6 +142,9 @@ _lida_manager: Optional[LidaEnhancedManager] = None
 
 # Global FOCUS Sample Data Integration instance (initialized on first use)
 _focus_integration: Optional[FocusSampleDataIntegration] = None
+
+# Global FastMCP ECharts server instance
+_echarts_mcp: Optional[FastMCP] = None
 
 
 app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
@@ -1121,6 +1126,477 @@ async def _get_focus_integration() -> FocusSampleDataIntegration:
     return _focus_integration
 
 
+async def _get_echarts_mcp() -> FastMCP:
+    """Get or create the global FastMCP ECharts server instance."""
+    global _echarts_mcp
+    if _echarts_mcp is None:
+        _echarts_mcp = FastMCP("ECharts Dynamic Server")
+
+        @_echarts_mcp.tool()
+        async def generate_chart_suggestions(
+            goal: str,
+            data: List[Any],
+            title: str,
+            series_name: str = "Data",
+            x_axis_name: str = "Category",
+            y_axis_name: str = "Value",
+            user_id: str = "default_user",
+            context: Dict[str, Any] = None
+        ) -> Dict[str, Any]:
+            """
+            Generate multiple chart configuration suggestions based on user goal and context.
+
+            Args:
+                goal: User's visualization goal
+                data: Chart data in format [[label, value], ...]
+                title: Chart title
+                series_name: Name of the data series
+                x_axis_name: X-axis label
+                y_axis_name: Y-axis label
+                user_id: User identifier for preference tracking
+                context: Additional context about the data and user preferences
+
+            Returns:
+                Dictionary with multiple chart suggestions
+            """
+            try:
+                logger.info("Generating chart suggestions for goal: %s (user: %s)", goal, user_id)
+
+                # Ensure data is in correct format
+                if not data or not isinstance(data, list):
+                    raise ValueError("Data must be a non-empty list")
+
+                suggestions = []
+
+                # Analyze goal to determine most relevant chart types
+                goal_lower = goal.lower()
+
+                # Chart type priorities based on goal analysis
+                chart_priorities = []
+
+                if any(word in goal_lower for word in ["distribution", "breakdown", "compare", "by"]):
+                    chart_priorities = ["bar", "pie", "line"]
+                elif any(word in goal_lower for word in ["trend", "over time", "timeline", "changes"]):
+                    chart_priorities = ["line", "bar", "area"]
+                elif any(word in goal_lower for word in ["proportion", "percentage", "share", "composition"]):
+                    chart_priorities = ["pie", "bar", "donut"]
+                elif any(word in goal_lower for word in ["correlation", "relationship", "vs", "against"]):
+                    chart_priorities = ["scatter", "line", "bar"]
+                else:
+                    # Default priorities
+                    chart_priorities = ["bar", "pie", "line"]
+
+                # Generate suggestions for top 3 chart types
+                for i, chart_type in enumerate(chart_priorities[:3]):
+                    config = await _generate_single_chart_config(
+                        chart_type, data, title, series_name, x_axis_name, y_axis_name
+                    )
+
+                    # Add metadata for the suggestion
+                    suggestion = {
+                        "id": f"suggestion_{i+1}",
+                        "chart_type": chart_type,
+                        "config": config,
+                        "title": title,
+                        "reasoning": _get_chart_reasoning(chart_type, goal),
+                        "best_for": _get_chart_best_use(chart_type),
+                        "priority": i + 1
+                    }
+
+                    # Adjust priority based on user context/preferences
+                    if context and context.get("user_preferences"):
+                        user_prefs = context["user_preferences"]
+                        if chart_type in user_prefs.get("preferred_chart_types", []):
+                            suggestion["priority"] -= 0.5  # Higher priority for preferred types
+                        if chart_type in user_prefs.get("avoided_chart_types", []):
+                            suggestion["priority"] += 0.5  # Lower priority for avoided types
+
+                    suggestions.append(suggestion)
+
+                # Sort by priority
+                suggestions.sort(key=lambda x: x["priority"])
+
+                return {
+                    "suggestions": suggestions,
+                    "goal": goal,
+                    "user_id": user_id,
+                    "context_applied": bool(context),
+                    "total_suggestions": len(suggestions)
+                }
+
+            except Exception as exc:
+                logger.error("Failed to generate chart suggestions: %s", exc)
+                raise ValueError(f"Chart suggestions generation failed: {exc}")
+
+        @_echarts_mcp.tool()
+        async def generate_chart(
+            chart_type: str,
+            data: List[Any],
+            title: str,
+            series_name: str = "Data",
+            x_axis_name: str = "Category",
+            y_axis_name: str = "Value"
+        ) -> Dict[str, Any]:
+            """
+            Generate dynamic ECharts configuration based on input parameters.
+
+            Args:
+                chart_type: Type of chart (bar, line, pie, scatter, etc.)
+                data: Chart data in format [[label, value], ...]
+                title: Chart title
+                series_name: Name of the data series
+                x_axis_name: X-axis label
+                y_axis_name: Y-axis label
+
+            Returns:
+                ECharts configuration dictionary
+            """
+            try:
+                logger.info("Generating %s chart: %s", chart_type, title)
+
+                # Ensure data is in correct format
+                if not data or not isinstance(data, list):
+                    raise ValueError("Data must be a non-empty list")
+
+                # Process data based on chart type
+                if chart_type in ["bar", "line"]:
+                    config = {
+                        "title": {
+                            "text": title,
+                            "left": "center",
+                            "textStyle": {
+                                "fontSize": 16,
+                                "fontWeight": "bold"
+                            }
+                        },
+                        "tooltip": {
+                            "trigger": "axis",
+                            "backgroundColor": "rgba(50,50,50,0.9)",
+                            "borderColor": "#333",
+                            "textStyle": {"color": "#fff"},
+                            "formatter": "{a}<br/>{b}: {c}"
+                        },
+                        "legend": {
+                            "data": [series_name],
+                            "top": "8%"
+                        },
+                        "grid": {
+                            "left": "10%",
+                            "right": "10%",
+                            "bottom": "15%",
+                            "top": "20%",
+                            "containLabel": True
+                        },
+                        "xAxis": {
+                            "type": "category",
+                            "name": x_axis_name,
+                            "nameLocation": "middle",
+                            "nameGap": 30,
+                            "data": [str(item[0]) for item in data],
+                            "axisLabel": {
+                                "rotate": 45 if len(data) > 5 else 0,
+                                "fontSize": 10
+                            }
+                        },
+                        "yAxis": {
+                            "type": "value",
+                            "name": y_axis_name,
+                            "nameLocation": "middle",
+                            "nameGap": 50
+                        },
+                        "series": [{
+                            "name": series_name,
+                            "type": chart_type,
+                            "data": [float(item[1]) if len(item) > 1 and isinstance(item[1], (int, float, str)) else 0 for item in data],
+                            "emphasis": {"focus": "series"},
+                            "itemStyle": {
+                                "color": "#5470c6",
+                                "borderRadius": 2 if chart_type == "bar" else 0
+                            },
+                            "lineStyle": {"width": 3} if chart_type == "line" else {},
+                            "label": {
+                                "show": len(data) <= 10,
+                                "position": "top",
+                                "fontSize": 10
+                            }
+                        }],
+                        "animation": True,
+                        "animationDuration": 1000
+                    }
+
+                elif chart_type == "pie":
+                    config = {
+                        "title": {
+                            "text": title,
+                            "left": "center",
+                            "textStyle": {
+                                "fontSize": 16,
+                                "fontWeight": "bold"
+                            }
+                        },
+                        "tooltip": {
+                            "trigger": "item",
+                            "formatter": "{a}<br/>{b}: {c} ({d}%)"
+                        },
+                        "legend": {
+                            "orient": "vertical",
+                            "left": "left",
+                            "top": "middle"
+                        },
+                        "series": [{
+                            "name": series_name,
+                            "type": "pie",
+                            "radius": ["40%", "70%"],
+                            "center": ["60%", "50%"],
+                            "data": [
+                                {
+                                    "name": str(item[0]),
+                                    "value": float(item[1]) if len(item) > 1 and isinstance(item[1], (int, float, str)) else 0
+                                }
+                                for item in data
+                            ],
+                            "emphasis": {
+                                "itemStyle": {
+                                    "shadowBlur": 10,
+                                    "shadowColor": "rgba(0, 0, 0, 0.5)"
+                                }
+                            },
+                            "label": {"fontSize": 10}
+                        }],
+                        "animation": True,
+                        "animationDuration": 1000
+                    }
+
+                elif chart_type == "scatter":
+                    config = {
+                        "title": {
+                            "text": title,
+                            "left": "center"
+                        },
+                        "tooltip": {
+                            "trigger": "item",
+                            "formatter": "{a}<br/>{b}: {c}"
+                        },
+                        "xAxis": {
+                            "type": "value",
+                            "name": x_axis_name,
+                            "nameLocation": "middle",
+                            "nameGap": 30
+                        },
+                        "yAxis": {
+                            "type": "value",
+                            "name": y_axis_name,
+                            "nameLocation": "middle",
+                            "nameGap": 50
+                        },
+                        "series": [{
+                            "name": series_name,
+                            "type": "scatter",
+                            "data": data,
+                            "symbolSize": 8,
+                            "itemStyle": {"color": "#5470c6"}
+                        }]
+                    }
+
+                else:
+                    # Generic fallback
+                    config = {
+                        "title": {"text": title, "left": "center"},
+                        "tooltip": {"trigger": "item"},
+                        "series": [{
+                            "name": series_name,
+                            "type": chart_type,
+                            "data": data
+                        }]
+                    }
+
+                logger.info("Successfully generated ECharts config for %s chart", chart_type)
+                return config
+
+            except Exception as exc:
+                logger.error("Failed to generate chart config: %s", exc)
+                raise ValueError(f"Chart generation failed: {exc}")
+
+        # Helper functions for chart suggestions
+        async def _generate_single_chart_config(
+            chart_type: str, data: List[Any], title: str,
+            series_name: str, x_axis_name: str, y_axis_name: str
+        ) -> Dict[str, Any]:
+            """Generate a single chart configuration."""
+            if chart_type in ["bar", "line"]:
+                return {
+                    "title": {
+                        "text": title,
+                        "left": "center",
+                        "textStyle": {"fontSize": 16, "fontWeight": "bold"}
+                    },
+                    "tooltip": {
+                        "trigger": "axis",
+                        "backgroundColor": "rgba(50,50,50,0.9)",
+                        "formatter": "{a}<br/>{b}: {c}"
+                    },
+                    "legend": {"data": [series_name], "top": "8%"},
+                    "grid": {"left": "10%", "right": "10%", "bottom": "15%", "top": "20%", "containLabel": True},
+                    "xAxis": {
+                        "type": "category",
+                        "name": x_axis_name,
+                        "data": [str(item[0]) for item in data]
+                    },
+                    "yAxis": {"type": "value", "name": y_axis_name},
+                    "series": [{
+                        "name": series_name,
+                        "type": chart_type,
+                        "data": [float(item[1]) if len(item) > 1 else 0 for item in data],
+                        "itemStyle": {"color": "#5470c6" if chart_type == "bar" else "#91cc75"},
+                        "lineStyle": {"width": 3} if chart_type == "line" else {}
+                    }],
+                    "animation": True
+                }
+            elif chart_type == "pie":
+                return {
+                    "title": {"text": title, "left": "center"},
+                    "tooltip": {"trigger": "item", "formatter": "{a}<br/>{b}: {c} ({d}%)"},
+                    "legend": {"orient": "vertical", "left": "left"},
+                    "series": [{
+                        "name": series_name,
+                        "type": "pie",
+                        "radius": ["40%", "70%"],
+                        "data": [{"name": str(item[0]), "value": float(item[1])} for item in data],
+                        "itemStyle": {"borderRadius": 10, "borderColor": "#fff", "borderWidth": 2}
+                    }]
+                }
+            elif chart_type == "scatter":
+                return {
+                    "title": {"text": title, "left": "center"},
+                    "tooltip": {"trigger": "item"},
+                    "xAxis": {"type": "value", "name": x_axis_name},
+                    "yAxis": {"type": "value", "name": y_axis_name},
+                    "series": [{
+                        "name": series_name,
+                        "type": "scatter",
+                        "data": data,
+                        "symbolSize": 8,
+                        "itemStyle": {"color": "#fac858"}
+                    }]
+                }
+            else:
+                return {
+                    "title": {"text": title, "left": "center"},
+                    "tooltip": {"trigger": "item"},
+                    "series": [{"name": series_name, "type": chart_type, "data": data}]
+                }
+
+        def _get_chart_reasoning(chart_type: str, goal: str) -> str:
+            """Get reasoning for why this chart type is suitable for the goal."""
+            reasoning_map = {
+                "bar": "Best for comparing discrete categories and showing exact values clearly",
+                "line": "Ideal for showing trends, changes over time, and continuous data patterns",
+                "pie": "Perfect for showing proportions, percentages, and parts of a whole",
+                "scatter": "Excellent for exploring relationships and correlations between variables",
+                "area": "Great for showing cumulative values and trends with emphasis on magnitude"
+            }
+            base_reasoning = reasoning_map.get(chart_type, "Suitable for general data visualization")
+
+            if "comparison" in goal.lower() or "compare" in goal.lower():
+                if chart_type == "bar":
+                    return base_reasoning + ". Excellent choice for your comparison needs."
+            elif "trend" in goal.lower() or "time" in goal.lower():
+                if chart_type == "line":
+                    return base_reasoning + ". Perfect match for trend analysis."
+            elif "distribution" in goal.lower() or "breakdown" in goal.lower():
+                if chart_type in ["pie", "bar"]:
+                    return base_reasoning + ". Ideal for showing distribution patterns."
+
+            return base_reasoning
+
+        def _get_chart_best_use(chart_type: str) -> str:
+            """Get description of what this chart type is best used for."""
+            use_cases = {
+                "bar": "Comparing quantities across categories, ranking data, showing discrete values",
+                "line": "Time series analysis, trend identification, continuous data visualization",
+                "pie": "Showing proportions, market share analysis, budget breakdowns",
+                "scatter": "Correlation analysis, outlier detection, relationship exploration",
+                "area": "Cumulative data, stacked comparisons, volume emphasis"
+            }
+            return use_cases.get(chart_type, "General purpose data visualization")
+
+        logger.info("FastMCP ECharts server initialized with dynamic chart generation and suggestions")
+
+    return _echarts_mcp
+
+
+# Global user preference memory
+_user_preferences: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_user_context(user_id: str) -> Dict[str, Any]:
+    """Get user context and preferences from memory."""
+    if user_id not in _user_preferences:
+        _user_preferences[user_id] = {
+            "preferred_chart_types": [],
+            "avoided_chart_types": [],
+            "visualization_history": [],
+            "common_goals": [],
+            "persona_preferences": {},
+            "dataset_preferences": {}
+        }
+    return _user_preferences[user_id]
+
+
+def _update_user_preferences(user_id: str, choice_data: Dict[str, Any]) -> None:
+    """Update user preferences based on their chart selection."""
+    context = _get_user_context(user_id)
+
+    # Update preferred chart types
+    chosen_chart_type = choice_data.get("chart_type")
+    if chosen_chart_type:
+        if chosen_chart_type not in context["preferred_chart_types"]:
+            context["preferred_chart_types"].append(chosen_chart_type)
+
+        # If they consistently choose this type, increase its priority
+        recent_choices = context["visualization_history"][-5:]  # Last 5 choices
+        chart_frequency = sum(1 for choice in recent_choices if choice.get("chart_type") == chosen_chart_type)
+        if chart_frequency >= 3:  # If chosen 3+ times in last 5
+            # Move to front of preferred list
+            context["preferred_chart_types"] = [chosen_chart_type] + [
+                ct for ct in context["preferred_chart_types"] if ct != chosen_chart_type
+            ]
+
+    # Update visualization history
+    history_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "goal": choice_data.get("goal", ""),
+        "chart_type": chosen_chart_type,
+        "dataset": choice_data.get("dataset", ""),
+        "persona": choice_data.get("persona", ""),
+        "suggestion_id": choice_data.get("suggestion_id", "")
+    }
+    context["visualization_history"].append(history_entry)
+
+    # Keep only last 50 entries
+    if len(context["visualization_history"]) > 50:
+        context["visualization_history"] = context["visualization_history"][-50:]
+
+    # Update common goals
+    goal = choice_data.get("goal", "").lower()
+    if goal and goal not in context["common_goals"]:
+        context["common_goals"].append(goal)
+
+    # Update persona preferences
+    persona = choice_data.get("persona", "")
+    if persona:
+        if persona not in context["persona_preferences"]:
+            context["persona_preferences"][persona] = {"chart_types": [], "goals": []}
+
+        persona_prefs = context["persona_preferences"][persona]
+        if chosen_chart_type and chosen_chart_type not in persona_prefs["chart_types"]:
+            persona_prefs["chart_types"].append(chosen_chart_type)
+        if goal and goal not in persona_prefs["goals"]:
+            persona_prefs["goals"].append(goal)
+
+    logger.info("Updated preferences for user %s: preferred_types=%s", user_id, context["preferred_chart_types"])
+
+
 @app.post("/ag-ui/action/lidaEnhancedAnalysis")
 async def action_lida_enhanced_analysis(request: Request) -> Dict[str, Any]:
     """
@@ -1324,10 +1800,10 @@ async def select_focus_dataset(request: Request) -> Dict[str, Any]:
 @app.post("/lida/visualize")
 async def lida_visualize(request: Request) -> Dict[str, Any]:
     """
-    Generate LIDA visualizations based on natural language goals.
+    Generate multiple LIDA visualization suggestions based on natural language goals.
 
-    This endpoint integrates with the LIDA Enhanced Manager to create
-    visualizations from user goals and selected datasets.
+    This endpoint now returns multiple chart suggestions that users can choose from,
+    with context-aware recommendations based on user preferences and history.
     """
     try:
         payload = await request.json()
@@ -1361,39 +1837,154 @@ async def lida_visualize(request: Request) -> Dict[str, Any]:
         # For now, create a simplified visualization without full LIDA complexity
         # TODO: Integrate with full LIDA pipeline when ready
 
-        # Generate ECharts configuration using the ECharts adapter
-        from echarts_lida_adapter import create_echarts_lida_adapter
-        echarts_adapter = await create_echarts_lida_adapter()
-
         # Determine chart type
         final_chart_type = chart_type if chart_type and chart_type != "auto" else "bar"
 
-        # Create a goal dictionary for the ECharts adapter
-        goal_dict = {
-            "question": goal,
-            "visualization": final_chart_type,
-            "rationale": f"User requested {final_chart_type} visualization for: {goal}"
-        }
+        # Prepare data for ECharts visualization
+        sample_data = lida_dataset["sample_data"][:50]  # Use first 50 records for performance
 
-        # Create data summary for the adapter
-        data_summary_dict = {
-            "summary": f"FOCUS dataset with {lida_dataset.get('row_count', 0)} records",
-            "field_names": list(lida_dataset.get("columns", [])),
-            "data": lida_dataset["sample_data"][:50],  # Use first 50 records for performance
-            "insights": [
-                f"Dataset contains {lida_dataset.get('row_count', 0)} records",
-                f"Analyzing {len(lida_dataset.get('columns', []))} different metrics"
+        # Extract relevant data for the visualization based on goal
+        chart_data = []
+        x_axis_name = "Category"
+        y_axis_name = "Value"
+        series_name = "Data"
+
+        # Try to intelligently select columns based on the goal
+        columns = list(lida_dataset.get("columns", []))
+
+        # For cost analysis, look for relevant columns
+        if "cost" in goal.lower():
+            cost_column = next((col for col in columns if "cost" in col.lower()), None)
+            service_column = next((col for col in columns if "service" in col.lower()), None)
+
+            if cost_column and service_column:
+                # Aggregate costs by service
+                service_costs = {}
+                for record in sample_data:
+                    service = record.get(service_column, "Unknown")
+                    cost = record.get(cost_column, 0)
+                    if isinstance(cost, (int, float, str)):
+                        try:
+                            cost_val = float(cost) if isinstance(cost, str) else cost
+                            service_costs[service] = service_costs.get(service, 0) + cost_val
+                        except (ValueError, TypeError):
+                            continue
+
+                # Convert to chart data format
+                chart_data = [[service, cost] for service, cost in service_costs.items()]
+                x_axis_name = "Service"
+                y_axis_name = "Total Cost ($)"
+                series_name = "Service Costs"
+
+        # Fallback: use first two columns or create sample data
+        if not chart_data and len(columns) >= 2:
+            # Try to find usable columns
+            first_col_data = {}
+            second_col_data = {}
+
+            for record in sample_data[:10]:  # Sample fewer records for fallback
+                first_val = record.get(columns[0])
+                second_val = record.get(columns[1])
+
+                if first_val and second_val:
+                    if isinstance(second_val, (int, float)):
+                        key = str(first_val)
+                        if key not in first_col_data:
+                            first_col_data[key] = 0
+                        first_col_data[key] += float(second_val)
+
+            # Create chart data from aggregated data
+            if first_col_data:
+                chart_data = [[key, value] for key, value in first_col_data.items()]
+                x_axis_name = columns[0]
+                y_axis_name = columns[1]
+                series_name = f"{columns[1]} by {columns[0]}"
+
+        # Final fallback: create sample data
+        if not chart_data:
+            chart_data = [
+                ["Service A", 1200.50],
+                ["Service B", 2800.75],
+                ["Service C", 1900.25],
+                ["Service D", 3200.00],
+                ["Service E", 1500.80]
             ]
-        }
+            x_axis_name = "Services"
+            y_axis_name = "Cost ($)"
+            series_name = "Sample Service Costs"
 
-        # Generate visualization using the ECharts adapter
-        viz_result = await echarts_adapter.generate_visualization(
-            goal=goal_dict,
-            data_summary=data_summary_dict,
-            persona=persona
-        )
+        # Get user context for personalized suggestions
+        user_id = payload.get("user_id", "default_user")
+        user_context = _get_user_context(user_id)
 
-        echarts_config = viz_result.get("chart_config", {})
+        # Generate multiple chart suggestions using FastMCP server
+        suggestions = []
+        try:
+            # Get FastMCP ECharts server instance
+            echarts_mcp = await _get_echarts_mcp()
+
+            # Get the suggestions tool and call it
+            suggestions_tool = None
+            for tool in echarts_mcp._tools:
+                if tool.name == "generate_chart_suggestions":
+                    suggestions_tool = tool
+                    break
+
+            if suggestions_tool:
+                # Call the suggestions function directly
+                suggestion_result = await suggestions_tool.func(
+                    goal=goal,
+                    data=chart_data,
+                    title=goal,
+                    series_name=series_name,
+                    x_axis_name=x_axis_name,
+                    y_axis_name=y_axis_name,
+                    user_id=user_id,
+                    context={"user_preferences": user_context}
+                )
+                suggestions = suggestion_result.get("suggestions", [])
+                logger.info("Generated %d chart suggestions using FastMCP", len(suggestions))
+            else:
+                raise ValueError("generate_chart_suggestions tool not found in FastMCP server")
+
+        except Exception as mcp_exc:
+            logger.warning("FastMCP chart suggestions failed, using fallback: %s", mcp_exc)
+
+            # Fallback: Generate basic suggestions manually
+            chart_types = [("bar", "bar"), ("pie", "pie"), ("line", "line")]
+            for i, (chart_type, chart_name) in enumerate(chart_types):
+                if chart_type in ["bar", "line"]:
+                    config = {
+                        "title": {"text": goal, "left": "center"},
+                        "tooltip": {"trigger": "axis"},
+                        "xAxis": {"type": "category", "data": [str(item[0]) for item in chart_data]},
+                        "yAxis": {"type": "value"},
+                        "series": [{
+                            "name": series_name,
+                            "type": chart_type,
+                            "data": [float(item[1]) if len(item) > 1 else 0 for item in chart_data]
+                        }]
+                    }
+                elif chart_type == "pie":
+                    config = {
+                        "title": {"text": goal, "left": "center"},
+                        "tooltip": {"trigger": "item"},
+                        "series": [{
+                            "name": series_name,
+                            "type": "pie",
+                            "data": [{"name": str(item[0]), "value": float(item[1])} for item in chart_data]
+                        }]
+                    }
+
+                suggestions.append({
+                    "id": f"fallback_{i+1}",
+                    "chart_type": chart_type,
+                    "config": config,
+                    "title": goal,
+                    "reasoning": f"Basic {chart_name} chart for general visualization",
+                    "best_for": f"Standard {chart_name} visualization",
+                    "priority": i + 1
+                })
 
         # Generate insights from the data
         insights = []
@@ -1412,28 +2003,32 @@ async def lida_visualize(request: Request) -> Dict[str, Any]:
 # LIDA Generated Visualization Code
 import echarts from 'echarts';
 
-const chartConfig = {echarts_config};
+const chartConfig = {json.dumps(suggestions[0]['config'] if suggestions else {}, indent=2)};
 
 const chart = echarts.init(document.getElementById('chart-container'));
 chart.setOption(chartConfig);
 """
 
-        # Build response in expected format
+        # Build response with multiple suggestions
         response = {
-            "visualizations": [{
-                "explanation": f"Visualization showing {goal}",
-                "chart_config": echarts_config,
-                "code": code,
-                "chart_type": final_chart_type,
-                "goal": goal,
-                "persona": persona
-            }],
+            "suggestions": suggestions,
+            "goal": goal,
+            "user_id": user_id,
+            "user_preferences": {
+                "preferred_chart_types": user_context.get("preferred_chart_types", []),
+                "recent_goals": user_context.get("common_goals", [])[-5:],  # Last 5 goals
+                "persona_preferences": user_context.get("persona_preferences", {}).get(persona, {})
+            },
             "insights": insights,
             "data_summary": {
                 "total_records": lida_dataset.get("row_count", 0),
                 "columns": list(lida_dataset.get("columns", [])),
                 "dataset_type": lida_dataset.get("type", "focus_finops")
-            }
+            },
+            "suggestion_count": len(suggestions),
+            "dataset_name": dataset_name,
+            "persona": persona,
+            "recommendation": "Please select your preferred chart type. Your choice will help us provide better suggestions in the future."
         }
 
         logger.info("Successfully generated LIDA visualization for goal: '%s'", goal)
@@ -1444,6 +2039,62 @@ chart.setOption(chartConfig);
     except Exception as exc:
         logger.exception("LIDA visualization generation failed")
         raise HTTPException(status_code=500, detail=f"Visualization error: {exc}") from exc
+
+
+@app.post("/lida/select-chart")
+async def lida_select_chart(request: Request) -> Dict[str, Any]:
+    """
+    Record user's chart selection to update preferences and improve future suggestions.
+
+    This endpoint tracks user choices to learn their preferences for different
+    visualization goals and contexts, enabling context-aware chart recommendations.
+    """
+    try:
+        payload = await request.json()
+        user_id = payload.get("user_id", "default_user")
+        suggestion_id = payload.get("suggestion_id")
+        chart_type = payload.get("chart_type")
+        goal = payload.get("goal")
+        dataset_name = payload.get("dataset_name")
+        persona = payload.get("persona", "default")
+
+        if not suggestion_id or not chart_type:
+            raise HTTPException(status_code=400, detail="Missing suggestion_id or chart_type parameter")
+
+        logger.info("Recording chart selection: user=%s, chart_type=%s, goal=%s", user_id, chart_type, goal)
+
+        # Update user preferences based on their selection
+        choice_data = {
+            "chart_type": chart_type,
+            "goal": goal or "",
+            "dataset": dataset_name or "",
+            "persona": persona,
+            "suggestion_id": suggestion_id
+        }
+
+        _update_user_preferences(user_id, choice_data)
+
+        # Get updated preferences to return current state
+        updated_context = _get_user_context(user_id)
+
+        return {
+            "success": True,
+            "message": "Chart selection recorded successfully",
+            "user_id": user_id,
+            "selected_chart_type": chart_type,
+            "updated_preferences": {
+                "preferred_chart_types": updated_context.get("preferred_chart_types", []),
+                "total_visualizations": len(updated_context.get("visualization_history", [])),
+                "common_goals": updated_context.get("common_goals", [])[-5:],  # Last 5 goals
+                "persona_preferences": updated_context.get("persona_preferences", {})
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to record chart selection")
+        raise HTTPException(status_code=500, detail=f"Selection recording error: {exc}") from exc
 
 
 @app.post("/lida/upload")

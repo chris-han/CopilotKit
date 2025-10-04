@@ -45,10 +45,27 @@ export function LidaInterface() {
   const [dataSummary, setDataSummary] = useState<DataSummaryData | null>(null);
   const [visualizations, setVisualizations] = useState<GeneratedVisualization[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentBackendInsights, setCurrentBackendInsights] = useState<string[]>([]);
+  const [lastCacheKey, setLastCacheKey] = useState<string | null>(null);
+
+  // Cache for insights based on query key
+  const [insightsCache, setInsightsCache] = useState<Map<string, {
+    insights: string[];
+    timestamp: number;
+    suggestions?: any[];
+  }>>(new Map());
 
   const baseApiUrl = useMemo(() => {
     return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8004";
   }, []);
+
+  // Generate cache key for insights
+  const generateCacheKey = useCallback((dataset: string, goal: string, persona: string = "default") => {
+    return `${dataset}:${goal.toLowerCase().trim()}:${persona}`;
+  }, []);
+
+  // Cache expiration time (10 minutes)
+  const CACHE_EXPIRY_MS = 10 * 60 * 1000;
 
   const handleDatasetSelected = useCallback((datasetName: string, summary: DataSummaryData) => {
     setCurrentDataset(datasetName);
@@ -70,10 +87,30 @@ export function LidaInterface() {
     goal: string;
     chart_type?: string;
     persona?: string;
-  }) => {
-    if (!currentDataset || !dataSummary) return;
+  }): Promise<{ suggestions?: any[]; final_visualization?: any }> => {
+    if (!currentDataset || !dataSummary) return {};
+
+    const cacheKey = generateCacheKey(currentDataset, request.goal, request.persona || "default");
+    const now = Date.now();
+
+    // Check cache first
+    const cached = insightsCache.get(cacheKey);
+    if (cached && (now - cached.timestamp) < CACHE_EXPIRY_MS) {
+      console.log(`Using cached insights for key: ${cacheKey}`);
+      setCurrentBackendInsights(cached.insights);
+      setLastCacheKey(cacheKey);
+      setIsLoading(false);
+      if (cached.suggestions) {
+        return { suggestions: cached.suggestions };
+      }
+    }
 
     setIsLoading(true);
+    // Reset previous insights only if not using cache
+    if (!cached) {
+      setCurrentBackendInsights([]);
+    }
+
     try {
       const response = await fetch(`${baseApiUrl}/lida/visualize`, {
         method: "POST",
@@ -86,6 +123,7 @@ export function LidaInterface() {
           chart_type: request.chart_type,
           persona: request.persona || "default",
           summary: dataSummary,
+          user_id: "web_user",
         }),
       });
 
@@ -95,6 +133,40 @@ export function LidaInterface() {
 
       const result = await response.json();
 
+      // Store backend insights for use when chart is selected
+      if (result.insights) {
+        setCurrentBackendInsights(result.insights);
+
+        // Cache the results
+        const cacheEntry = {
+          insights: result.insights,
+          timestamp: now,
+          suggestions: result.suggestions || undefined
+        };
+
+        setInsightsCache(prev => {
+          const newCache = new Map(prev);
+          newCache.set(cacheKey, cacheEntry);
+
+          // Clean up expired entries to prevent memory leaks
+          for (const [key, value] of newCache.entries()) {
+            if (now - value.timestamp > CACHE_EXPIRY_MS) {
+              newCache.delete(key);
+            }
+          }
+
+          return newCache;
+        });
+
+        console.log(`Cached insights for key: ${cacheKey} (${result.insights.length} insights)`);
+      }
+
+      // Return suggestions for user selection
+      if (result.suggestions && result.suggestions.length > 0) {
+        return { suggestions: result.suggestions };
+      }
+
+      // Fallback: if no suggestions, handle as direct visualization
       if (result.visualizations && result.visualizations.length > 0) {
         const newViz: GeneratedVisualization = {
           id: Date.now().toString(),
@@ -108,13 +180,36 @@ export function LidaInterface() {
         };
 
         handleVisualizationGenerated(newViz);
+        return { final_visualization: newViz };
       }
+
+      return {};
     } catch (error) {
       console.error("Error generating visualization:", error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [baseApiUrl, currentDataset, dataSummary, handleVisualizationGenerated]);
+  }, [baseApiUrl, currentDataset, dataSummary, handleVisualizationGenerated, generateCacheKey, insightsCache, CACHE_EXPIRY_MS]);
+
+  const handleChartSelected = useCallback((suggestion: any, config: any) => {
+    // Generate final visualization from selected chart
+    const newViz: GeneratedVisualization = {
+      id: Date.now().toString(),
+      title: suggestion.title || "Generated Visualization",
+      description: suggestion.reasoning || "",
+      chart_type: suggestion.chart_type,
+      chart_config: config,
+      code: `// ECharts configuration\nconst chartConfig = ${JSON.stringify(config, null, 2)};`,
+      insights: currentBackendInsights.length > 0
+        ? currentBackendInsights
+        : [`Selected ${suggestion.chart_type} chart`, suggestion.best_for],
+      created_at: new Date().toISOString(),
+    };
+
+    handleVisualizationGenerated(newViz);
+    setActiveTab("gallery"); // Switch to gallery to show the generated chart
+  }, [handleVisualizationGenerated, currentBackendInsights]);
 
   const canExplore = currentDataset && dataSummary;
 
@@ -270,8 +365,12 @@ export function LidaInterface() {
             <VisualizationChat
               dataSummary={dataSummary}
               onVisualizationRequest={handleVisualizationRequest}
+              onChartSelected={handleChartSelected}
               isLoading={isLoading}
               recentVisualizations={visualizations.slice(0, 3)}
+              baseApiUrl={baseApiUrl}
+              userId="web_user"
+              datasetName={currentDataset || undefined}
             />
           )}
         </TabsContent>

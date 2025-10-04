@@ -3,6 +3,17 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Send, Lightbulb, BarChart, PieChart, LineChart, Sparkles } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { ChartSuggestions } from "./ChartSuggestions";
+
+interface ChartSuggestion {
+  id: string;
+  chart_type: string;
+  config: any;
+  title: string;
+  reasoning: string;
+  best_for: string;
+  priority: number;
+}
 
 interface VisualizationChatProps {
   dataSummary: {
@@ -15,13 +26,20 @@ interface VisualizationChatProps {
     goal: string;
     chart_type?: string;
     persona?: string;
-  }) => void;
+  }) => Promise<{
+    suggestions?: ChartSuggestion[];
+    final_visualization?: any;
+  }>;
+  onChartSelected: (suggestion: ChartSuggestion, config: any) => void;
   isLoading: boolean;
   recentVisualizations: Array<{
     id: string;
     title: string;
     chart_type: string;
   }>;
+  baseApiUrl: string;
+  userId?: string;
+  datasetName?: string;
 }
 
 const CHART_TYPES = [
@@ -52,13 +70,19 @@ const SUGGESTED_GOALS = [
 export function VisualizationChat({
   dataSummary,
   onVisualizationRequest,
+  onChartSelected,
   isLoading,
   recentVisualizations,
+  baseApiUrl,
+  userId = "default_user",
+  datasetName,
 }: VisualizationChatProps) {
   const [goal, setGoal] = useState("");
   const [selectedChartType, setSelectedChartType] = useState("auto");
   const [selectedPersona, setSelectedPersona] = useState("default");
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [chartSuggestions, setChartSuggestions] = useState<ChartSuggestion[]>([]);
+  const [currentGoal, setCurrentGoal] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Generate smart suggestions based on data fields
@@ -107,16 +131,30 @@ export function VisualizationChat({
     }
   }, [dataSummary]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!goal.trim() || isLoading) return;
 
-    onVisualizationRequest({
-      goal: goal.trim(),
-      chart_type: selectedChartType === "auto" ? undefined : selectedChartType,
-      persona: selectedPersona,
-    });
+    try {
+      // Clear previous suggestions
+      setChartSuggestions([]);
+      setCurrentGoal(goal.trim());
 
-    setGoal("");
+      const response = await onVisualizationRequest({
+        goal: goal.trim(),
+        chart_type: selectedChartType === "auto" ? undefined : selectedChartType,
+        persona: selectedPersona,
+      });
+
+      // Handle chart suggestions response
+      if (response?.suggestions && response.suggestions.length > 0) {
+        setChartSuggestions(response.suggestions);
+      }
+
+      setGoal("");
+    } catch (error) {
+      console.error("Error generating visualization:", error);
+      // Handle error (could show error state)
+    }
   }, [goal, selectedChartType, selectedPersona, onVisualizationRequest, isLoading]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
@@ -130,6 +168,15 @@ export function VisualizationChat({
     setGoal(suggestion);
     textareaRef.current?.focus();
   }, []);
+
+  const handleChartSelection = useCallback((suggestion: ChartSuggestion, config: any) => {
+    // Clear chart suggestions after selection
+    setChartSuggestions([]);
+    setCurrentGoal("");
+
+    // Notify parent component
+    onChartSelected(suggestion, config);
+  }, [onChartSelected]);
 
   return (
     <div className="space-y-6">
@@ -213,8 +260,26 @@ export function VisualizationChat({
         </CardContent>
       </Card>
 
+      {/* Chart Suggestions */}
+      {chartSuggestions.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <ChartSuggestions
+              suggestions={chartSuggestions}
+              goal={currentGoal}
+              onChartSelected={handleChartSelection}
+              baseApiUrl={baseApiUrl}
+              userId={userId}
+              datasetName={datasetName}
+              persona={selectedPersona}
+              loading={false}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Suggestions */}
-      {suggestions.length > 0 && (
+      {suggestions.length > 0 && !chartSuggestions.length && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">

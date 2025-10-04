@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye } from "lucide-react";
+import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { DynamicChart } from "../ui/dynamic-chart";
 
 interface GeneratedVisualization {
   id: string;
@@ -316,38 +317,69 @@ export function ChartGallery({ visualizations, onVisualizationSelect }: ChartGal
             <Tabs defaultValue="preview" className="w-full">
               <TabsList>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
-                <TabsTrigger value="insights">Insights</TabsTrigger>
+                <TabsTrigger value="insights">
+                  Insights {selectedViz.insights && selectedViz.insights.length > 0 && (
+                    <span className="ml-1 text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">
+                      {selectedViz.insights.length}
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="code">Code</TabsTrigger>
                 <TabsTrigger value="config">Config</TabsTrigger>
               </TabsList>
 
               <TabsContent value="preview" className="space-y-4">
-                <div className="aspect-video bg-muted rounded-md flex items-center justify-center">
-                  <div className="text-center">
-                    {(() => {
-                      const IconComponent = getChartIcon(selectedViz.chart_type);
-                      return <IconComponent className="h-16 w-16 text-muted-foreground mx-auto mb-4" />;
-                    })()}
-                    <p className="text-muted-foreground">Interactive chart would render here</p>
-                  </div>
+                <div className="aspect-video bg-muted rounded-md overflow-hidden">
+                  {selectedViz.chart_config ? (
+                    <DynamicChart
+                      config={selectedViz.chart_config}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        {(() => {
+                          const IconComponent = getChartIcon(selectedViz.chart_type);
+                          return <IconComponent className="h-16 w-16 text-muted-foreground mx-auto mb-4" />;
+                        })()}
+                        <p className="text-muted-foreground">No chart configuration available</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {selectedViz.description && (
                   <p className="text-sm text-muted-foreground">{selectedViz.description}</p>
                 )}
               </TabsContent>
 
-              <TabsContent value="insights" className="space-y-2">
+              <TabsContent value="insights" className="space-y-3">
                 {selectedViz.insights && selectedViz.insights.length > 0 ? (
-                  <ul className="space-y-2">
-                    {selectedViz.insights.map((insight, index) => (
-                      <li key={index} className="flex items-start space-x-2">
-                        <span className="w-1.5 h-1.5 bg-primary rounded-full mt-2 flex-shrink-0"></span>
-                        <span className="text-sm">{insight}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="space-y-4">
+                    <div className="text-sm text-muted-foreground">
+                      {selectedViz.insights.length} AI-generated insights about your data:
+                    </div>
+                    <ul className="space-y-3">
+                      {selectedViz.insights.map((insight, index) => (
+                        <li key={index} className="flex items-start space-x-3">
+                          <span className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></span>
+                          <div className="text-sm leading-relaxed">
+                            {insight.split('**').map((part, i) =>
+                              i % 2 === 1 ? (
+                                <strong key={i} className="font-semibold text-foreground">{part}</strong>
+                              ) : (
+                                <span key={i} className="text-muted-foreground">{part}</span>
+                              )
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No insights available for this visualization.</p>
+                  <div className="text-center py-8">
+                    <Lightbulb className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-sm text-muted-foreground">No insights available for this visualization.</p>
+                  </div>
                 )}
               </TabsContent>
 

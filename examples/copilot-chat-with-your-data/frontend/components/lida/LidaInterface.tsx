@@ -365,39 +365,113 @@ export function LidaInterface() {
       return;
     }
 
-    // For now, just update local state - database persistence can be added later
-    console.log('Adding visualization to local state');
+    // Convert LIDA visualization to dashboard item format
+    console.log('Converting LIDA visualization to dashboard item format');
 
-    // Update local state
-    setDashboards(prev => prev.map(dashboard =>
-      dashboard.id === targetDashboard!.id
-        ? {
-            ...dashboard,
-            visualizations: [...dashboard.visualizations, visualization],
-            updated_at: new Date().toISOString(),
-          }
-        : dashboard
-    ));
+    // Map LIDA chart types to dashboard chart types
+    const mapChartType = (lidaChartType: string): "area" | "bar" | "donut" => {
+      switch (lidaChartType.toLowerCase()) {
+        case 'line':
+        case 'area':
+          return 'area';
+        case 'pie':
+        case 'donut':
+          return 'donut';
+        case 'bar':
+        case 'column':
+        default:
+          return 'bar';
+      }
+    };
 
-    // Update selected dashboard if it's the target
-    if (selectedDashboard?.id === targetDashboard.id) {
-      setSelectedDashboard(prev => prev ? {
-        ...prev,
-        visualizations: [...prev.visualizations, visualization],
-        updated_at: new Date().toISOString(),
-      } : null);
+    const newDashboardItem = {
+      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: "chart" as const,
+      chartType: mapChartType(visualization.chart_type),
+      title: visualization.title,
+      description: visualization.description,
+      span: "col-span-1 md:col-span-2",
+      position: { row: (targetDashboard.visualizations.length || 0) + 1 },
+      config: {
+        echarts_config: visualization.chart_config,
+        insights: visualization.insights,
+        code: visualization.code,
+        lida_visualization_id: visualization.id
+      }
+    };
+
+    try {
+      // Get current dashboard layout_config from database or create new one
+      console.log('Fetching current dashboard from database');
+      const dashboardResponse = await fetch(`/api/dashboards/${targetDashboard.id}`);
+      if (!dashboardResponse.ok) {
+        throw new Error('Failed to fetch current dashboard');
+      }
+      const currentDashboard = await dashboardResponse.json();
+
+      // Update the layout_config with new item
+      const updatedLayoutConfig = {
+        grid: currentDashboard.layout_config?.grid || { cols: 4, rows: "auto" },
+        items: [
+          ...(currentDashboard.layout_config?.items || []),
+          newDashboardItem
+        ]
+      };
+
+      console.log('Updating dashboard in database with new visualization');
+      // Update dashboard in database
+      const updateResponse = await fetch(`/api/dashboards/${targetDashboard.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          layout_config: updatedLayoutConfig
+        })
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update dashboard in database');
+      }
+
+      const updatedDashboard = await updateResponse.json();
+      console.log('Dashboard updated successfully in database');
+
+      // Update local state to reflect the database changes
+      setDashboards(prev => prev.map(dashboard =>
+        dashboard.id === targetDashboard.id
+          ? {
+              ...dashboard,
+              visualizations: [...dashboard.visualizations, visualization],
+              updated_at: updatedDashboard.updated_at,
+            }
+          : dashboard
+      ));
+
+      // Update selected dashboard if it's the target
+      if (selectedDashboard?.id === targetDashboard.id) {
+        setSelectedDashboard(prev => prev ? {
+          ...prev,
+          visualizations: [...prev.visualizations, visualization],
+          updated_at: updatedDashboard.updated_at,
+        } : null);
+      }
+
+      console.log(`Successfully added "${visualization.title}" to dashboard "${targetDashboard.name}"`);
+
+      // Show success feedback and navigate to dashboard edit page
+      setDialogType('success');
+      setDialogMessage(`Successfully added "${visualization.title}" to dashboard "${targetDashboard.name}"!`);
+      setDialogOpen(true);
+      setTimeout(() => {
+        // Navigate to the dashboard page in edit mode
+        router.push(`/dashboard/${targetDashboard.id}?mode=edit`);
+      }, 1500);
+
+    } catch (error) {
+      console.error('Failed to add visualization to dashboard:', error);
+      setDialogType('error');
+      setDialogMessage('Failed to add visualization to dashboard. Please try again.');
+      setDialogOpen(true);
     }
-
-    console.log(`Added "${visualization.title}" to dashboard "${targetDashboard.name}"`);
-
-    // Show success feedback and navigate to dashboard edit page
-    setDialogType('success');
-    setDialogMessage(`Successfully added "${visualization.title}" to dashboard "${targetDashboard.name}"!`);
-    setDialogOpen(true);
-    setTimeout(() => {
-      // Navigate to the dashboard page in edit mode
-      router.push(`/dashboard/${targetDashboard.id}?mode=edit`);
-    }, 1500);
   }, [selectedDashboard, dashboards, handleCreateDashboard]);
 
   // Wrapper functions for button onClick handlers

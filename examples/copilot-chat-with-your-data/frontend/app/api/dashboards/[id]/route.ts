@@ -13,14 +13,16 @@ const pool = new Pool({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Check if database configuration is available
     if (!process.env.POSTGRES_HOST || !process.env.POSTGRES_USER) {
       console.warn("Database not configured, returning mock dashboard");
       const mockDashboard = {
-        id: params.id,
+        id,
         name: "Mock Dashboard",
         description: "This is a mock dashboard (database unavailable)",
         layout_config: {
@@ -42,7 +44,7 @@ export async function GET(
       WHERE id = $1
     `;
 
-    const result = await pool.query(query, [params.id]);
+    const result = await pool.query(query, [id]);
 
     if (result.rows.length === 0) {
       return NextResponse.json(
@@ -56,7 +58,7 @@ export async function GET(
     console.error("Database error:", error);
     console.warn("Database unavailable, returning mock dashboard");
     const mockDashboard = {
-      id: params.id,
+      id,
       name: "Mock Dashboard",
       description: "This is a mock dashboard (database unavailable)",
       layout_config: {
@@ -75,9 +77,10 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { name, description, layout_config, metadata, is_public } = body;
 
@@ -85,7 +88,7 @@ export async function PATCH(
     if (!process.env.POSTGRES_HOST || !process.env.POSTGRES_USER) {
       console.warn("Database not configured, returning mock updated dashboard");
       const mockDashboard = {
-        id: params.id,
+        id,
         name: name || "Mock Dashboard",
         description: description || "This is a mock dashboard (database unavailable)",
         layout_config: layout_config || { grid: { cols: 4, rows: "auto" }, items: [] },
@@ -132,7 +135,7 @@ export async function PATCH(
     }
 
     updates.push(`updated_at = NOW()`);
-    values.push(params.id);
+    values.push(id);
 
     const query = `
       UPDATE dashboards.dashboards
@@ -157,7 +160,7 @@ export async function PATCH(
     const body = await request.json();
     const { name, description, layout_config, metadata, is_public } = body;
     const mockDashboard = {
-      id: params.id,
+      id,
       name: name || "Mock Dashboard",
       description: description || "This is a mock dashboard (database unavailable)",
       layout_config: layout_config || { grid: { cols: 4, rows: "auto" }, items: [] },
@@ -173,16 +176,17 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const query = `
       DELETE FROM dashboards.dashboards
       WHERE id = $1
       RETURNING id
     `;
 
-    const result = await pool.query(query, [params.id]);
+    const result = await pool.query(query, [id]);
 
     if (result.rows.length === 0) {
       return NextResponse.json(

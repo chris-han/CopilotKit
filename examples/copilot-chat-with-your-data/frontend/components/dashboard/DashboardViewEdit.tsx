@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AreaChart } from "@/components/ui/area-chart";
 import { BarChart } from "@/components/ui/bar-chart";
 import { DonutChart } from "@/components/ui/pie-chart";
+import { ReactEChartsCore, echarts } from "@/components/ui/echarts-base";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   STRATEGIC_COMMENTARY_TAB_EVENT,
@@ -396,6 +397,24 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   const commentarySections = useMemo(() => parseStrategicCommentary(commentary), [commentary]);
 
+  // Get configured dashboard items
+  const dashboardItems = useMemo(() => {
+    return dashboard.layout_config?.items || [];
+  }, [dashboard.layout_config]);
+
+  const hasDashboardItems = dashboardItems.length > 0;
+
+  // Generate grid class based on column count
+  const getGridClass = (cols: number) => {
+    const colsMap: Record<number, string> = {
+      2: "grid-cols-1 md:grid-cols-2",
+      3: "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+      4: "grid-cols-1 md:grid-cols-2 lg:grid-cols-4",
+      6: "grid-cols-2 md:grid-cols-3 lg:grid-cols-6",
+    };
+    return `grid w-full gap-4 ${colsMap[cols] || "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"}`;
+  };
+
   if (mode === "edit") {
     return (
       <div className="space-y-4">
@@ -424,182 +443,329 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     );
   }
 
-  // View mode - render dashboard similar to dynamic-dashboard page
-  // (useMemo hooks moved above to maintain consistent hook order)
-
-  // Same as dynamic-dashboard for the view rendering
-  return (
-    <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {dataError ? (
-        <div className="col-span-1 md:col-span-2 lg:col-span-4">
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {dataError}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="col-span-1 md:col-span-2 lg:col-span-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {metrics.length === 0 && dataLoading ? (
-            Array.from({ length: 6 }).map((_, index) => (
-              <Card key={`metric-skeleton-${index}`} className="gap-2 py-4">
-                <CardHeader className="px-4 py-0">
-                  <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
-                </CardHeader>
-                <CardContent className="px-4 py-0">
-                  <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            metrics.map((metric) => (
-              <Card key={metric.label} className="gap-2 py-4">
-                <CardHeader className="px-4 py-0">
-                  <CardDescription className="text-xs text-muted-foreground">
-                    {metric.label}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-4 py-0">
-                  <CardTitle className="text-xl text-card-foreground">{metric.value}</CardTitle>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+  // View mode - render the configured dashboard items
+  if (!hasDashboardItems) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Card>
+          <CardContent className="py-8 text-center">
+            <h3 className="text-lg font-semibold">No Dashboard Items</h3>
+            <p className="mt-2 text-muted-foreground">
+              This dashboard is empty. Switch to edit mode to add visualizations and components.
+            </p>
+          </CardContent>
+        </Card>
       </div>
+    );
+  }
 
-      {chartBlueprints.map((chart) => {
-        if (chart.kind === "area") {
+  return (
+    <div className={getGridClass(dashboard.layout_config?.grid?.cols || 4)}>
+      {dashboardItems.map((item) => {
+        // Handle metric items (including Base Layout metrics)
+        if (item.type === "metric") {
+          if (item.config?.type === "metrics") {
+            // Base Layout metrics - render the dynamic metrics
+            return (
+              <div key={item.id} className={item.span}>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {metrics.length === 0 && dataLoading ? (
+                    Array.from({ length: 6 }).map((_, index) => (
+                      <Card key={`metric-skeleton-${index}`} className="gap-2 py-4">
+                        <CardHeader className="px-4 py-0">
+                          <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
+                        </CardHeader>
+                        <CardContent className="px-4 py-0">
+                          <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    metrics.map((metric) => (
+                      <Card key={metric.label} className="gap-2 py-4">
+                        <CardHeader className="px-4 py-0">
+                          <CardDescription className="text-xs text-muted-foreground">
+                            {metric.label}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="px-4 py-0">
+                          <CardTitle className="text-xl text-card-foreground">{metric.value}</CardTitle>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          } else {
+            // Custom metric item
+            return (
+              <Card key={item.id} className={item.span}>
+                <CardHeader className="pb-1 pt-3">
+                  <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                  {item.description && (
+                    <CardDescription className="text-xs">{item.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="text-2xl font-bold">
+                    {item.config?.value || "No Data"}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+        }
+
+        // Handle chart items
+        if (item.type === "chart") {
+          // LIDA chart with embedded ECharts config
+          if (item.config?.echarts_config) {
+            return (
+              <Card key={item.id} className={item.span} data-chart-id={item.id}>
+                <CardHeader className="pb-1 pt-3">
+                  <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                  {item.description && (
+                    <CardDescription className="text-xs">{item.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="h-60">
+                    <ReactEChartsCore
+                      echarts={echarts}
+                      option={item.config.echarts_config}
+                      style={{ width: '100%', height: '100%' }}
+                      notMerge={true}
+                      lazyUpdate={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+          // Base Layout chart with data source reference
+          else if (item.config?.data_source) {
+            const chart = chartBlueprints.find(c => c.id === item.config.data_source);
+            if (chart) {
+              if (chart.kind === "area") {
+                return (
+                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                    <CardHeader className="pb-1 pt-3">
+                      <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                      {item.description && (
+                        <CardDescription className="text-xs">{item.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="h-60">
+                        <AreaChart
+                          data={chart.data}
+                          index={chart.indexKey}
+                          categories={chart.valueKeys}
+                          chartId={chart.chartId}
+                          colors={chart.colors}
+                          valueFormatter={chart.formatter}
+                          showLegend={true}
+                          showGrid={true}
+                          showXAxis={true}
+                          showYAxis={true}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              if (chart.kind === "bar") {
+                return (
+                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                    <CardHeader className="pb-1 pt-3">
+                      <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                      {item.description && (
+                        <CardDescription className="text-xs">{item.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="h-60">
+                        <BarChart
+                          data={chart.data}
+                          index={chart.indexKey}
+                          categories={chart.valueKeys}
+                          chartId={chart.chartId}
+                          colors={chart.colors}
+                          valueFormatter={chart.formatter}
+                          showLegend={chart.showLegend}
+                          showGrid={true}
+                          layout={chart.orientation}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              if (chart.kind === "donut") {
+                return (
+                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                    <CardHeader className="pb-1 pt-3">
+                      <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                      {item.description && (
+                        <CardDescription className="text-xs">{item.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                    <CardContent className="p-3">
+                      <div className="h-60">
+                        <DonutChart
+                          data={chart.data}
+                          index={chart.indexKey}
+                          category={chart.valueKey}
+                          chartId={chart.chartId}
+                          valueFormatter={chart.formatter}
+                          colors={chart.colors}
+                          centerText={item.title}
+                          paddingAngle={0}
+                          showLegend={true}
+                          showLabel={false}
+                          innerRadius={45}
+                          outerRadius="85%"
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+            }
+            // Fallback if data source not found
+            return (
+              <Card key={item.id} className={item.span}>
+                <CardHeader className="pb-1 pt-3">
+                  <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                  {item.description && (
+                    <CardDescription className="text-xs">{item.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="flex h-60 items-center justify-center text-muted-foreground">
+                    {dataLoading ? "Loading chart data..." : "Chart data not available"}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+        }
+
+        // Handle commentary items
+        if (item.type === "commentary") {
+          if (item.config?.type === "ai_commentary") {
+            // Base Layout commentary - render the AI commentary
+            return (
+              <Card key={item.id} className={item.span} data-chart-id="strategic-commentary">
+                <CardHeader className="pb-1 pt-3">
+                  <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                  {item.description && (
+                    <CardDescription className="text-xs">{item.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="min-h-[8rem]">
+                    {commentaryLoading ? (
+                      <div className="space-y-2">
+                        <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                        <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
+                        <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+                      </div>
+                    ) : commentaryError ? (
+                      <p className="text-sm text-destructive">{commentaryError}</p>
+                    ) : commentarySections.length > 0 ? (
+                      <Tabs value={activeTab ?? commentarySections[0]?.id} onValueChange={setActiveTab} className="w-full">
+                        <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
+                          {commentarySections.map((section) => (
+                            <TabsTrigger key={section.id} value={section.id}>
+                              {section.label}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {commentarySections.map((section) => (
+                          <TabsContent key={section.id} value={section.id}>
+                            <div className="prose prose-sm text-muted-foreground dark:prose-invert">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
+                            </div>
+                          </TabsContent>
+                        ))}
+                      </Tabs>
+                    ) : commentary ? (
+                      <div className="prose prose-sm text-muted-foreground dark:prose-invert">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{commentary}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Strategic commentary is not available yet.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          } else {
+            // Custom commentary item
+            return (
+              <Card key={item.id} className={item.span}>
+                <CardHeader className="pb-1 pt-3">
+                  <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                  {item.description && (
+                    <CardDescription className="text-xs">{item.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="p-3">
+                  <div className="prose prose-sm text-muted-foreground dark:prose-invert">
+                    {item.config?.insights ? (
+                      <ul>
+                        {item.config.insights.map((insight: string, index: number) => (
+                          <li key={index}>{insight}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No insights available</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+        }
+
+        // Handle text items
+        if (item.type === "text") {
           return (
-            <Card key={chart.id} className={chart.spanClass} data-chart-id={chart.chartId}>
+            <Card key={item.id} className={item.span}>
               <CardHeader className="pb-1 pt-3">
-                <CardTitle className="text-base font-medium">{chart.title}</CardTitle>
-                {chart.description ? (
-                  <CardDescription className="text-xs">{chart.description}</CardDescription>
-                ) : null}
+                <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+                {item.description && (
+                  <CardDescription className="text-xs">{item.description}</CardDescription>
+                )}
               </CardHeader>
               <CardContent className="p-3">
-                <div className="h-60">
-                  <AreaChart
-                    data={chart.data}
-                    index={chart.indexKey}
-                    categories={chart.valueKeys}
-                    chartId={chart.chartId}
-                    colors={chart.colors}
-                    valueFormatter={chart.formatter}
-                    showLegend={true}
-                    showGrid={true}
-                    showXAxis={true}
-                    showYAxis={true}
-                  />
+                <div className="prose prose-sm dark:prose-invert">
+                  {item.config?.content || "No content"}
                 </div>
               </CardContent>
             </Card>
           );
         }
 
-        if (chart.kind === "bar") {
-          return (
-            <Card key={chart.id} className={chart.spanClass} data-chart-id={chart.chartId}>
-              <CardHeader className="pb-1 pt-3">
-                <CardTitle className="text-base font-medium">{chart.title}</CardTitle>
-                {chart.description ? (
-                  <CardDescription className="text-xs">{chart.description}</CardDescription>
-                ) : null}
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="h-60">
-                  <BarChart
-                    data={chart.data}
-                    index={chart.indexKey}
-                    categories={chart.valueKeys}
-                    chartId={chart.chartId}
-                    colors={chart.colors}
-                    valueFormatter={chart.formatter}
-                    showLegend={chart.showLegend}
-                    showGrid={true}
-                    layout={chart.orientation}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          );
-        }
-
+        // Default fallback for unknown item types
         return (
-          <Card key={chart.id} className={chart.spanClass} data-chart-id={chart.chartId}>
+          <Card key={item.id} className={item.span}>
             <CardHeader className="pb-1 pt-3">
-              <CardTitle className="text-base font-medium">{chart.title}</CardTitle>
-              {chart.description ? (
-                <CardDescription className="text-xs">{chart.description}</CardDescription>
-              ) : null}
+              <CardTitle className="text-base font-medium">{item.title}</CardTitle>
+              {item.description && (
+                <CardDescription className="text-xs">{item.description}</CardDescription>
+              )}
             </CardHeader>
             <CardContent className="p-3">
-              <div className="h-60">
-                <DonutChart
-                  data={chart.data}
-                  index={chart.indexKey}
-                  category={chart.valueKey}
-                  chartId={chart.chartId}
-                  valueFormatter={chart.formatter}
-                  colors={chart.colors}
-                  centerText={chart.title}
-                  paddingAngle={0}
-                  showLegend={true}
-                  showLabel={false}
-                  innerRadius={45}
-                  outerRadius="85%"
-                />
+              <div className="flex h-32 items-center justify-center text-muted-foreground">
+                Unknown item type: {item.type}
               </div>
             </CardContent>
           </Card>
         );
       })}
-
-      <Card className="col-span-1 md:col-span-2 lg:col-span-4" data-chart-id="strategic-commentary">
-        <CardHeader className="pb-1 pt-3">
-          <CardTitle className="text-base font-medium">Strategic Commentary</CardTitle>
-          <CardDescription className="text-xs">
-            AI-authored risks, opportunities, and recommendations
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-3">
-          <div className="min-h-[8rem]">
-            {commentaryLoading ? (
-              <div className="space-y-2">
-                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
-                <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
-                <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
-              </div>
-            ) : commentaryError ? (
-              <p className="text-sm text-destructive">{commentaryError}</p>
-            ) : commentarySections.length > 0 ? (
-              <Tabs value={activeTab ?? commentarySections[0]?.id} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3">
-                  {commentarySections.map((section) => (
-                    <TabsTrigger key={section.id} value={section.id}>
-                      {section.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {commentarySections.map((section) => (
-                  <TabsContent key={section.id} value={section.id}>
-                    <div className="prose prose-sm text-muted-foreground dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content}</ReactMarkdown>
-                    </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
-            ) : commentary ? (
-              <div className="prose prose-sm text-muted-foreground dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{commentary}</ReactMarkdown>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Strategic commentary is not available yet.</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

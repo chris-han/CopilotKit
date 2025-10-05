@@ -18,14 +18,83 @@ export async function GET(request: NextRequest) {
       console.warn("Database not configured, returning mock templates");
       const mockTemplates = [
         {
-          id: "template-1",
-          name: "Financial Overview",
-          description: "Comprehensive financial dashboard with key metrics and trends",
-          category: "financial-overview",
+          id: "base-layout",
+          name: "Base Layout",
+          description: "Dynamic dashboard with live data, metrics, and AI-generated insights",
+          category: "Analytics",
           thumbnail_url: null,
           layout_config: {
             grid: { cols: 4, rows: "auto" },
-            items: []
+            items: [
+              {
+                id: "metrics-overview",
+                type: "metric",
+                title: "Key Metrics",
+                description: "Live performance indicators",
+                span: "col-span-1 md:col-span-2 lg:col-span-4",
+                position: { row: 1 },
+                config: { type: "metrics" }
+              },
+              {
+                id: "sales-overview",
+                type: "chart",
+                chartType: "area",
+                title: "Sales Overview",
+                description: "Monthly performance across revenue, profit, and expense lines",
+                span: "col-span-1 md:col-span-2 lg:col-span-4",
+                position: { row: 2 },
+                config: { data_source: "salesData" }
+              },
+              {
+                id: "product-performance",
+                type: "chart",
+                chartType: "bar",
+                title: "Product Performance",
+                description: "Auto-generated view based on dashboard dataset",
+                span: "col-span-1 md:col-span-1 lg:col-span-2",
+                position: { row: 3 },
+                config: { data_source: "productData" }
+              },
+              {
+                id: "sales-by-category",
+                type: "chart",
+                chartType: "donut",
+                title: "Sales by Category",
+                description: "Proportional contribution by segment",
+                span: "col-span-1 md:col-span-1 lg:col-span-2",
+                position: { row: 3 },
+                config: { data_source: "categoryData" }
+              },
+              {
+                id: "regional-sales",
+                type: "chart",
+                chartType: "bar",
+                title: "Regional Sales",
+                description: "Auto-generated view based on dashboard dataset",
+                span: "col-span-1 md:col-span-1 lg:col-span-2",
+                position: { row: 4 },
+                config: { data_source: "regionalData" }
+              },
+              {
+                id: "customer-demographics",
+                type: "chart",
+                chartType: "donut",
+                title: "Customer Demographics",
+                description: "Proportional contribution by segment",
+                span: "col-span-1 md:col-span-1 lg:col-span-2",
+                position: { row: 4 },
+                config: { data_source: "demographicsData" }
+              },
+              {
+                id: "strategic-commentary",
+                type: "commentary",
+                title: "Strategic Commentary",
+                description: "AI-authored risks, opportunities, and recommendations",
+                span: "col-span-1 md:col-span-2 lg:col-span-4",
+                position: { row: 5 },
+                config: { type: "ai_commentary" }
+              }
+            ]
           },
           default_data: {},
           is_featured: true,
@@ -33,17 +102,32 @@ export async function GET(request: NextRequest) {
           updated_at: new Date().toISOString()
         },
         {
-          id: "template-2",
-          name: "Cost Optimization",
-          description: "Track and optimize your cloud costs with detailed analytics",
-          category: "cost-optimization",
+          id: "template-1",
+          name: "Financial Overview",
+          description: "Comprehensive financial dashboard with key metrics and trends",
+          category: "Financial",
           thumbnail_url: null,
           layout_config: {
             grid: { cols: 4, rows: "auto" },
             items: []
           },
           default_data: {},
-          is_featured: true,
+          is_featured: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: "template-2",
+          name: "Cost Optimization",
+          description: "Track and optimize your cloud costs with detailed analytics",
+          category: "Financial",
+          thumbnail_url: null,
+          layout_config: {
+            grid: { cols: 4, rows: "auto" },
+            items: []
+          },
+          default_data: {},
+          is_featured: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         }
@@ -85,14 +169,83 @@ export async function GET(request: NextRequest) {
     console.warn("Database unavailable, returning mock templates");
     const mockTemplates = [
       {
-        id: "template-1",
-        name: "Financial Overview",
-        description: "Comprehensive financial dashboard with key metrics and trends",
-        category: "financial-overview",
+        id: "base-layout",
+        name: "Base Layout",
+        description: "Dynamic dashboard with live data, metrics, and AI-generated insights",
+        category: "Analytics",
         thumbnail_url: null,
         layout_config: {
           grid: { cols: 4, rows: "auto" },
-          items: []
+          items: [
+            {
+              id: "metrics-overview",
+              type: "metric",
+              title: "Key Metrics",
+              description: "Live performance indicators",
+              span: "col-span-1 md:col-span-2 lg:col-span-4",
+              position: { row: 1 },
+              config: { type: "metrics" }
+            },
+            {
+              id: "sales-overview",
+              type: "chart",
+              chartType: "area",
+              title: "Sales Overview",
+              description: "Monthly performance across revenue, profit, and expense lines",
+              span: "col-span-1 md:col-span-2 lg:col-span-4",
+              position: { row: 2 },
+              config: { data_source: "salesData" }
+            },
+            {
+              id: "product-performance",
+              type: "chart",
+              chartType: "bar",
+              title: "Product Performance",
+              description: "Auto-generated view based on dashboard dataset",
+              span: "col-span-1 md:col-span-1 lg:col-span-2",
+              position: { row: 3 },
+              config: { data_source: "productData" }
+            },
+            {
+              id: "sales-by-category",
+              type: "chart",
+              chartType: "donut",
+              title: "Sales by Category",
+              description: "Proportional contribution by segment",
+              span: "col-span-1 md:col-span-1 lg:col-span-2",
+              position: { row: 3 },
+              config: { data_source: "categoryData" }
+            },
+            {
+              id: "regional-sales",
+              type: "chart",
+              chartType: "bar",
+              title: "Regional Sales",
+              description: "Auto-generated view based on dashboard dataset",
+              span: "col-span-1 md:col-span-1 lg:col-span-2",
+              position: { row: 4 },
+              config: { data_source: "regionalData" }
+            },
+            {
+              id: "customer-demographics",
+              type: "chart",
+              chartType: "donut",
+              title: "Customer Demographics",
+              description: "Proportional contribution by segment",
+              span: "col-span-1 md:col-span-1 lg:col-span-2",
+              position: { row: 4 },
+              config: { data_source: "demographicsData" }
+            },
+            {
+              id: "strategic-commentary",
+              type: "commentary",
+              title: "Strategic Commentary",
+              description: "AI-authored risks, opportunities, and recommendations",
+              span: "col-span-1 md:col-span-2 lg:col-span-4",
+              position: { row: 5 },
+              config: { type: "ai_commentary" }
+            }
+          ]
         },
         default_data: {},
         is_featured: true,
@@ -100,17 +253,32 @@ export async function GET(request: NextRequest) {
         updated_at: new Date().toISOString()
       },
       {
-        id: "template-2",
-        name: "Cost Optimization",
-        description: "Track and optimize your cloud costs with detailed analytics",
-        category: "cost-optimization",
+        id: "template-1",
+        name: "Financial Overview",
+        description: "Comprehensive financial dashboard with key metrics and trends",
+        category: "Financial",
         thumbnail_url: null,
         layout_config: {
           grid: { cols: 4, rows: "auto" },
           items: []
         },
         default_data: {},
-        is_featured: true,
+        is_featured: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: "template-2",
+        name: "Cost Optimization",
+        description: "Track and optimize your cloud costs with detailed analytics",
+        category: "Financial",
+        thumbnail_url: null,
+        layout_config: {
+          grid: { cols: 4, rows: "auto" },
+          items: []
+        },
+        default_data: {},
+        is_featured: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }

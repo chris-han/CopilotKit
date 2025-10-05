@@ -71,6 +71,17 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
+  // Generate grid class based on column count
+  const getGridClass = (cols: number) => {
+    const colsMap: Record<number, string> = {
+      2: "grid-cols-1 md:grid-cols-2",
+      3: "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+      4: "grid-cols-1 md:grid-cols-2 lg:grid-cols-4",
+      6: "grid-cols-2 md:grid-cols-3 lg:grid-cols-6",
+    };
+    return `grid w-full gap-4 ${colsMap[cols] || "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"}`;
+  };
+
   const addItem = (type: DashboardItem["type"]) => {
     const newItem: DashboardItem = {
       id: `item-${Date.now()}`,
@@ -142,7 +153,7 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className={getGridClass(config.grid.cols)}>
               {config.items.map((item, index) => (
                 <div
                   key={item.id}

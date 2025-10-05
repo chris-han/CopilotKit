@@ -19,7 +19,7 @@ import {
   Activity,
   FileText
 } from "lucide-react";
-import { DraggableResizableGrid } from "./DraggableResizableGrid";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 
 interface DashboardItem {
   id: string;
@@ -32,6 +32,29 @@ interface DashboardItem {
   config?: Record<string, unknown>;
 }
 
+interface GridPosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface DragState {
+  isDragging: boolean;
+  draggedItemId: string | null;
+  startPosition: { x: number; y: number };
+  currentPosition: { x: number; y: number };
+  itemStartPosition: { x: number; y: number };
+}
+
+interface ResizeState {
+  isResizing: boolean;
+  resizedItemId: string | null;
+  startSize: { width: number; height: number };
+  startPosition: { x: number; y: number };
+  resizeHandle: string | null;
+}
+
 interface DashboardConfig {
   grid: { cols: number; rows: string };
   items: DashboardItem[];
@@ -40,7 +63,6 @@ interface DashboardConfig {
 interface DashboardEditorProps {
   config: DashboardConfig;
   onChange: (config: DashboardConfig) => void;
-  dataLoading?: boolean;
 }
 
 const CHART_TYPES = [
@@ -65,8 +87,155 @@ const SPAN_OPTIONS = [
   { value: "col-span-1 md:col-span-2 lg:col-span-4", label: "1-2-4 Columns (Responsive)" },
 ];
 
-export function DashboardEditor({ config, onChange, dataLoading }: DashboardEditorProps) {
+
+// Grid utility functions
+function parseGridSpan(span: string): { width: number; height: number } {
+  const colSpanMatch = span.match(/col-span-(\d+)/);
+  const width = colSpanMatch ? parseInt(colSpanMatch[1]) : 1;
+  const height = 1; // Default height, can be extended
+  return { width, height };
+}
+
+function gridToCSS(position: GridPosition, cols: number) {
+  return {
+    gridColumnStart: Math.max(1, Math.min(position.x + 1, cols)),
+    gridColumnEnd: Math.max(2, Math.min(position.x + position.width + 1, cols + 1)),
+    gridRowStart: position.y + 1,
+    gridRowEnd: position.y + position.height + 1,
+  };
+}
+
+function snapToGrid(x: number, y: number, gridSize: number, gridGap: number): { x: number; y: number } {
+  const effectiveSize = gridSize + gridGap;
+  return {
+    x: Math.round(x / effectiveSize) * effectiveSize,
+    y: Math.round(y / effectiveSize) * effectiveSize,
+  };
+}
+
+function pixelToGrid(pixelX: number, pixelY: number, containerWidth: number, cols: number, gridSize: number, gridGap: number): GridPosition {
+  const cellWidth = containerWidth / cols;
+  const effectiveGridSize = gridSize + gridGap;
+  const gridX = Math.max(0, Math.min(Math.floor(pixelX / cellWidth), cols - 1));
+  const gridY = Math.max(0, Math.floor(pixelY / effectiveGridSize));
+  return { x: gridX, y: gridY, width: 1, height: 1 };
+}
+
+function isOverlapping(pos1: GridPosition, pos2: GridPosition): boolean {
+  const pos1Right = pos1.x + pos1.width;
+  const pos1Bottom = pos1.y + pos1.height;
+  const pos2Right = pos2.x + pos2.width;
+  const pos2Bottom = pos2.y + pos2.height;
+  return !(pos1Right <= pos2.x || pos1.x >= pos2Right || pos1Bottom <= pos2.y || pos1.y >= pos2Bottom);
+}
+
+function findNextAvailablePosition(
+  desiredPosition: GridPosition,
+  existingPositions: Map<string, GridPosition>,
+  excludeItemId: string,
+  cols: number
+): GridPosition {
+  const { width, height } = desiredPosition;
+  let testPosition = { ...desiredPosition };
+
+  const hasCollision = (pos: GridPosition): boolean => {
+    for (const [itemId, existingPos] of existingPositions) {
+      if (itemId !== excludeItemId && isOverlapping(pos, existingPos)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (!hasCollision(testPosition)) {
+    return testPosition;
+  }
+
+  for (let radius = 1; radius <= 10; radius++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+
+        testPosition = {
+          x: Math.max(0, Math.min(desiredPosition.x + dx, cols - width)),
+          y: Math.max(0, desiredPosition.y + dy),
+          width,
+          height
+        };
+
+        if (testPosition.x + width <= cols && testPosition.x >= 0 && testPosition.y >= 0) {
+          if (!hasCollision(testPosition)) {
+            return testPosition;
+          }
+        }
+      }
+    }
+  }
+
+  return desiredPosition;
+}
+
+export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+
+  // Grid system state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const gridSize = 120;
+  const gridGap = 16;
+  const effectiveGridSize = gridSize + gridGap;
+
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    draggedItemId: null,
+    startPosition: { x: 0, y: 0 },
+    currentPosition: { x: 0, y: 0 },
+    itemStartPosition: { x: 0, y: 0 },
+  });
+
+  const [resizeState, setResizeState] = useState<ResizeState>({
+    isResizing: false,
+    resizedItemId: null,
+    startSize: { width: 0, height: 0 },
+    startPosition: { x: 0, y: 0 },
+    resizeHandle: null,
+  });
+
+  const [itemPositions, setItemPositions] = useState<Map<string, GridPosition>>(new Map());
+  const [hasCollision, setHasCollision] = useState<boolean>(false);
+
+  // Initialize item positions from their span classes and position data
+  useEffect(() => {
+    const newPositions = new Map<string, GridPosition>();
+    let currentRow = 0;
+    let currentCol = 0;
+
+    config.items.forEach((item) => {
+      const { width, height } = parseGridSpan(item.span);
+
+      const position: GridPosition = {
+        x: item.position.col !== undefined ? item.position.col : currentCol,
+        y: item.position.row !== undefined ? item.position.row - 1 : currentRow,
+        width,
+        height,
+      };
+
+      if (position.x + position.width > config.grid.cols) {
+        position.x = Math.max(0, config.grid.cols - position.width);
+      }
+
+      newPositions.set(item.id, position);
+
+      if (item.position.col === undefined) {
+        currentCol = position.x + position.width;
+        if (currentCol >= config.grid.cols) {
+          currentCol = 0;
+          currentRow++;
+        }
+      }
+    });
+
+    setItemPositions(newPositions);
+  }, [config.items, config.grid.cols]);
 
   // Generate grid class based on column count
   const getGridClass = (cols: number) => {
@@ -115,17 +284,29 @@ export function DashboardEditor({ config, onChange, dataLoading }: DashboardEdit
     });
   };
 
-
   const selectedItemData = selectedItem ? config.items.find(item => item.id === selectedItem) : null;
 
+
+  // Helper function to convert grid width to span class
+  const getSpanFromWidth = (width: number): string => {
+    const spanMap: Record<number, string> = {
+      1: "col-span-1",
+      2: "col-span-2",
+      3: "col-span-3",
+      4: "col-span-4",
+      5: "col-span-5",
+      6: "col-span-6",
+    };
+    return spanMap[Math.min(width, 6)] || "col-span-1";
+  };
+
   // Handler for when items are moved via drag and drop
-  const handleItemMove = (itemId: string, newPosition: { x: number; y: number; width: number; height: number }) => {
+  const handleItemMove = (itemId: string, newPosition: GridPosition) => {
     const updatedItems = config.items.map(item => {
       if (item.id === itemId) {
         return {
           ...item,
           position: { row: newPosition.y + 1, col: newPosition.x },
-          // Update span based on new width
           span: getSpanFromWidth(newPosition.width)
         };
       }
@@ -150,58 +331,312 @@ export function DashboardEditor({ config, onChange, dataLoading }: DashboardEdit
     onChange({ ...config, items: updatedItems });
   };
 
-  // Helper function to convert grid width to span class
-  const getSpanFromWidth = (width: number): string => {
-    const spanMap: Record<number, string> = {
-      1: "col-span-1",
-      2: "col-span-2",
-      3: "col-span-3",
-      4: "col-span-4",
-      5: "col-span-5",
-      6: "col-span-6",
-    };
-    return spanMap[Math.min(width, 6)] || "col-span-1";
-  };
+  // Mouse event handlers for drag and resize
+  const handleMouseDown = useCallback((e: React.MouseEvent, itemId: string, type: 'drag' | 'resize', handle?: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const startX = e.clientX - rect.left;
+    const startY = e.clientY - rect.top;
+
+    if (type === 'drag') {
+      const itemPosition = itemPositions.get(itemId);
+      if (!itemPosition) return;
+
+      setDragState({
+        isDragging: true,
+        draggedItemId: itemId,
+        startPosition: { x: startX, y: startY },
+        currentPosition: { x: startX, y: startY },
+        itemStartPosition: { x: itemPosition.x * effectiveGridSize, y: itemPosition.y * effectiveGridSize },
+      });
+    } else if (type === 'resize') {
+      const itemPosition = itemPositions.get(itemId);
+      if (!itemPosition) return;
+
+      setResizeState({
+        isResizing: true,
+        resizedItemId: itemId,
+        startSize: { width: itemPosition.width, height: itemPosition.height },
+        startPosition: { x: startX, y: startY },
+        resizeHandle: handle || 'se',
+      });
+    }
+  }, [itemPositions, effectiveGridSize]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    if (dragState.isDragging && dragState.draggedItemId) {
+      const deltaX = currentX - dragState.startPosition.x;
+      const deltaY = currentY - dragState.startPosition.y;
+
+      const newPixelX = dragState.itemStartPosition.x + deltaX;
+      const newPixelY = dragState.itemStartPosition.y + deltaY;
+
+      const snapped = snapToGrid(newPixelX, newPixelY, gridSize, gridGap);
+
+      // Check for potential collision at current drag position
+      const containerWidth = rect.width;
+      const gridPos = pixelToGrid(snapped.x, snapped.y, containerWidth, config.grid.cols, gridSize, gridGap);
+      const currentItemPos = itemPositions.get(dragState.draggedItemId);
+
+      if (currentItemPos) {
+        const testPosition = { ...currentItemPos, x: gridPos.x, y: gridPos.y };
+
+        // Check if this position would cause a collision
+        let wouldCollide = false;
+        for (const [itemId, existingPos] of itemPositions) {
+          if (itemId !== dragState.draggedItemId && isOverlapping(testPosition, existingPos)) {
+            wouldCollide = true;
+            break;
+          }
+        }
+
+        setHasCollision(wouldCollide);
+      }
+
+      setDragState(prev => ({
+        ...prev,
+        currentPosition: { x: snapped.x, y: snapped.y },
+      }));
+    }
+
+    if (resizeState.isResizing && resizeState.resizedItemId) {
+      const deltaX = currentX - resizeState.startPosition.x;
+      const deltaY = currentY - resizeState.startPosition.y;
+
+      const gridDeltaX = Math.round(deltaX / effectiveGridSize);
+      const gridDeltaY = Math.round(deltaY / effectiveGridSize);
+
+      const newWidth = Math.max(1, resizeState.startSize.width + gridDeltaX);
+      const newHeight = Math.max(1, resizeState.startSize.height + gridDeltaY);
+
+      // Update item position temporarily
+      const currentPosition = itemPositions.get(resizeState.resizedItemId);
+      if (currentPosition) {
+        const newPosition = { ...currentPosition, width: newWidth, height: newHeight };
+        const updatedPositions = new Map(itemPositions);
+        updatedPositions.set(resizeState.resizedItemId, newPosition);
+        setItemPositions(updatedPositions);
+      }
+    }
+  }, [dragState, resizeState, itemPositions, gridSize, gridGap, effectiveGridSize, config.grid.cols]);
+
+  const handleMouseUp = useCallback(() => {
+    if (dragState.isDragging && dragState.draggedItemId) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const containerWidth = rect.width;
+        const gridPos = pixelToGrid(dragState.currentPosition.x, dragState.currentPosition.y, containerWidth, config.grid.cols, gridSize, gridGap);
+        const currentItemPos = itemPositions.get(dragState.draggedItemId);
+
+        if (currentItemPos) {
+          const desiredPosition = { ...currentItemPos, x: gridPos.x, y: gridPos.y };
+
+          // Use collision detection to find the best available position
+          const finalPosition = findNextAvailablePosition(
+            desiredPosition,
+            itemPositions,
+            dragState.draggedItemId,
+            config.grid.cols
+          );
+
+          handleItemMove(dragState.draggedItemId, finalPosition);
+
+          const updatedPositions = new Map(itemPositions);
+          updatedPositions.set(dragState.draggedItemId, finalPosition);
+          setItemPositions(updatedPositions);
+        }
+      }
+    }
+
+    if (resizeState.isResizing && resizeState.resizedItemId) {
+      const currentItemPos = itemPositions.get(resizeState.resizedItemId);
+      if (currentItemPos) {
+        // Check for collisions after resize
+        const resizedPosition = { ...currentItemPos };
+        const finalPosition = findNextAvailablePosition(
+          resizedPosition,
+          itemPositions,
+          resizeState.resizedItemId,
+          config.grid.cols
+        );
+
+        // If collision found, adjust the size to fit
+        if (finalPosition.x !== resizedPosition.x || finalPosition.y !== resizedPosition.y) {
+          // Position changed due to collision, keep original size and position
+          handleItemResize(resizeState.resizedItemId, {
+            width: resizeState.startSize.width,
+            height: resizeState.startSize.height
+          });
+        } else {
+          // No collision, use the resized dimensions
+          handleItemResize(resizeState.resizedItemId, {
+            width: currentItemPos.width,
+            height: currentItemPos.height
+          });
+        }
+      }
+    }
+
+    setDragState({
+      isDragging: false,
+      draggedItemId: null,
+      startPosition: { x: 0, y: 0 },
+      currentPosition: { x: 0, y: 0 },
+      itemStartPosition: { x: 0, y: 0 },
+    });
+
+    setResizeState({
+      isResizing: false,
+      resizedItemId: null,
+      startSize: { width: 0, height: 0 },
+      startPosition: { x: 0, y: 0 },
+      resizeHandle: null,
+    });
+
+    // Clear collision state
+    setHasCollision(false);
+  }, [dragState, resizeState, itemPositions, handleItemMove, handleItemResize, config.grid.cols, gridSize, gridGap]);
+
+  // Calculate minimum grid height based on items (memoized for performance and real-time updates)
+  const minHeight = useMemo(() => {
+    if (itemPositions.size === 0) return effectiveGridSize * 3; // Default minimum height
+
+    let maxRow = 0;
+    itemPositions.forEach((position) => {
+      const bottomRow = position.y + position.height;
+      maxRow = Math.max(maxRow, bottomRow);
+    });
+
+    // Account for dragged items that might be at different positions
+    if (dragState.isDragging && dragState.draggedItemId) {
+      const draggedItem = itemPositions.get(dragState.draggedItemId);
+      if (draggedItem) {
+        // Convert pixel position to grid coordinates for dragged item
+        const containerWidth = containerRef.current?.getBoundingClientRect().width || 800;
+        const draggedGridY = Math.floor(dragState.currentPosition.y / effectiveGridSize);
+        const draggedBottomRow = draggedGridY + draggedItem.height;
+        maxRow = Math.max(maxRow, draggedBottomRow);
+      }
+    }
+
+    // Calculate exact height without buffer - use pure grid multiples
+    const calculatedHeight = maxRow * gridSize + (maxRow - 1) * gridGap;
+
+    return Math.max(calculatedHeight, effectiveGridSize * 3); // At least 3 rows minimum
+  }, [itemPositions, dragState.isDragging, dragState.draggedItemId, dragState.currentPosition, gridSize, effectiveGridSize, gridGap, config.grid.cols]);
+
+  // Add global mouse event listeners
+  useEffect(() => {
+    if (dragState.isDragging || resizeState.isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [dragState.isDragging, resizeState.isResizing, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Dashboard Preview */}
-      <div className="lg:col-span-2">
-        <Card>
+      <div className="lg:col-span-2 overflow-visible">
+        <Card className="overflow-visible">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
               Dashboard Preview
             </CardTitle>
             <CardDescription>
-              {dataLoading
-                ? "Loading data..."
-                : "Live preview of your dashboard. Drag items to move them, use resize handles to change size. All changes snap to grid."
-              }
+              Dashboard layout editor. Drag items to move them, use resize handles to change size. All changes snap to grid.
             </CardDescription>
           </CardHeader>
           <CardContent className="overflow-visible">
-            <div className="min-h-[360px]">
-              <DraggableResizableGrid
-                items={config.items}
-                onItemMove={handleItemMove}
-                onItemResize={handleItemResize}
-                cols={config.grid.cols}
-                gridSize={120}
-                className={getGridClass(config.grid.cols)}
+            <div className="min-h-[360px] overflow-visible">
+              <div
+                ref={containerRef}
+                className={`grid gap-4 ${getGridClass(config.grid.cols)}`}
+                style={{
+                  gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
+                  gridAutoRows: `${gridSize}px`,
+                  minHeight: `${minHeight}px`,
+                  alignItems: 'stretch',
+                }}
               >
-              {config.items.map((item) => (
+              {config.items.map((item) => {
+                const position = itemPositions.get(item.id);
+                if (!position) return null;
+
+                const isDragged = dragState.draggedItemId === item.id;
+                const isResized = resizeState.resizedItemId === item.id;
+
+                return (
                 <div
                   key={item.id}
-                  className={`cursor-pointer rounded-lg border-2 transition-all ${
+                  className={`relative group ${isDragged ? 'z-50' : 'z-10'} ${
+                    isDragged || isResized ? 'opacity-80' : ''
+                  } ${isDragged && hasCollision ? 'cursor-not-allowed' : ''} h-full cursor-pointer rounded-lg border-2 transition-all ${
                     selectedItem === item.id
                       ? "border-primary bg-primary/5"
                       : "border-dashed border-muted-foreground/30 hover:border-primary/50"
                   }`}
+                  style={{
+                    ...gridToCSS(position, config.grid.cols),
+                    minHeight: `${position.height * gridSize + (position.height - 1) * gridGap}px`,
+                    transform: isDragged
+                      ? `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`
+                      : undefined,
+                  }}
                   onClick={() => setSelectedItem(item.id)}
                 >
-                  <Card className="h-full">
-                    <CardHeader className="pb-2">
+                  {/* Drag handle */}
+                  <div
+                    className="absolute -top-2 -left-2 w-6 h-6 bg-primary rounded cursor-move opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center justify-center shadow-md"
+                    onMouseDown={(e) => handleMouseDown(e, item.id, 'drag')}
+                    title="Drag to move"
+                  >
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+                    </svg>
+                  </div>
+
+                  {/* Resize handle */}
+                  <div
+                    className="absolute -bottom-2 -right-2 w-6 h-6 bg-primary rounded cursor-se-resize opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center justify-center shadow-md"
+                    onMouseDown={(e) => handleMouseDown(e, item.id, 'resize', 'se')}
+                    title="Drag to resize"
+                  >
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M4 4v12h12V4H4zm10 10H6V6h8v8z"/>
+                      <path d="M14 14l-4-4M14 10l-2-2"/>
+                    </svg>
+                  </div>
+
+                  {/* Grid overlay during drag */}
+                  {isDragged && (
+                    <div
+                      className={`absolute inset-0 border-2 border-dashed rounded ${
+                        hasCollision
+                          ? "border-red-500 bg-red-500/20"
+                          : "border-primary bg-primary/10"
+                      }`}
+                      style={{
+                        transform: `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`,
+                      }}
+                    />
+                  )}
+                  <Card className="h-full flex flex-col">
+                    <CardHeader className="pb-2 flex-shrink-0">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {item.type === "chart" && <BarChart3 className="h-4 w-4" />}
@@ -232,22 +667,79 @@ export function DashboardEditor({ config, onChange, dataLoading }: DashboardEdit
                         <CardDescription className="text-xs">{item.description}</CardDescription>
                       )}
                     </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex h-32 items-center justify-center rounded bg-muted/50 text-xs text-muted-foreground">
-                        {dataLoading ? (
-                          <div className="animate-pulse">Loading...</div>
-                        ) : (
-                          <div className="text-center">
-                            <div>{item.type} preview</div>
-                            {item.chartType && <div className="mt-1">({item.chartType})</div>}
+                    <CardContent className="pt-0 flex-1 flex flex-col p-0">
+                      <div className="m-4 flex-1 flex items-center justify-center rounded bg-muted/50 text-muted-foreground min-h-0 p-4">
+                        <div className="text-center w-full h-full flex flex-col justify-center">
+                          <div className="mb-3">
+                            {item.type === "chart" && <BarChart3 className="h-8 w-8 mx-auto mb-2" />}
+                            {item.type === "metric" && <Activity className="h-8 w-8 mx-auto mb-2" />}
+                            {item.type === "text" && <FileText className="h-8 w-8 mx-auto mb-2" />}
+                            {item.type === "commentary" && <FileText className="h-8 w-8 mx-auto mb-2" />}
                           </div>
-                        )}
+                          <div className="text-sm font-medium text-foreground mb-1">
+                            {item.title}
+                          </div>
+                          <div className="text-xs text-muted-foreground mb-2">
+                            {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                            {item.chartType && ` • ${item.chartType}`}
+                          </div>
+                          {item.description && (
+                            <div className="text-xs text-muted-foreground italic">
+                              {item.description}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
-              ))}
-            </DraggableResizableGrid>
+                );
+              })}
+
+              {/* Grid overlay for visual feedback */}
+              {(dragState.isDragging || resizeState.isResizing) && (
+                <div className="absolute inset-0 pointer-events-none z-0">
+                  <div
+                    className="grid gap-4 opacity-20"
+                    style={{
+                      gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
+                      gridAutoRows: `${gridSize}px`,
+                      width: '100%',
+                      height: '100%',
+                    }}
+                  >
+                    {Array.from({ length: config.grid.cols * 10 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="border border-primary/30 rounded"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Grid overlay for visual feedback */}
+              {(dragState.isDragging || resizeState.isResizing) && (
+                <div className="absolute inset-0 pointer-events-none z-0">
+                  <div
+                    className="grid gap-4 opacity-20"
+                    style={{
+                      gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
+                      gridAutoRows: `${gridSize}px`,
+                      width: '100%',
+                      height: '100%',
+                    }}
+                  >
+                    {Array.from({ length: config.grid.cols * 10 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="border border-primary/30 rounded"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              </div>
             </div>
 
             {/* Add item placeholder - outside the grid */}

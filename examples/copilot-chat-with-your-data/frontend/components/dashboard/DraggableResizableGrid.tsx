@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { DashboardItem } from "@/types/dashboard";
 
 interface GridPosition {
@@ -54,20 +54,87 @@ function gridToCSS(position: GridPosition, cols: number) {
   };
 }
 
-// Snap position to grid
-function snapToGrid(x: number, y: number, gridSize: number): { x: number; y: number } {
+// Snap position to grid accounting for gaps
+function snapToGrid(x: number, y: number, gridSize: number, gridGap: number): { x: number; y: number } {
+  const effectiveSize = gridSize + gridGap;
   return {
-    x: Math.round(x / gridSize) * gridSize,
-    y: Math.round(y / gridSize) * gridSize,
+    x: Math.round(x / effectiveSize) * effectiveSize,
+    y: Math.round(y / effectiveSize) * effectiveSize,
   };
 }
 
 // Convert pixel position to grid coordinates
-function pixelToGrid(pixelX: number, pixelY: number, containerWidth: number, cols: number): GridPosition {
+function pixelToGrid(pixelX: number, pixelY: number, containerWidth: number, cols: number, gridSize: number, gridGap: number): GridPosition {
   const cellWidth = containerWidth / cols;
+  const effectiveGridSize = gridSize + gridGap;
   const gridX = Math.max(0, Math.min(Math.floor(pixelX / cellWidth), cols - 1));
-  const gridY = Math.max(0, Math.floor(pixelY / 140)); // Approximate grid row height
+  const gridY = Math.max(0, Math.floor(pixelY / effectiveGridSize));
   return { x: gridX, y: gridY, width: 1, height: 1 };
+}
+
+// Check if two grid positions overlap
+function isOverlapping(pos1: GridPosition, pos2: GridPosition): boolean {
+  const pos1Right = pos1.x + pos1.width;
+  const pos1Bottom = pos1.y + pos1.height;
+  const pos2Right = pos2.x + pos2.width;
+  const pos2Bottom = pos2.y + pos2.height;
+
+  return !(pos1Right <= pos2.x || pos1.x >= pos2Right || pos1Bottom <= pos2.y || pos1.y >= pos2Bottom);
+}
+
+// Find the next available position for an item, avoiding collisions
+function findNextAvailablePosition(
+  desiredPosition: GridPosition,
+  existingPositions: Map<string, GridPosition>,
+  excludeItemId: string,
+  cols: number
+): GridPosition {
+  const { width, height } = desiredPosition;
+
+  // First try the desired position
+  let testPosition = { ...desiredPosition };
+
+  // Check all existing positions for conflicts
+  const hasCollision = (pos: GridPosition): boolean => {
+    for (const [itemId, existingPos] of existingPositions) {
+      if (itemId !== excludeItemId && isOverlapping(pos, existingPos)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // If desired position is free, use it
+  if (!hasCollision(testPosition)) {
+    return testPosition;
+  }
+
+  // Search for alternative positions in expanding circles
+  for (let radius = 1; radius <= 10; radius++) {
+    // Try positions in a spiral pattern around the desired position
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue; // Only check border positions
+
+        testPosition = {
+          x: Math.max(0, Math.min(desiredPosition.x + dx, cols - width)),
+          y: Math.max(0, desiredPosition.y + dy),
+          width,
+          height
+        };
+
+        // Ensure item fits within grid bounds
+        if (testPosition.x + width <= cols && testPosition.x >= 0 && testPosition.y >= 0) {
+          if (!hasCollision(testPosition)) {
+            return testPosition;
+          }
+        }
+      }
+    }
+  }
+
+  // If no position found, return the original desired position (fallback)
+  return desiredPosition;
 }
 
 export function DraggableResizableGrid({
@@ -79,6 +146,9 @@ export function DraggableResizableGrid({
   children,
   className = "",
 }: DraggableResizableGridProps) {
+  // Calculate exact grid dimensions accounting for gaps
+  const gridGap = 16; // gap-4 = 1rem = 16px
+  const effectiveGridSize = gridSize + gridGap;
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -97,6 +167,7 @@ export function DraggableResizableGrid({
   });
 
   const [itemPositions, setItemPositions] = useState<Map<string, GridPosition>>(new Map());
+  const [hasCollision, setHasCollision] = useState<boolean>(false);
 
   // Initialize item positions from their span classes and position data
   useEffect(() => {
@@ -154,7 +225,7 @@ export function DraggableResizableGrid({
         draggedItemId: itemId,
         startPosition: { x: startX, y: startY },
         currentPosition: { x: startX, y: startY },
-        itemStartPosition: { x: itemPosition.x * gridSize, y: itemPosition.y * gridSize },
+        itemStartPosition: { x: itemPosition.x * effectiveGridSize, y: itemPosition.y * effectiveGridSize },
       });
     } else if (type === 'resize') {
       const itemPosition = itemPositions.get(itemId);
@@ -184,7 +255,27 @@ export function DraggableResizableGrid({
       const newPixelX = dragState.itemStartPosition.x + deltaX;
       const newPixelY = dragState.itemStartPosition.y + deltaY;
 
-      const snapped = snapToGrid(newPixelX, newPixelY, gridSize);
+      const snapped = snapToGrid(newPixelX, newPixelY, gridSize, gridGap);
+
+      // Check for potential collision at current drag position
+      const containerWidth = rect.width;
+      const gridPos = pixelToGrid(snapped.x, snapped.y, containerWidth, cols, gridSize, gridGap);
+      const currentItemPos = itemPositions.get(dragState.draggedItemId);
+
+      if (currentItemPos) {
+        const testPosition = { ...currentItemPos, x: gridPos.x, y: gridPos.y };
+
+        // Check if this position would cause a collision
+        let wouldCollide = false;
+        for (const [itemId, existingPos] of itemPositions) {
+          if (itemId !== dragState.draggedItemId && isOverlapping(testPosition, existingPos)) {
+            wouldCollide = true;
+            break;
+          }
+        }
+
+        setHasCollision(wouldCollide);
+      }
 
       setDragState(prev => ({
         ...prev,
@@ -196,8 +287,8 @@ export function DraggableResizableGrid({
       const deltaX = currentX - resizeState.startPosition.x;
       const deltaY = currentY - resizeState.startPosition.y;
 
-      const gridDeltaX = Math.round(deltaX / gridSize);
-      const gridDeltaY = Math.round(deltaY / gridSize);
+      const gridDeltaX = Math.round(deltaX / effectiveGridSize);
+      const gridDeltaY = Math.round(deltaY / effectiveGridSize);
 
       const newWidth = Math.max(1, resizeState.startSize.width + gridDeltaX);
       const newHeight = Math.max(1, resizeState.startSize.height + gridDeltaY);
@@ -218,15 +309,24 @@ export function DraggableResizableGrid({
       const rect = containerRef.current?.getBoundingClientRect();
       if (rect) {
         const containerWidth = rect.width;
-        const gridPos = pixelToGrid(dragState.currentPosition.x, dragState.currentPosition.y, containerWidth, cols);
+        const gridPos = pixelToGrid(dragState.currentPosition.x, dragState.currentPosition.y, containerWidth, cols, gridSize, gridGap);
         const currentItemPos = itemPositions.get(dragState.draggedItemId);
 
         if (currentItemPos) {
-          const newPosition = { ...currentItemPos, x: gridPos.x, y: gridPos.y };
-          onItemMove(dragState.draggedItemId, newPosition);
+          const desiredPosition = { ...currentItemPos, x: gridPos.x, y: gridPos.y };
+
+          // Use collision detection to find the best available position
+          const finalPosition = findNextAvailablePosition(
+            desiredPosition,
+            itemPositions,
+            dragState.draggedItemId,
+            cols
+          );
+
+          onItemMove(dragState.draggedItemId, finalPosition);
 
           const updatedPositions = new Map(itemPositions);
-          updatedPositions.set(dragState.draggedItemId, newPosition);
+          updatedPositions.set(dragState.draggedItemId, finalPosition);
           setItemPositions(updatedPositions);
         }
       }
@@ -235,10 +335,29 @@ export function DraggableResizableGrid({
     if (resizeState.isResizing && resizeState.resizedItemId) {
       const currentItemPos = itemPositions.get(resizeState.resizedItemId);
       if (currentItemPos) {
-        onItemResize(resizeState.resizedItemId, {
-          width: currentItemPos.width,
-          height: currentItemPos.height
-        });
+        // Check for collisions after resize
+        const resizedPosition = { ...currentItemPos };
+        const finalPosition = findNextAvailablePosition(
+          resizedPosition,
+          itemPositions,
+          resizeState.resizedItemId,
+          cols
+        );
+
+        // If collision found, adjust the size to fit
+        if (finalPosition.x !== resizedPosition.x || finalPosition.y !== resizedPosition.y) {
+          // Position changed due to collision, keep original size and position
+          onItemResize(resizeState.resizedItemId, {
+            width: resizeState.startSize.width,
+            height: resizeState.startSize.height
+          });
+        } else {
+          // No collision, use the resized dimensions
+          onItemResize(resizeState.resizedItemId, {
+            width: currentItemPos.width,
+            height: currentItemPos.height
+          });
+        }
       }
     }
 
@@ -257,11 +376,14 @@ export function DraggableResizableGrid({
       startPosition: { x: 0, y: 0 },
       resizeHandle: null,
     });
+
+    // Clear collision state
+    setHasCollision(false);
   }, [dragState, resizeState, itemPositions, onItemMove, onItemResize, cols]);
 
-  // Calculate minimum grid height based on items
-  const calculateMinHeight = () => {
-    if (itemPositions.size === 0) return gridSize * 3; // Default minimum height
+  // Calculate minimum grid height based on items (memoized for performance and real-time updates)
+  const minHeight = useMemo(() => {
+    if (itemPositions.size === 0) return effectiveGridSize * 3; // Default minimum height
 
     let maxRow = 0;
     itemPositions.forEach((position) => {
@@ -269,8 +391,23 @@ export function DraggableResizableGrid({
       maxRow = Math.max(maxRow, bottomRow);
     });
 
-    return Math.max(maxRow * gridSize, gridSize * 3); // At least 3 rows minimum
-  };
+    // Account for dragged items that might be at different positions
+    if (dragState.isDragging && dragState.draggedItemId) {
+      const draggedItem = itemPositions.get(dragState.draggedItemId);
+      if (draggedItem) {
+        // Convert pixel position to grid coordinates for dragged item
+        const containerWidth = containerRef.current?.getBoundingClientRect().width || 800;
+        const draggedGridY = Math.floor(dragState.currentPosition.y / effectiveGridSize);
+        const draggedBottomRow = draggedGridY + draggedItem.height;
+        maxRow = Math.max(maxRow, draggedBottomRow);
+      }
+    }
+
+    // Calculate exact height without buffer - use pure grid multiples
+    const calculatedHeight = maxRow * gridSize + (maxRow - 1) * gridGap;
+
+    return Math.max(calculatedHeight, effectiveGridSize * 3); // At least 3 rows minimum
+  }, [itemPositions, dragState.isDragging, dragState.draggedItemId, dragState.currentPosition, gridSize, effectiveGridSize, gridGap, cols]);
 
   // Add global mouse event listeners
   useEffect(() => {
@@ -291,7 +428,8 @@ export function DraggableResizableGrid({
       style={{
         gridTemplateColumns: `repeat(${cols}, 1fr)`,
         gridAutoRows: `${gridSize}px`,
-        minHeight: `${calculateMinHeight()}px`,
+        minHeight: `${minHeight}px`,
+        alignItems: 'stretch', // Ensure all grid items stretch to full height
       }}
     >
       {React.Children.map(children, (child) => {
@@ -311,12 +449,13 @@ export function DraggableResizableGrid({
             key={itemId}
             className={`relative group ${isDragged ? 'z-50' : 'z-10'} ${
               isDragged || isResized ? 'opacity-80' : ''
-            }`}
+            } ${isDragged && hasCollision ? 'cursor-not-allowed' : ''} h-full`}
             style={{
               ...gridToCSS(position, cols),
               transform: isDragged
                 ? `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`
                 : undefined,
+              minHeight: `${position.height * gridSize + (position.height - 1) * gridGap}px`, // Exact height including gaps
             }}
           >
             {/* Drag handle */}
@@ -345,7 +484,11 @@ export function DraggableResizableGrid({
             {/* Grid overlay during drag */}
             {isDragged && (
               <div
-                className="absolute inset-0 border-2 border-primary border-dashed bg-primary/10 rounded"
+                className={`absolute inset-0 border-2 border-dashed rounded ${
+                  hasCollision
+                    ? "border-red-500 bg-red-500/20"
+                    : "border-primary bg-primary/10"
+                }`}
                 style={{
                   transform: `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`,
                 }}

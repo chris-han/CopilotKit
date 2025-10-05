@@ -15,8 +15,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = await params;
 
     // Check if database configuration is available
     if (!process.env.POSTGRES_HOST || !process.env.POSTGRES_USER) {
@@ -79,10 +79,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+  const body = await request.json();
+  const { name, description, layout_config, metadata, is_public } = body;
+
   try {
-    const { id } = await params;
-    const body = await request.json();
-    const { name, description, layout_config, metadata, is_public } = body;
 
     // Check if database configuration is available
     if (!process.env.POSTGRES_HOST || !process.env.POSTGRES_USER) {
@@ -157,8 +158,6 @@ export async function PATCH(
   } catch (error) {
     console.error("Database error:", error);
     console.warn("Database unavailable, returning mock updated dashboard");
-    const body = await request.json();
-    const { name, description, layout_config, metadata, is_public } = body;
     const mockDashboard = {
       id,
       name: name || "Mock Dashboard",
@@ -178,8 +177,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
-    const { id } = await params;
     const query = `
       DELETE FROM dashboards.dashboards
       WHERE id = $1

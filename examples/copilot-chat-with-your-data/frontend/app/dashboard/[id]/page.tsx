@@ -64,6 +64,7 @@ export default function DashboardPage() {
       setDashboard(updatedDashboard);
     } catch (err) {
       console.error("Failed to save dashboard:", err);
+      throw err; // Re-throw so the component can handle it
     }
   };
 

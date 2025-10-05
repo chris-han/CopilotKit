@@ -10,7 +10,7 @@ import { useAgUiAgent } from "./AgUiProvider";
 import { X, Save, RotateCcw } from "lucide-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 import { Button } from "../ui/button";
-import { AddItemsCard, DashboardSettingsCard, DashboardPropertiesCard } from "../dashboard/DashboardEditor";
+import { AddItemsCard, DashboardSettingsCard, DashboardPropertiesCard, ItemPropertiesCard } from "../dashboard/DashboardEditor";
 import { useDashboardContext } from "../../contexts/DashboardContext";
 
 type AgUiSidebarProps = {
@@ -35,6 +35,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     onTalkingPointEnd,
   } = useDataStory();
   const [draft, setDraft] = useState("");
+
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -152,8 +153,8 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
               />
             )}
 
-            {/* Add Items and Dashboard Settings - shown when clicking Dashboard Preview */}
-            {dashboardContext.activeSection === "dashboard-preview" && (
+            {/* Add Items and Dashboard Settings - shown when clicking Dashboard Preview or when item is selected */}
+            {(dashboardContext.activeSection === "dashboard-preview" || dashboardContext.activeSection === "item-properties") && (
               <>
                 <AddItemsCard
                   config={{
@@ -184,6 +185,25 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
                     }
                   }}
                 />
+
+                {/* Item Properties - shown when clicking dashboard item */}
+                {dashboardContext.activeSection === "item-properties" && (
+                  <ItemPropertiesCard
+                    config={{
+                      grid: dashboardContext.dashboard.layout_config?.grid || { cols: 4, rows: "auto" },
+                      items: dashboardContext.dashboard.layout_config?.items || []
+                    }}
+                    onChange={(config) => {
+                      if (dashboardContext.onDashboardChange && dashboardContext.dashboard) {
+                        dashboardContext.onDashboardChange({
+                          ...dashboardContext.dashboard,
+                          layout_config: config
+                        });
+                      }
+                    }}
+                    selectedItemId={dashboardContext.selectedItemId}
+                  />
+                )}
               </>
             )}
           </>

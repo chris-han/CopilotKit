@@ -230,7 +230,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   const [saving, setSaving] = useState(false);
 
   // Use dashboard context for managing active section and save/reset handlers
-  const { setOnSave, setOnReset, setOnNameChange, setOnDescriptionChange, setHasChanges: setContextHasChanges, setSaving: setContextSaving, setActiveSection, activeSection } = useDashboardContext();
+  const { setOnSave, setOnReset, setOnNameChange, setOnDescriptionChange, setHasChanges: setContextHasChanges, setSaving: setContextSaving, setActiveSection, setSelectedItemId, activeSection } = useDashboardContext();
   const { sendMessage } = useAgUiAgent();
 
   // Set default active section when entering edit mode (only if no section is already active)
@@ -238,14 +238,13 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     if (mode === "edit") {
       // Only set default if no section is currently active
       if (!activeSection) {
-        sendMessage("Show dashboard editor tools in Data Assistant"); // Default to showing Add Items and Dashboard Settings
-        setActiveSection("dashboard-preview"); // Set active section for immediate UI response
+        setActiveSection("dashboard-preview"); // Default to showing Add Items and Dashboard Settings
       }
     } else {
-      sendMessage("Switch to default Data Assistant view"); // Clear active section in view mode
-      setActiveSection(null); // Clear active section for immediate UI response
+      setActiveSection(null); // Clear active section in view mode
+      setSelectedItemId(null); // Clear selected item in view mode
     }
-  }, [mode, sendMessage, setActiveSection, activeSection]);
+  }, [mode, setActiveSection, setSelectedItemId, activeSection]);
 
   // Sync local state with context for Data Assistant panel
   useEffect(() => {
@@ -302,6 +301,15 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     setCurrentConfig(newConfig);
     checkForChanges(currentName, currentDescription, newConfig);
   }, [currentName, currentDescription, checkForChanges]);
+
+  // Handle dashboard item clicks in edit mode
+  const handleItemClick = useCallback((itemId: string, itemTitle: string) => {
+    if (mode === "edit") {
+      // Direct context update for immediate UI response
+      setSelectedItemId(itemId);
+      setActiveSection("item-properties");
+    }
+  }, [mode, setSelectedItemId, setActiveSection]);
 
   // Set up save and reset handlers in context
   useEffect(() => {
@@ -498,9 +506,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
         <div
           className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
           onClick={() => {
-            // Send AgUI message for protocol compliance
-            sendMessage("Show dashboard editor tools in Data Assistant");
-            // Update context for immediate UI response
+            // Direct context update for immediate UI response
             setActiveSection("dashboard-preview");
           }}
         >
@@ -572,7 +578,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           } else {
             // Custom metric item
             return (
-              <Card key={item.id} className={item.span}>
+              <Card
+                key={item.id}
+                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                onClick={() => handleItemClick(item.id, item.title)}
+              >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                   {item.description && (
@@ -594,7 +604,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           // LIDA chart with embedded ECharts config
           if (item.config?.echarts_config) {
             return (
-              <Card key={item.id} className={item.span} data-chart-id={item.id}>
+              <Card
+                key={item.id}
+                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                data-chart-id={item.id}
+                onClick={() => handleItemClick(item.id, item.title)}
+              >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                   {item.description && (
@@ -621,7 +636,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             if (chart) {
               if (chart.kind === "area") {
                 return (
-                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                  <Card
+                    key={item.id}
+                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    data-chart-id={chart.chartId}
+                    onClick={() => handleItemClick(item.id, item.title)}
+                  >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                       {item.description && (
@@ -649,7 +669,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               }
               if (chart.kind === "bar") {
                 return (
-                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                  <Card
+                    key={item.id}
+                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    data-chart-id={chart.chartId}
+                    onClick={() => handleItemClick(item.id, item.title)}
+                  >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                       {item.description && (
@@ -676,7 +701,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               }
               if (chart.kind === "donut") {
                 return (
-                  <Card key={item.id} className={item.span} data-chart-id={chart.chartId}>
+                  <Card
+                    key={item.id}
+                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    data-chart-id={chart.chartId}
+                    onClick={() => handleItemClick(item.id, item.title)}
+                  >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                       {item.description && (
@@ -707,7 +737,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             }
             // Fallback if data source not found
             return (
-              <Card key={item.id} className={item.span}>
+              <Card
+                key={item.id}
+                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                onClick={() => handleItemClick(item.id, item.title)}
+              >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                   {item.description && (
@@ -729,7 +763,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           if (item.config?.type === "ai_commentary") {
             // Base Layout commentary - render the AI commentary
             return (
-              <Card key={item.id} className={item.span} data-chart-id="strategic-commentary">
+              <Card
+                key={item.id}
+                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                data-chart-id="strategic-commentary"
+                onClick={() => handleItemClick(item.id, item.title)}
+              >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                   {item.description && (
@@ -777,7 +816,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           } else {
             // Custom commentary item
             return (
-              <Card key={item.id} className={item.span}>
+              <Card
+                key={item.id}
+                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                onClick={() => handleItemClick(item.id, item.title)}
+              >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                   {item.description && (
@@ -805,7 +848,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
         // Handle text items
         if (item.type === "text") {
           return (
-            <Card key={item.id} className={item.span}>
+            <Card
+              key={item.id}
+              className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+              onClick={() => handleItemClick(item.id, item.title)}
+            >
               <CardHeader className="pb-1 pt-3">
                 <CardTitle className="text-base font-medium">{item.title}</CardTitle>
                 {item.description && (
@@ -823,7 +870,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
         // Default fallback for unknown item types
         return (
-          <Card key={item.id} className={item.span}>
+          <Card
+            key={item.id}
+            className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+            onClick={() => handleItemClick(item.id, item.title)}
+          >
             <CardHeader className="pb-1 pt-3">
               <CardTitle className="text-base font-medium">{item.title}</CardTitle>
               {item.description && (

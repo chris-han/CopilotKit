@@ -719,107 +719,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
         </Card>
       </div>
 
-      {/* Editor Panel */}
-      <div className="space-y-4">
-        {/* Item Properties */}
-        {selectedItemData && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Item Properties</CardTitle>
-              <CardDescription>Configure the selected item</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="general">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="general">General</TabsTrigger>
-                  <TabsTrigger value="layout">Layout</TabsTrigger>
-                </TabsList>
 
-                <TabsContent value="general" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="item-title">Title</Label>
-                    <Input
-                      id="item-title"
-                      value={selectedItemData.title}
-                      onChange={(e) => updateItem(selectedItemData.id, { title: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="item-description">Description</Label>
-                    <Textarea
-                      id="item-description"
-                      value={selectedItemData.description || ""}
-                      onChange={(e) => updateItem(selectedItemData.id, { description: e.target.value })}
-                      rows={2}
-                    />
-                  </div>
-
-                  {selectedItemData.type === "chart" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="chart-type">Chart Type</Label>
-                      <Select
-                        value={selectedItemData.chartType}
-                        onValueChange={(value) => updateItem(selectedItemData.id, { chartType: value as "area" | "bar" | "donut" })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CHART_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              <div className="flex items-center gap-2">
-                                <type.icon className="h-4 w-4" />
-                                <div>
-                                  <div className="font-medium">{type.label}</div>
-                                  <div className="text-xs text-muted-foreground">{type.description}</div>
-                                </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="layout" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="item-span">Column Span</Label>
-                    <Select
-                      value={selectedItemData.span}
-                      onValueChange={(value) => updateItem(selectedItemData.id, { span: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SPAN_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeItem(selectedItemData.id)}
-                      className="flex-1"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove Item
-                    </Button>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        )}
-      </div>
     </div>
   );
 }
@@ -904,6 +804,154 @@ export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) 
             </Select>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Item Properties Component for Data Assistant (when clicking dashboard item)
+export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAssistantProps & {
+  selectedItemId?: string | null;
+}) {
+  const { sendMessage, isRunning } = useAgUiAgent();
+
+  const selectedItemData = selectedItemId ? config.items.find(item => item.id === selectedItemId) : null;
+
+  if (!selectedItemData) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Item Properties</CardTitle>
+          <CardDescription>No item selected</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">Click on a dashboard item to edit its properties.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const updateItem = (itemId: string, updates: Partial<DashboardItem>) => {
+    const newConfig = {
+      ...config,
+      items: config.items.map(item =>
+        item.id === itemId ? { ...item, ...updates } : item
+      ),
+    };
+
+    // Send AgUI message for protocol compliance
+    sendMessage(`Update ${selectedItemData.type} item "${selectedItemData.title}"`);
+
+    // Update configuration
+    onChange(newConfig);
+  };
+
+  const removeItem = (itemId: string) => {
+    const newConfig = {
+      ...config,
+      items: config.items.filter(item => item.id !== itemId),
+    };
+    sendMessage(`Remove ${selectedItemData.type} item "${selectedItemData.title}"`);
+    onChange(newConfig);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Item Properties</CardTitle>
+        <CardDescription>Configure the selected item</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="general">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="layout">Layout</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="general" className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-title">Title</Label>
+              <Input
+                id="item-title"
+                value={selectedItemData.title}
+                onChange={(e) => updateItem(selectedItemData.id, { title: e.target.value })}
+                disabled={isRunning}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-description">Description</Label>
+              <Textarea
+                id="item-description"
+                value={selectedItemData.description || ""}
+                onChange={(e) => updateItem(selectedItemData.id, { description: e.target.value })}
+                rows={2}
+                disabled={isRunning}
+              />
+            </div>
+
+            {selectedItemData.type === "chart" && (
+              <div className="space-y-2">
+                <Label htmlFor="chart-type">Chart Type</Label>
+                <Select
+                  value={selectedItemData.chartType}
+                  onValueChange={(value) => updateItem(selectedItemData.id, { chartType: value as "area" | "bar" | "donut" })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHART_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        <div className="flex items-center gap-2">
+                          <type.icon className="h-4 w-4" />
+                          <div>
+                            <div className="font-medium">{type.label}</div>
+                            <div className="text-xs text-muted-foreground">{type.description}</div>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="layout" className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-span">Column Span</Label>
+              <Select
+                value={selectedItemData.span}
+                onValueChange={(value) => updateItem(selectedItemData.id, { span: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPAN_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => removeItem(selectedItemData.id)}
+                className="flex-1"
+                disabled={isRunning}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remove Item
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

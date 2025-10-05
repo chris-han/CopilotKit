@@ -163,9 +163,7 @@ export default function DashboardPage() {
             <h1
               className={`text-2xl font-bold ${mode === "edit" ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
               onClick={mode === "edit" ? () => {
-                // Send AgUI message for protocol compliance
-                sendMessage("Show dashboard properties editor in Data Assistant");
-                // Update context for immediate UI response
+                // Direct context update for immediate UI response
                 setActiveSection("dashboard-title");
               } : undefined}
               title={mode === "edit" ? "Click to edit dashboard properties in Data Assistant" : undefined}

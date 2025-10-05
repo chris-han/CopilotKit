@@ -5,13 +5,15 @@ import type { Dashboard } from "../types/dashboard";
 
 type DashboardContextType = {
   mode: "edit" | "view";
-  activeSection: "dashboard-title" | "dashboard-preview" | null;
+  activeSection: "dashboard-title" | "dashboard-preview" | "item-properties" | null;
+  selectedItemId: string | null;
   dashboard: Dashboard | null;
   isDynamicDashboard: boolean;
   hasChanges: boolean;
   saving: boolean;
   setMode: (mode: "edit" | "view") => void;
-  setActiveSection: (section: "dashboard-title" | "dashboard-preview" | null) => void;
+  setActiveSection: (section: "dashboard-title" | "dashboard-preview" | "item-properties" | null) => void;
+  setSelectedItemId: (itemId: string | null) => void;
   setDashboard: (dashboard: Dashboard | null) => void;
   setIsDynamicDashboard: (isDynamic: boolean) => void;
   setOnDashboardChange: (handler: (dashboard: Dashboard) => void) => void;
@@ -38,7 +40,8 @@ type DashboardContextProviderProps = {
 
 export function DashboardContextProvider({ children }: DashboardContextProviderProps) {
   const [mode, setMode] = useState<"edit" | "view">("view");
-  const [activeSection, setActiveSection] = useState<"dashboard-title" | "dashboard-preview" | null>(null);
+  const [activeSection, setActiveSection] = useState<"dashboard-title" | "dashboard-preview" | "item-properties" | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [isDynamicDashboard, setIsDynamicDashboard] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -77,12 +80,14 @@ export function DashboardContextProvider({ children }: DashboardContextProviderP
   const contextValue: DashboardContextType = useMemo(() => ({
     mode,
     activeSection,
+    selectedItemId,
     dashboard,
     isDynamicDashboard,
     hasChanges,
     saving,
     setMode,
     setActiveSection,
+    setSelectedItemId,
     setDashboard,
     setIsDynamicDashboard,
     setOnDashboardChange,
@@ -102,6 +107,7 @@ export function DashboardContextProvider({ children }: DashboardContextProviderP
   }), [
     mode,
     activeSection,
+    selectedItemId,
     dashboard,
     isDynamicDashboard,
     hasChanges,

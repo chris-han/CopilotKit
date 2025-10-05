@@ -20,6 +20,7 @@ import {
   FileText
 } from "lucide-react";
 import { useRef, useCallback, useEffect, useMemo } from "react";
+import { useAgUiAgent } from "../ag-ui/AgUiProvider";
 
 interface DashboardItem {
   id: string;
@@ -248,22 +249,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
     return `grid w-full gap-4 ${colsMap[cols] || "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"}`;
   };
 
-  const addItem = (type: DashboardItem["type"]) => {
-    const newItem: DashboardItem = {
-      id: `item-${Date.now()}`,
-      type,
-      title: `New ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-      span: type === "metric" ? "col-span-4" : "col-span-2",
-      position: { row: (config.items.length || 0) + 1 },
-      ...(type === "chart" && { chartType: "bar" }),
-    };
-
-    onChange({
-      ...config,
-      items: [...config.items, newItem],
-    });
-    setSelectedItem(newItem.id);
-  };
 
   const removeItem = (itemId: string) => {
     onChange({
@@ -736,30 +721,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
 
       {/* Editor Panel */}
       <div className="space-y-4">
-        {/* Add Items */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Add Items</CardTitle>
-            <CardDescription>Add new components to your dashboard</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              {ITEM_TYPES.map((itemType) => (
-                <Button
-                  key={itemType.value}
-                  variant="outline"
-                  size="sm"
-                  className="flex flex-col gap-1 h-auto py-3"
-                  onClick={() => addItem(itemType.value as DashboardItem["type"])}
-                >
-                  <itemType.icon className="h-4 w-4" />
-                  <span className="text-xs">{itemType.label}</span>
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Item Properties */}
         {selectedItemData && (
           <Card>
@@ -858,39 +819,170 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
             </CardContent>
           </Card>
         )}
-
-        {/* Dashboard Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Dashboard Settings</CardTitle>
-            <CardDescription>Configure dashboard layout</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="grid-cols">Grid Columns</Label>
-                <Select
-                  value={config.grid.cols.toString()}
-                  onValueChange={(value) => onChange({
-                    ...config,
-                    grid: { ...config.grid, cols: parseInt(value) }
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2">2 Columns</SelectItem>
-                    <SelectItem value="3">3 Columns</SelectItem>
-                    <SelectItem value="4">4 Columns</SelectItem>
-                    <SelectItem value="6">6 Columns</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
+  );
+}
+
+// Data Assistant Panel Components for context-aware display
+export interface DataAssistantProps {
+  config: DashboardConfig;
+  onChange: (config: DashboardConfig) => void;
+  selectedItem?: string;
+  onItemSelect?: (itemId: string) => void;
+}
+
+// Add Items Component for Data Assistant
+export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantProps) {
+  const { sendMessage } = useAgUiAgent();
+
+  const addItem = (type: DashboardItem["type"]) => {
+    const itemTypeNames = {
+      chart: "Chart",
+      metric: "Metrics",
+      text: "Text",
+      commentary: "Commentary"
+    };
+
+    const itemName = itemTypeNames[type] || type;
+    sendMessage(`Add a new ${itemName} item to the dashboard`);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Add Items</CardTitle>
+        <CardDescription>Add new components to your dashboard</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2">
+          {ITEM_TYPES.map((itemType) => (
+            <Button
+              key={itemType.value}
+              variant="outline"
+              size="sm"
+              className="flex flex-col gap-1 h-auto py-3"
+              onClick={() => addItem(itemType.value as DashboardItem["type"])}
+            >
+              <itemType.icon className="h-4 w-4" />
+              <span className="text-xs">{itemType.label}</span>
+            </Button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Dashboard Settings Component for Data Assistant
+export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) {
+  const { sendMessage } = useAgUiAgent();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Dashboard Settings</CardTitle>
+        <CardDescription>Configure dashboard layout</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="grid-cols">Grid Columns</Label>
+            <Select
+              value={config.grid.cols.toString()}
+              onValueChange={(value) => sendMessage(`Change dashboard grid to ${value} columns`)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2 Columns</SelectItem>
+                <SelectItem value="3">3 Columns</SelectItem>
+                <SelectItem value="4">4 Columns</SelectItem>
+                <SelectItem value="6">6 Columns</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Dashboard Properties Component for Data Assistant (when clicking dashboard title)
+export function DashboardPropertiesCard({ config, onChange, dashboard, saving, onDashboardUpdate }: DataAssistantProps & {
+  dashboard?: any;
+  saving?: boolean;
+  onDashboardUpdate?: (updates: any) => void;
+}) {
+  const { sendMessage, isRunning } = useAgUiAgent();
+
+  // Use local state for immediate UI responsiveness
+  const [localName, setLocalName] = useState(dashboard?.name || "");
+  const [localDescription, setLocalDescription] = useState(dashboard?.description || "");
+
+  // Sync with dashboard prop when it changes from outside
+  useEffect(() => {
+    setLocalName(dashboard?.name || "");
+    setLocalDescription(dashboard?.description || "");
+  }, [dashboard?.name, dashboard?.description]);
+
+  // Only disable when saving, not when running (to allow continuous typing)
+  const isDisabled = saving;
+
+  const handleNameChange = (newName: string) => {
+    // Update local state immediately for responsive UI
+    setLocalName(newName);
+    // Send AgUI message for protocol compliance
+    sendMessage(`Change dashboard name to "${newName}"`);
+    // Update dashboard state
+    if (onDashboardUpdate) {
+      onDashboardUpdate({ name: newName });
+    }
+  };
+
+  const handleDescriptionChange = (newDescription: string) => {
+    // Update local state immediately for responsive UI
+    setLocalDescription(newDescription);
+    // Send AgUI message for protocol compliance
+    sendMessage(`Change dashboard description to "${newDescription}"`);
+    // Update dashboard state
+    if (onDashboardUpdate) {
+      onDashboardUpdate({ description: newDescription });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Dashboard Properties</CardTitle>
+        <CardDescription>Configure dashboard metadata and settings</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="dashboard-name-props">Dashboard Name</Label>
+            <Input
+              id="dashboard-name-props"
+              value={localName}
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="Enter dashboard name"
+              disabled={isDisabled}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dashboard-description-props">Description (Optional)</Label>
+            <Textarea
+              id="dashboard-description-props"
+              value={localDescription}
+              onChange={(e) => handleDescriptionChange(e.target.value)}
+              placeholder="Enter dashboard description"
+              rows={3}
+              disabled={isDisabled}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

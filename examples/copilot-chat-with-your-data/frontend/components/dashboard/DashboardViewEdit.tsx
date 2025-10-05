@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ import { Save, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useDashboardContext } from "@/contexts/DashboardContext";
+import { useAgUiAgent } from "../ag-ui/AgUiProvider";
 
 // Re-use types and utilities from dynamic-dashboard page
 type ChartBlueprint =
@@ -227,6 +229,92 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Use dashboard context for managing active section and save/reset handlers
+  const { setOnSave, setOnReset, setOnNameChange, setOnDescriptionChange, setHasChanges: setContextHasChanges, setSaving: setContextSaving, setActiveSection, activeSection } = useDashboardContext();
+  const { sendMessage } = useAgUiAgent();
+
+  // Set default active section when entering edit mode (only if no section is already active)
+  useEffect(() => {
+    if (mode === "edit") {
+      // Only set default if no section is currently active
+      if (!activeSection) {
+        sendMessage("Show dashboard editor tools in Data Assistant"); // Default to showing Add Items and Dashboard Settings
+        setActiveSection("dashboard-preview"); // Set active section for immediate UI response
+      }
+    } else {
+      sendMessage("Switch to default Data Assistant view"); // Clear active section in view mode
+      setActiveSection(null); // Clear active section for immediate UI response
+    }
+  }, [mode, sendMessage, setActiveSection, activeSection]);
+
+  // Sync local state with context for Data Assistant panel
+  useEffect(() => {
+    setContextHasChanges(hasChanges);
+  }, [hasChanges, setContextHasChanges]);
+
+  useEffect(() => {
+    setContextSaving(saving);
+  }, [saving, setContextSaving]);
+
+  // Define save and reset handlers
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      await onSave({
+        name: currentName,
+        description: currentDescription,
+        layout_config: currentConfig,
+        metadata: dashboard.metadata,
+      });
+      setHasChanges(false);
+    } catch (error) {
+      console.error("Save failed:", error);
+    } finally {
+      setSaving(false);
+    }
+  }, [onSave, currentName, currentDescription, currentConfig, dashboard.metadata]);
+
+  const handleReset = useCallback(() => {
+    setCurrentConfig(dashboard.layout_config);
+    setCurrentName(dashboard.name);
+    setCurrentDescription(dashboard.description || "");
+    setHasChanges(false);
+  }, [dashboard.layout_config, dashboard.name, dashboard.description]);
+
+  const handleNameChange = useCallback((newName: string) => {
+    setCurrentName(newName);
+    checkForChanges(newName, currentDescription, currentConfig);
+  }, [currentDescription, currentConfig, dashboard.name, dashboard.description]);
+
+  const handleDescriptionChange = useCallback((newDescription: string) => {
+    setCurrentDescription(newDescription);
+    checkForChanges(currentName, newDescription, currentConfig);
+  }, [currentName, currentConfig, dashboard.name, dashboard.description]);
+
+  const checkForChanges = useCallback((name: string, description: string, config: any) => {
+    const nameChanged = name !== dashboard.name;
+    const descriptionChanged = description !== (dashboard.description || "");
+    const configChanged = JSON.stringify(config) !== JSON.stringify(dashboard.layout_config);
+    setHasChanges(nameChanged || descriptionChanged || configChanged);
+  }, [dashboard.name, dashboard.description, dashboard.layout_config]);
+
+  const handleConfigChange = useCallback((newConfig: any) => {
+    setCurrentConfig(newConfig);
+    checkForChanges(currentName, currentDescription, newConfig);
+  }, [currentName, currentDescription, checkForChanges]);
+
+  // Set up save and reset handlers in context
+  useEffect(() => {
+    setOnSave(handleSave);
+    setOnReset(handleReset);
+  }, [setOnSave, setOnReset, handleSave, handleReset]);
+
+  // Set up name and description change handlers in context
+  useEffect(() => {
+    setOnNameChange(handleNameChange);
+    setOnDescriptionChange(handleDescriptionChange);
+  }, [setOnNameChange, setOnDescriptionChange, handleNameChange, handleDescriptionChange]);
+
   // Dashboard data state (similar to dynamic-dashboard page)
   const baseUrl = useMemo(() => getRuntimeBaseUrl(), []);
   const dashboardEndpoint = useMemo(() => `${baseUrl}/dashboard-data`, [baseUrl]);
@@ -339,52 +427,6 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     };
   }, [commentaryEndpoint]);
 
-  const handleConfigChange = (newConfig: any) => {
-    setCurrentConfig(newConfig);
-    checkForChanges(currentName, currentDescription, newConfig);
-  };
-
-  const handleNameChange = (newName: string) => {
-    setCurrentName(newName);
-    checkForChanges(newName, currentDescription, currentConfig);
-  };
-
-  const handleDescriptionChange = (newDescription: string) => {
-    setCurrentDescription(newDescription);
-    checkForChanges(currentName, newDescription, currentConfig);
-  };
-
-  const checkForChanges = (name: string, description: string, config: any) => {
-    const nameChanged = name !== dashboard.name;
-    const descriptionChanged = description !== (dashboard.description || "");
-    const configChanged = JSON.stringify(config) !== JSON.stringify(dashboard.layout_config);
-    setHasChanges(nameChanged || descriptionChanged || configChanged);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await onSave({
-        name: currentName,
-        description: currentDescription,
-        layout_config: currentConfig,
-        metadata: dashboard.metadata,
-      });
-      setHasChanges(false);
-    } catch (error) {
-      console.error("Save failed:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = () => {
-    setCurrentConfig(dashboard.layout_config);
-    setCurrentName(dashboard.name);
-    setCurrentDescription(dashboard.description || "");
-    setHasChanges(false);
-  };
-
   // Move all useMemo hooks before the early return to maintain consistent hook order
   const chartBlueprints = useMemo(() => {
     if (!data) return [];
@@ -441,11 +483,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
             <span className="text-sm text-orange-800">You have unsaved changes</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleReset}>
+              <Button variant="outline" size="sm" onClick={() => sendMessage("Reset all changes to the dashboard")}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Reset
               </Button>
-              <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Button size="sm" onClick={() => sendMessage("Save all dashboard changes")} disabled={saving}>
                 <Save className="mr-2 h-4 w-4" />
                 {saving ? "Saving..." : "Save"}
               </Button>
@@ -453,43 +495,22 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           </div>
         )}
 
-        {/* Dashboard Properties */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Dashboard Properties</CardTitle>
-            <CardDescription>
-              Edit the basic information about your dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="dashboard-name">Dashboard Name</Label>
-              <Input
-                id="dashboard-name"
-                value={currentName}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Enter dashboard name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dashboard-description">Description (Optional)</Label>
-              <Textarea
-                id="dashboard-description"
-                value={currentDescription}
-                onChange={(e) => handleDescriptionChange(e.target.value)}
-                placeholder="Enter dashboard description"
-                rows={3}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <DashboardEditor
-          config={currentConfig}
-          onChange={handleConfigChange}
-          data={data}
-          dataLoading={dataLoading}
-        />
+        <div
+          className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
+          onClick={() => {
+            // Send AgUI message for protocol compliance
+            sendMessage("Show dashboard editor tools in Data Assistant");
+            // Update context for immediate UI response
+            setActiveSection("dashboard-preview");
+          }}
+        >
+          <DashboardEditor
+            config={currentConfig}
+            onChange={handleConfigChange}
+            data={data}
+            dataLoading={dataLoading}
+          />
+        </div>
       </div>
     );
   }

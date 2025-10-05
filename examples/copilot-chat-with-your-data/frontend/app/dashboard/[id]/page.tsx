@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { DashboardViewEdit } from "@/components/dashboard/DashboardViewEdit";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Edit, Eye, ArrowLeft } from "lucide-react";
 import { Dashboard } from "@/types/dashboard";
+import { useDashboardContext } from "@/contexts/DashboardContext";
+import { useAgUiAgent } from "@/components/ag-ui/AgUiProvider";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -20,6 +22,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"view" | "edit">(initialMode);
 
+  // Use dashboard context and AgUI for messaging
+  const { setDashboard: setContextDashboard, setMode: setContextMode, setOnDashboardChange, setActiveSection } = useDashboardContext();
+  const { sendMessage } = useAgUiAgent();
+
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
@@ -29,6 +35,8 @@ export default function DashboardPage() {
         }
         const data = await response.json();
         setDashboard(data);
+        // Update dashboard context
+        setContextDashboard(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load dashboard");
       } finally {
@@ -39,9 +47,21 @@ export default function DashboardPage() {
     if (dashboardId) {
       fetchDashboard();
     }
-  }, [dashboardId]);
+  }, [dashboardId, setContextDashboard]);
 
-  const handleSave = async (updatedConfig: any) => {
+  // Update context when mode changes
+  useEffect(() => {
+    setContextMode(mode);
+  }, [mode, setContextMode]);
+
+  // Update context when dashboard changes
+  useEffect(() => {
+    if (dashboard) {
+      setContextDashboard(dashboard);
+    }
+  }, [dashboard, setContextDashboard]);
+
+  const handleSave = useCallback(async (updatedConfig: any) => {
     if (!dashboard) return;
 
     try {
@@ -66,7 +86,20 @@ export default function DashboardPage() {
       console.error("Failed to save dashboard:", err);
       throw err; // Re-throw so the component can handle it
     }
-  };
+  }, [dashboard, dashboardId]);
+
+  // Set up dashboard change handler for context
+  useEffect(() => {
+    setOnDashboardChange((updatedDashboard: Dashboard) => {
+      setDashboard(updatedDashboard);
+      handleSave({
+        name: updatedDashboard.name,
+        description: updatedDashboard.description,
+        layout_config: updatedDashboard.layout_config,
+        metadata: updatedDashboard.metadata,
+      }).catch(console.error);
+    });
+  }, [setOnDashboardChange, handleSave]);
 
   if (loading) {
     return (
@@ -127,7 +160,18 @@ export default function DashboardPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{dashboard.name}</h1>
+            <h1
+              className={`text-2xl font-bold ${mode === "edit" ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+              onClick={mode === "edit" ? () => {
+                // Send AgUI message for protocol compliance
+                sendMessage("Show dashboard properties editor in Data Assistant");
+                // Update context for immediate UI response
+                setActiveSection("dashboard-title");
+              } : undefined}
+              title={mode === "edit" ? "Click to edit dashboard properties in Data Assistant" : undefined}
+            >
+              {dashboard.name}
+            </h1>
             {dashboard.description && (
               <p className="text-muted-foreground">{dashboard.description}</p>
             )}

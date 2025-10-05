@@ -13,14 +13,13 @@ import {
   Plus,
   Settings,
   Trash2,
-  GripVertical,
   BarChart3,
   PieChart,
   LineChart,
   Activity,
   FileText
 } from "lucide-react";
-import type { DashboardDataPayload } from "@/data/dashboard-data";
+import { DraggableResizableGrid } from "./DraggableResizableGrid";
 
 interface DashboardItem {
   id: string;
@@ -30,7 +29,7 @@ interface DashboardItem {
   description?: string;
   span: string;
   position: { row: number; col?: number };
-  config?: any;
+  config?: Record<string, unknown>;
 }
 
 interface DashboardConfig {
@@ -41,7 +40,6 @@ interface DashboardConfig {
 interface DashboardEditorProps {
   config: DashboardConfig;
   onChange: (config: DashboardConfig) => void;
-  data?: DashboardDataPayload | null;
   dataLoading?: boolean;
 }
 
@@ -67,9 +65,8 @@ const SPAN_OPTIONS = [
   { value: "col-span-1 md:col-span-2 lg:col-span-4", label: "1-2-4 Columns (Responsive)" },
 ];
 
-export function DashboardEditor({ config, onChange, data, dataLoading }: DashboardEditorProps) {
+export function DashboardEditor({ config, onChange, dataLoading }: DashboardEditorProps) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
   // Generate grid class based on column count
   const getGridClass = (cols: number) => {
@@ -118,25 +115,53 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
     });
   };
 
-  const moveItem = (itemId: string, direction: "up" | "down") => {
-    const items = [...config.items];
-    const index = items.findIndex(item => item.id === itemId);
-    if (index === -1) return;
-
-    const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= items.length) return;
-
-    [items[index], items[newIndex]] = [items[newIndex], items[index]];
-
-    // Update row positions
-    items.forEach((item, idx) => {
-      item.position.row = idx + 1;
-    });
-
-    onChange({ ...config, items });
-  };
 
   const selectedItemData = selectedItem ? config.items.find(item => item.id === selectedItem) : null;
+
+  // Handler for when items are moved via drag and drop
+  const handleItemMove = (itemId: string, newPosition: { x: number; y: number; width: number; height: number }) => {
+    const updatedItems = config.items.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          position: { row: newPosition.y + 1, col: newPosition.x },
+          // Update span based on new width
+          span: getSpanFromWidth(newPosition.width)
+        };
+      }
+      return item;
+    });
+
+    onChange({ ...config, items: updatedItems });
+  };
+
+  // Handler for when items are resized
+  const handleItemResize = (itemId: string, newSize: { width: number; height: number }) => {
+    const updatedItems = config.items.map(item => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          span: getSpanFromWidth(newSize.width)
+        };
+      }
+      return item;
+    });
+
+    onChange({ ...config, items: updatedItems });
+  };
+
+  // Helper function to convert grid width to span class
+  const getSpanFromWidth = (width: number): string => {
+    const spanMap: Record<number, string> = {
+      1: "col-span-1",
+      2: "col-span-2",
+      3: "col-span-3",
+      4: "col-span-4",
+      5: "col-span-5",
+      6: "col-span-6",
+    };
+    return spanMap[Math.min(width, 6)] || "col-span-1";
+  };
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -149,19 +174,30 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
               Dashboard Preview
             </CardTitle>
             <CardDescription>
-              {dataLoading ? "Loading data..." : "Live preview of your dashboard"}
+              {dataLoading
+                ? "Loading data..."
+                : "Live preview of your dashboard. Drag items to move them, use resize handles to change size. All changes snap to grid."
+              }
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className={getGridClass(config.grid.cols)}>
-              {config.items.map((item, index) => (
+          <CardContent className="overflow-visible">
+            <div className="min-h-[360px]">
+              <DraggableResizableGrid
+                items={config.items}
+                onItemMove={handleItemMove}
+                onItemResize={handleItemResize}
+                cols={config.grid.cols}
+                gridSize={120}
+                className={getGridClass(config.grid.cols)}
+              >
+              {config.items.map((item) => (
                 <div
                   key={item.id}
-                  className={`relative cursor-pointer rounded-lg border-2 transition-all ${
+                  className={`cursor-pointer rounded-lg border-2 transition-all ${
                     selectedItem === item.id
                       ? "border-primary bg-primary/5"
                       : "border-dashed border-muted-foreground/30 hover:border-primary/50"
-                  } ${item.span}`}
+                  }`}
                   onClick={() => setSelectedItem(item.id)}
                 >
                   <Card className="h-full">
@@ -209,33 +245,20 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
                       </div>
                     </CardContent>
                   </Card>
-
-                  {/* Drag handle */}
-                  <div className="absolute -left-2 top-2 flex flex-col gap-0.5 opacity-60 hover:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 w-5 p-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        moveItem(item.id, "up");
-                      }}
-                      disabled={index === 0}
-                    >
-                      <GripVertical className="h-3 w-3" />
-                    </Button>
-                  </div>
                 </div>
               ))}
+            </DraggableResizableGrid>
+            </div>
 
-              {/* Add item placeholder */}
-              <div className="col-span-1 flex min-h-[200px] items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30">
+            {/* Add item placeholder - outside the grid */}
+            {config.items.length === 0 && (
+              <div className="flex min-h-[200px] items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 mt-4">
                 <div className="text-center">
                   <Plus className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-2 text-sm text-muted-foreground">Add new item</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Add new item to get started</p>
                 </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -305,7 +328,7 @@ export function DashboardEditor({ config, onChange, data, dataLoading }: Dashboa
                       <Label htmlFor="chart-type">Chart Type</Label>
                       <Select
                         value={selectedItemData.chartType}
-                        onValueChange={(value) => updateItem(selectedItemData.id, { chartType: value })}
+                        onValueChange={(value) => updateItem(selectedItemData.id, { chartType: value as "area" | "bar" | "donut" })}
                       >
                         <SelectTrigger>
                           <SelectValue />

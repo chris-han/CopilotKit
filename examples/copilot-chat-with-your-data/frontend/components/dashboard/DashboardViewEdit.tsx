@@ -19,8 +19,12 @@ import {
   type DashboardDataPayload,
   type DashboardMetrics,
 } from "@/data/dashboard-data";
+import { Dashboard } from "@/types/dashboard";
 import { DashboardEditor } from "./DashboardEditor";
 import { Save, RotateCcw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 // Re-use types and utilities from dynamic-dashboard page
 type ChartBlueprint =
@@ -65,14 +69,6 @@ type ChartBlueprint =
       chartId: string;
       colors: string[];
     };
-
-interface Dashboard {
-  id: string;
-  name: string;
-  description?: string;
-  layout_config: any;
-  metadata: any;
-}
 
 interface DashboardViewEditProps {
   dashboard: Dashboard;
@@ -226,6 +222,8 @@ function parseStrategicCommentary(markdown: string): CommentarySection[] {
 
 export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEditProps) {
   const [currentConfig, setCurrentConfig] = useState(dashboard.layout_config);
+  const [currentName, setCurrentName] = useState(dashboard.name);
+  const [currentDescription, setCurrentDescription] = useState(dashboard.description || "");
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -343,13 +341,32 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   const handleConfigChange = (newConfig: any) => {
     setCurrentConfig(newConfig);
-    setHasChanges(true);
+    checkForChanges(currentName, currentDescription, newConfig);
+  };
+
+  const handleNameChange = (newName: string) => {
+    setCurrentName(newName);
+    checkForChanges(newName, currentDescription, currentConfig);
+  };
+
+  const handleDescriptionChange = (newDescription: string) => {
+    setCurrentDescription(newDescription);
+    checkForChanges(currentName, newDescription, currentConfig);
+  };
+
+  const checkForChanges = (name: string, description: string, config: any) => {
+    const nameChanged = name !== dashboard.name;
+    const descriptionChanged = description !== (dashboard.description || "");
+    const configChanged = JSON.stringify(config) !== JSON.stringify(dashboard.layout_config);
+    setHasChanges(nameChanged || descriptionChanged || configChanged);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await onSave({
+        name: currentName,
+        description: currentDescription,
         layout_config: currentConfig,
         metadata: dashboard.metadata,
       });
@@ -363,6 +380,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   const handleReset = () => {
     setCurrentConfig(dashboard.layout_config);
+    setCurrentName(dashboard.name);
+    setCurrentDescription(dashboard.description || "");
     setHasChanges(false);
   };
 
@@ -433,6 +452,38 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             </div>
           </div>
         )}
+
+        {/* Dashboard Properties */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Dashboard Properties</CardTitle>
+            <CardDescription>
+              Edit the basic information about your dashboard
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="dashboard-name">Dashboard Name</Label>
+              <Input
+                id="dashboard-name"
+                value={currentName}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="Enter dashboard name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dashboard-description">Description (Optional)</Label>
+              <Textarea
+                id="dashboard-description"
+                value={currentDescription}
+                onChange={(e) => handleDescriptionChange(e.target.value)}
+                placeholder="Enter dashboard description"
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <DashboardEditor
           config={currentConfig}
           onChange={handleConfigChange}

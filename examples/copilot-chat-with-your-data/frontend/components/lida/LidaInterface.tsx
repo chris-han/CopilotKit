@@ -4,13 +4,15 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { FileUpload } from "./FileUpload";
 import { DataSummary } from "./DataSummary";
 import { VisualizationChat } from "./VisualizationChat";
 import { ChartGallery } from "./ChartGallery";
 import { DatasetSelector } from "./DatasetSelector";
+import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
+import { Dashboard } from "@/types/dashboard";
 import { Plus, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
 
 interface DataSummaryData {
@@ -43,14 +45,6 @@ interface GeneratedVisualization {
   created_at: string;
 }
 
-interface Dashboard {
-  id: string;
-  name: string;
-  description?: string;
-  visualizations: GeneratedVisualization[];
-  created_at: string;
-  updated_at: string;
-}
 
 export function LidaInterface() {
   const router = useRouter();
@@ -71,6 +65,7 @@ export function LidaInterface() {
   const [dialogType, setDialogType] = useState<'success' | 'error'>('success');
   const [dialogMessage, setDialogMessage] = useState('');
 
+
   // Cache for insights based on query key
   const [insightsCache, setInsightsCache] = useState<Map<string, {
     insights: string[];
@@ -89,21 +84,18 @@ export function LidaInterface() {
         const response = await fetch('/api/dashboards');
         if (response.ok) {
           const apiDashboards = await response.json();
-          // Convert API dashboard format to LIDA dashboard format
+          // Convert API dashboard format to unified Dashboard format
           const lidaDashboards = apiDashboards.map((apiDash: any) => ({
             id: apiDash.id,
             name: apiDash.name,
             description: apiDash.description,
-            visualizations: apiDash.layout_config?.items?.map((item: any) => ({
-              id: item.id || `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              title: item.title || 'Visualization',
-              description: item.description || '',
-              chart_type: item.chart_type || 'auto',
-              chart_config: item.echarts_config || {},
-              code: item.code || '',
-              insights: item.insights || [],
-              created_at: apiDash.created_at
-            })) || [],
+            layout_config: apiDash.layout_config || {
+              grid: { cols: 4, rows: 'auto' },
+              items: []
+            },
+            metadata: apiDash.metadata,
+            is_public: apiDash.is_public,
+            created_by: apiDash.created_by,
             created_at: apiDash.created_at,
             updated_at: apiDash.updated_at
           }));
@@ -297,7 +289,11 @@ export function LidaInterface() {
         id: apiDashboard.id,
         name: apiDashboard.name,
         description: apiDashboard.description,
-        visualizations: [],
+        layout_config: apiDashboard.layout_config || {
+          grid: { cols: 4, rows: 'auto' },
+          items: []
+        },
+        metadata: apiDashboard.metadata,
         created_at: apiDashboard.created_at,
         updated_at: apiDashboard.updated_at,
       };
@@ -312,7 +308,11 @@ export function LidaInterface() {
         id: `dashboard-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         name,
         description,
-        visualizations: [],
+        layout_config: {
+          grid: { cols: 4, rows: 'auto' },
+          items: []
+        },
+        metadata: { created_from: 'lida' },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -356,7 +356,9 @@ export function LidaInterface() {
     console.log('Target dashboard:', targetDashboard);
 
     // Check if visualization already exists in dashboard
-    const vizExists = targetDashboard.visualizations.some(v => v.id === visualization.id);
+    const vizExists = targetDashboard.layout_config?.items?.some((item: any) =>
+      item.config?.lida_visualization_id === visualization.id
+    ) || false;
     if (vizExists) {
       console.log("Visualization already exists in dashboard");
       setDialogType('error');
@@ -391,7 +393,7 @@ export function LidaInterface() {
       title: visualization.title,
       description: visualization.description,
       span: "col-span-1 md:col-span-2",
-      position: { row: (targetDashboard.visualizations.length || 0) + 1 },
+      position: { row: (targetDashboard.layout_config?.items?.length || 0) + 1 },
       config: {
         echarts_config: visualization.chart_config,
         insights: visualization.insights,
@@ -440,7 +442,7 @@ export function LidaInterface() {
         dashboard.id === targetDashboard.id
           ? {
               ...dashboard,
-              visualizations: [...dashboard.visualizations, visualization],
+              layout_config: updatedLayoutConfig,
               updated_at: updatedDashboard.updated_at,
             }
           : dashboard
@@ -450,7 +452,7 @@ export function LidaInterface() {
       if (selectedDashboard?.id === targetDashboard.id) {
         setSelectedDashboard(prev => prev ? {
           ...prev,
-          visualizations: [...prev.visualizations, visualization],
+          layout_config: updatedLayoutConfig,
           updated_at: updatedDashboard.updated_at,
         } : null);
       }
@@ -474,20 +476,37 @@ export function LidaInterface() {
     }
   }, [selectedDashboard, dashboards, handleCreateDashboard]);
 
-  // Wrapper functions for button onClick handlers
-  const handleCreateFirstDashboard = async () => {
-    try {
-      await handleCreateDashboard("My First Dashboard", "Dashboard created manually");
-    } catch (error) {
-      console.error('Failed to create first dashboard:', error);
-    }
-  };
-
+  // Wrapper function for button onClick handler
   const handleCreateNewDashboard = async () => {
     try {
       await handleCreateDashboard("New Dashboard", "Dashboard created manually");
     } catch (error) {
       console.error('Failed to create new dashboard:', error);
+    }
+  };
+
+  // Dashboard deletion handler
+  const handleDeleteDashboard = async (dashboard: Dashboard) => {
+    try {
+      const response = await fetch(`/api/dashboards/${dashboard.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete dashboard");
+      }
+
+      setDashboards(dashboards.filter(d => d.id !== dashboard.id));
+
+      // Clear selected dashboard if it was deleted
+      if (selectedDashboard?.id === dashboard.id) {
+        setSelectedDashboard(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete dashboard:", err);
+      setDialogType('error');
+      setDialogMessage('Failed to delete dashboard. Please try again.');
+      setDialogOpen(true);
     }
   };
 
@@ -517,7 +536,7 @@ export function LidaInterface() {
             Gallery ({visualizations.length})
           </TabsTrigger>
           <TabsTrigger value="dashboard">
-            Dashboard ({dashboards.length})
+            Dashboards ({dashboards.length})
           </TabsTrigger>
         </TabsList>
 
@@ -670,89 +689,15 @@ export function LidaInterface() {
         </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6">
-          {dashboards.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Sparkles className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No dashboards yet</h3>
-                <p className="text-sm text-muted-foreground text-center mb-4">
-                  Create your first dashboard by adding visualizations from the Gallery tab.
-                </p>
-                <button
-                  onClick={handleCreateFirstDashboard}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                >
-                  Create Dashboard
-                </button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {/* Dashboard Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold">My Dashboards</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {dashboards.length} dashboard{dashboards.length !== 1 ? "s" : ""} created
-                  </p>
-                </div>
-                <button
-                  onClick={handleCreateNewDashboard}
-                  className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>New Dashboard</span>
-                </button>
-              </div>
-
-              {/* Dashboard List */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {dashboards.map((dashboard) => (
-                  <Card key={dashboard.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <span>{dashboard.name}</span>
-                        <span className="text-sm font-normal text-muted-foreground">
-                          {dashboard.visualizations.length} viz{dashboard.visualizations.length !== 1 ? "s" : ""}
-                        </span>
-                      </CardTitle>
-                      {dashboard.description && (
-                        <CardDescription>{dashboard.description}</CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      {dashboard.visualizations.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium">Visualizations:</p>
-                          <div className="space-y-1">
-                            {dashboard.visualizations.slice(0, 3).map((viz) => (
-                              <div key={viz.id} className="flex items-center space-x-2 text-sm text-muted-foreground">
-                                <span className="w-2 h-2 bg-primary rounded-full"></span>
-                                <span className="truncate">{viz.title}</span>
-                              </div>
-                            ))}
-                            {dashboard.visualizations.length > 3 && (
-                              <p className="text-xs text-muted-foreground">
-                                +{dashboard.visualizations.length - 3} more visualizations
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No visualizations added yet</p>
-                      )}
-                      <div className="mt-4 pt-4 border-t text-xs text-muted-foreground">
-                        Created: {new Date(dashboard.created_at).toLocaleDateString()}
-                        {dashboard.updated_at !== dashboard.created_at && (
-                          <span> • Updated: {new Date(dashboard.updated_at).toLocaleDateString()}</span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
+          <DashboardGrid
+            dashboards={dashboards}
+            loading={false}
+            error={null}
+            onCreateDashboard={handleCreateNewDashboard}
+            onDeleteDashboard={handleDeleteDashboard}
+            showSearch={false}
+            showBrowseTemplates={false}
+          />
         </TabsContent>
       </Tabs>
 
@@ -787,6 +732,7 @@ export function LidaInterface() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

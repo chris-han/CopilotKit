@@ -6,17 +6,8 @@ import { DashboardViewEdit } from "@/components/dashboard/DashboardViewEdit";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Edit, Eye, ArrowLeft } from "lucide-react";
+import { Dashboard } from "@/types/dashboard";
 import Link from "next/link";
-
-interface Dashboard {
-  id: string;
-  name: string;
-  description?: string;
-  layout_config: any;
-  metadata: any;
-  created_at: string;
-  updated_at: string;
-}
 
 export default function DashboardPage() {
   const params = useParams();
@@ -58,6 +49,8 @@ export default function DashboardPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          name: updatedConfig.name,
+          description: updatedConfig.description,
           layout_config: updatedConfig.layout_config,
           metadata: updatedConfig.metadata,
         }),

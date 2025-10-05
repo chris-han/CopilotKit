@@ -668,28 +668,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
                       )}
                     </CardHeader>
                     <CardContent className="pt-0 flex-1 flex flex-col p-0">
-                      <div className="m-4 flex-1 flex items-center justify-center rounded bg-muted/50 text-muted-foreground min-h-0 p-4">
-                        <div className="text-center w-full h-full flex flex-col justify-center">
-                          <div className="mb-3">
-                            {item.type === "chart" && <BarChart3 className="h-8 w-8 mx-auto mb-2" />}
-                            {item.type === "metric" && <Activity className="h-8 w-8 mx-auto mb-2" />}
-                            {item.type === "text" && <FileText className="h-8 w-8 mx-auto mb-2" />}
-                            {item.type === "commentary" && <FileText className="h-8 w-8 mx-auto mb-2" />}
-                          </div>
-                          <div className="text-sm font-medium text-foreground mb-1">
-                            {item.title}
-                          </div>
-                          <div className="text-xs text-muted-foreground mb-2">
-                            {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
-                            {item.chartType && ` • ${item.chartType}`}
-                          </div>
-                          {item.description && (
-                            <div className="text-xs text-muted-foreground italic">
-                              {item.description}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      
                     </CardContent>
                   </Card>
                 </div>

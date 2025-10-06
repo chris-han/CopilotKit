@@ -533,9 +533,9 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
   }, [dragState.isDragging, resizeState.isResizing, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="">
       {/* Dashboard Preview */}
-      <div className="lg:col-span-2 overflow-visible">
+      <div className="lg:col-span-6 overflow-visible">
         <Card className="overflow-visible">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

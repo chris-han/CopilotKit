@@ -37,6 +37,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
   const [draft, setDraft] = useState("");
 
 
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.trim()) {

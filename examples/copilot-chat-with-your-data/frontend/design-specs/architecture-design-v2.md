@@ -2170,6 +2170,88 @@ async def progressive_analysis(context):
     }, 'progress': 1.0}
 ```
 
+### Frontend Communication Architecture
+
+#### Critical Principle: Separation of UI Navigation from AI Interactions
+
+**IMPORTANT**: To ensure optimal user experience and performance, the frontend must clearly separate simple UI navigation from AI-powered interactions.
+
+##### UI Navigation (Direct Context Updates - No LLM)
+Use **direct context updates** for immediate UI state changes that require no AI processing:
+
+- **Dashboard item clicks**: Show/hide Data Assistant panel sections
+- **Dashboard title clicks**: Switch between Dashboard Properties view
+- **Dashboard preview clicks**: Show Add Items and Dashboard Settings
+- **Mode changes**: Enter/exit edit mode
+- **Panel navigation**: Switch between different assistant panel views
+- **Filter applications**: Apply dashboard filters
+- **Tab switching**: Navigate between dashboard sections
+
+```typescript
+// ✅ CORRECT - Direct context updates for UI navigation (No LLM)
+const handleItemClick = (itemId: string) => {
+  setSelectedItemId(itemId);
+  setActiveSection("item-properties");
+};
+
+const handleModeChange = (mode: "edit" | "view") => {
+  setMode(mode);
+  if (mode === "edit") {
+    setActiveSection("dashboard-preview");
+  } else {
+    setActiveSection(null);
+    setSelectedItemId(null);
+  }
+};
+```
+
+##### AI Interactions (AgUI Protocol - With LLM)
+Use **AgUI protocol** only for actions requiring AI processing or content generation:
+
+- **Save/Reset operations**: Data persistence and validation
+- **Content editing**: Dashboard name, description, item properties changes
+- **Item creation**: Adding new dashboard components
+- **Settings changes**: Grid layout, dashboard configuration
+- **Conversational queries**: User asking questions about data
+- **Chart generation**: Creating new visualizations
+- **Data analysis**: Interpreting metrics and generating insights
+
+```typescript
+// ✅ CORRECT - AgUI protocol for AI-powered actions
+const handleSave = () => {
+  sendMessage("Save all dashboard changes");
+};
+
+const handleAddItem = (itemType: string) => {
+  sendMessage(`Add a new ${itemType} item to the dashboard`);
+};
+
+const handlePropertyChange = (property: string, value: string) => {
+  sendMessage(`Update ${property} to "${value}"`);
+};
+```
+
+##### Anti-Patterns to Avoid
+```typescript
+// ❌ WRONG - Using AgUI protocol for simple UI navigation (causes LLM delay)
+const handleItemClick = (itemId: string) => {
+  sendMessage(`Show properties for item ${itemId} in Data Assistant`);
+};
+
+// ❌ WRONG - Direct function calls for AI-powered actions (bypasses protocol)
+const handleSave = () => {
+  dashboardContext.onSave?.();
+};
+```
+
+##### Benefits of This Architecture
+- **Immediate UI feedback** for navigation actions (0ms delay)
+- **Proper AI integration** for content and data operations
+- **Optimal performance** by avoiding unnecessary API calls
+- **Clear architectural boundaries** between UI state and AI logic
+- **Better user experience** with instant visual feedback
+- **Cost efficiency** by reducing LLM invocations for simple UI tasks
+
 ### Frontend Integration
 
 ```typescript

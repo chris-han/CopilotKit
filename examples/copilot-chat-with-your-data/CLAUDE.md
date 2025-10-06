@@ -23,6 +23,30 @@ This ensures teams can continue using existing functionality while gradually ado
 
 ## Development Guidelines
 
+### Feature Development Process
+
+**MANDATORY**: Before implementing any new feature, you MUST:
+
+1. **Consult the Master Plan**: Review `frontend/design-specs/LIDA-ECharts-Implementation-Plan.md` to understand:
+   - How your feature fits into the overall LIDA-enhanced architecture
+   - Which implementation phase your feature belongs to
+   - Dependencies and integration points with existing systems
+   - Whether similar functionality is already planned or completed
+
+2. **Design First, Code Second**: Create a clear design that follows the established patterns:
+   - Identify if your feature requires UI navigation (direct context updates) or AI interactions (AgUI protocol)
+   - Determine integration points with existing AG-UI, ECharts, and Data Assistant systems
+   - Plan for LIDA intelligence enhancement where applicable
+   - Consider persona-aware visualization selection if creating analytics features
+
+3. **Preserve Integration Strategy**: Ensure your feature:
+   - Maintains compatibility with existing AG-UI workflows
+   - Extends rather than replaces current functionality
+   - Follows established component patterns and import aliases
+   - Respects the UI Navigation vs AI Interactions separation principle
+
+The LIDA-ECharts Implementation Plan serves as the architectural blueprint for this project. All features must align with its vision of gradual enhancement while preserving existing functionality.
+
 ### Testing Commands
 - Run tests: `npm run test` (verify if available in package.json)
 - Run linting: `npm run lint` (verify if available in package.json)
@@ -35,34 +59,57 @@ This ensures teams can continue using existing functionality while gradually ado
 - Intelligence: LIDA-enhanced semantic understanding with persona-aware visualization selection
 
 ### Data Assistant Communication Protocol
-**IMPORTANT**: The Data Assistant panel must ALWAYS use the AgUI protocol for all communication with the rest of the frontend application.
 
-- **Use `sendMessage()` for all actions**: Reset, Save, and any dashboard operations
-- **NO direct function calls**: Avoid calling dashboard functions directly from Data Assistant
-- **Maintain architectural boundaries**: Data Assistant stays within AgUI communication layer
-- **Protocol compliance**: All assistant actions go through established AgUI message system
+**CRITICAL PRINCIPLE**: Separate UI navigation from AI interactions to avoid unnecessary LLM invocations and ensure immediate UI responsiveness.
 
-**Examples:**
+#### UI Navigation (Direct Context Updates - No LLM)
+Use **direct context updates** for immediate UI state changes:
+
+- **Dashboard item clicks**: Show/hide Data Assistant panel sections
+- **Dashboard title clicks**: Switch between Dashboard Properties view
+- **Dashboard preview clicks**: Show Add Items and Dashboard Settings
+- **Mode changes**: Enter/exit edit mode
+- **Panel navigation**: Switch between different assistant panel views
+
 ```typescript
-// ✅ CORRECT - Use AgUI protocol for actions
+// ✅ CORRECT - Direct context updates for UI navigation (No LLM)
+onClick={() => setActiveSection("dashboard-title")}
+onClick={() => setActiveSection("dashboard-preview")}
+onClick={() => { setSelectedItemId(itemId); setActiveSection("item-properties"); }}
+onClick={() => { setActiveSection(null); setSelectedItemId(null); }}
+```
+
+#### AI Interactions (AgUI Protocol - With LLM)
+Use **AgUI protocol** only for actions requiring AI processing:
+
+- **Save/Reset operations**: Actual data persistence and validation
+- **Content editing**: Dashboard name, description, item properties changes
+- **Item creation**: Adding new dashboard components
+- **Settings changes**: Grid layout, dashboard configuration
+- **Conversational queries**: User asking questions about data
+
+```typescript
+// ✅ CORRECT - AgUI protocol for AI-powered actions
 onClick={() => sendMessage("Save all dashboard changes")}
 onClick={() => sendMessage("Reset all changes to the dashboard")}
-
-// ✅ CORRECT - Use AgUI protocol for navigation
-onClick={() => sendMessage("Show dashboard properties editor in Data Assistant")}
-onClick={() => sendMessage("Show dashboard editor tools in Data Assistant")}
-onClick={() => sendMessage("Switch to default Data Assistant view")}
-
-// ✅ CORRECT - Use AgUI protocol for dashboard editing
 onClick={() => sendMessage("Add a new Chart item to the dashboard")}
 onValueChange={(value) => sendMessage(`Change dashboard grid to ${value} columns`)}
-onChange={(e) => sendMessage(`Change dashboard name to "${e.target.value}"`)}
+onChange={(e) => sendMessage(`Update item title to "${e.target.value}"`)}
+```
 
-// ❌ INCORRECT - Direct function calls
+#### Anti-Patterns to Avoid
+```typescript
+// ❌ WRONG - Using AgUI protocol for simple UI navigation (causes LLM delay)
+onClick={() => sendMessage("Show dashboard properties editor in Data Assistant")}
+onClick={() => sendMessage("DIRECT_UI_UPDATE:Show item properties")}
+
+// ❌ WRONG - Direct function calls for AI-powered actions (bypasses protocol)
 onClick={() => dashboardContext.onSave?.()}
-onClick={() => setActiveSection("dashboard-title")}
-onClick={() => addItem(itemType.value)}
 onChange={(config) => onChange({...config, items: [...config.items, newItem]})}
 ```
 
-This ensures proper separation of concerns and maintains consistency with the AgUI communication architecture.
+This separation ensures:
+- **Immediate UI feedback** for navigation actions
+- **Proper AI integration** for content and data operations
+- **Optimal performance** by avoiding unnecessary API calls
+- **Clear architectural boundaries** between UI state and AI logic

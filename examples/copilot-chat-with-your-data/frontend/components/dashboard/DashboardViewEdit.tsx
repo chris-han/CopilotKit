@@ -303,13 +303,18 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   }, [currentName, currentDescription, checkForChanges]);
 
   // Handle dashboard item clicks in edit mode
-  const handleItemClick = useCallback((itemId: string, itemTitle: string) => {
+  const handleItemClick = useCallback((itemId: string, itemTitle: string, event?: React.MouseEvent) => {
     if (mode === "edit") {
-      // Direct context update for immediate UI response
-      setSelectedItemId(itemId);
-      setActiveSection("item-properties");
+      // Prevent event bubbling to dashboard wrapper
+      event?.stopPropagation();
+
+      // Send direct UI update message to notify Data Assistant panel
+      // This "supersizes" the item click over dashboard clicks
+      sendMessage(`DIRECT_UI_UPDATE:Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`);
+
+      console.log(`Dashboard item clicked: ${itemTitle} (${itemId}) - Data Assistant showing item properties`);
     }
-  }, [mode, setSelectedItemId, setActiveSection]);
+  }, [mode, sendMessage]);
 
   // Set up save and reset handlers in context
   useEffect(() => {
@@ -487,26 +492,12 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   if (mode === "edit") {
     return (
       <div className="space-y-4">
-        {hasChanges && (
-          <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
-            <span className="text-sm text-orange-800">You have unsaved changes</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => sendMessage("Reset all changes to the dashboard")}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Reset
-              </Button>
-              <Button size="sm" onClick={() => sendMessage("Save all dashboard changes")} disabled={saving}>
-                <Save className="mr-2 h-4 w-4" />
-                {saving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        )}
+
 
         <div
           className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
           onClick={() => {
-            // Direct context update for immediate UI response
+            // Direct context update - no LLM involved
             setActiveSection("dashboard-preview");
           }}
         >
@@ -581,7 +572,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                onClick={() => handleItemClick(item.id, item.title)}
+                onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -608,7 +599,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                 data-chart-id={item.id}
-                onClick={() => handleItemClick(item.id, item.title)}
+                onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -640,7 +631,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                     data-chart-id={chart.chartId}
-                    onClick={() => handleItemClick(item.id, item.title)}
+                    onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -673,7 +664,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                     data-chart-id={chart.chartId}
-                    onClick={() => handleItemClick(item.id, item.title)}
+                    onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -705,7 +696,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                     data-chart-id={chart.chartId}
-                    onClick={() => handleItemClick(item.id, item.title)}
+                    onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
                     <CardHeader className="pb-1 pt-3">
                       <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -740,7 +731,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                onClick={() => handleItemClick(item.id, item.title)}
+                onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -767,7 +758,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                 data-chart-id="strategic-commentary"
-                onClick={() => handleItemClick(item.id, item.title)}
+                onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>
@@ -819,7 +810,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                onClick={() => handleItemClick(item.id, item.title)}
+                onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
                   <CardTitle className="text-base font-medium">{item.title}</CardTitle>

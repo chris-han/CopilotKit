@@ -163,7 +163,7 @@ export default function DashboardPage() {
             <h1
               className={`text-2xl font-bold ${mode === "edit" ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
               onClick={mode === "edit" ? () => {
-                // Direct context update for immediate UI response
+                // Direct context update - no LLM involved
                 setActiveSection("dashboard-title");
               } : undefined}
               title={mode === "edit" ? "Click to edit dashboard properties in Data Assistant" : undefined}

@@ -487,8 +487,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   const hasDashboardItems = dashboardItems.length > 0;
 
-  // Generate grid class based on column count
-  const getGridClass = (cols: number) => {
+  // Generate layout class for view mode - uses CSS Grid without visible grid lines
+  const getViewLayoutClass = (cols: number) => {
     const colsMap: Record<number, string> = {
       2: "grid-cols-1 md:grid-cols-2",
       3: "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
@@ -498,18 +498,18 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     return `grid w-full gap-4 ${colsMap[cols] || "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"}`;
   };
 
-  // Helper function to convert item position to CSS Grid positioning (similar to DashboardEditor)
+  // Helper function to convert item position to CSS Grid positioning for view mode
   const getItemGridStyle = (item: any, cols: number) => {
     if (!item.position || (!item.position.row && !item.position.col)) {
       // If no position data, let CSS Grid auto-place the item
       return {};
     }
 
-    // Parse span to get width
+    // Parse span to get width from the drag-and-drop resizing
     const spanMatch = item.span?.match(/col-span-(\d+)/);
     const width = spanMatch ? parseInt(spanMatch[1]) : 1;
 
-    // Calculate grid position (convert from 1-based to 1-based CSS Grid)
+    // Calculate grid position (convert from 0-based position to 1-based CSS Grid)
     const startCol = Math.max(1, Math.min((item.position.col || 0) + 1, cols));
     const endCol = Math.max(2, Math.min(startCol + width, cols + 1));
     const startRow = Math.max(1, (item.position.row || 1));
@@ -562,18 +562,21 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   }
 
   const gridCols = currentConfig?.grid?.cols || 4;
-  const gridClass = getGridClass(gridCols);
+  const layoutClass = getViewLayoutClass(gridCols);
 
   return (
-    <div className={gridClass}>
+    <div className={layoutClass}>
       {dashboardItems.map((item) => {
-        const itemGridStyle = getItemGridStyle(item, gridCols);
+        const itemStyle = getItemGridStyle(item, gridCols);
+        // Use explicit grid positioning if available, otherwise fall back to span classes
+        const hasPosition = item.position && (item.position.row || item.position.col);
+        const itemClassName = hasPosition ? "" : item.span;
         // Handle metric items (including Base Layout metrics)
         if (item.type === "metric") {
           if (item.config?.type === "metrics") {
             // Base Layout metrics - render the dynamic metrics
             return (
-              <div key={item.id} className={item.span} style={itemGridStyle}>
+              <div key={item.id} className={itemClassName} style={itemStyle}>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {metrics.length === 0 && dataLoading ? (
                     Array.from({ length: 6 }).map((_, index) => (
@@ -608,8 +611,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             return (
               <Card
                 key={item.id}
-                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={itemGridStyle}
+                className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -635,8 +638,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             return (
               <Card
                 key={item.id}
-                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={itemGridStyle}
+                className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemStyle}
                 data-chart-id={item.id}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
@@ -668,8 +671,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                 return (
                   <Card
                     key={item.id}
-                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                    style={itemGridStyle}
+                    className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -702,8 +705,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                 return (
                   <Card
                     key={item.id}
-                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                    style={itemGridStyle}
+                    className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -735,8 +738,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                 return (
                   <Card
                     key={item.id}
-                    className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                    style={itemGridStyle}
+                    className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -772,8 +775,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             return (
               <Card
                 key={item.id}
-                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={itemGridStyle}
+                className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -799,8 +802,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             return (
               <Card
                 key={item.id}
-                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={itemGridStyle}
+                className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemStyle}
                 data-chart-id="strategic-commentary"
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
@@ -853,8 +856,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             return (
               <Card
                 key={item.id}
-                className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-                style={itemGridStyle}
+                className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -886,8 +889,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           return (
             <Card
               key={item.id}
-              className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-              style={itemGridStyle}
+              className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+              style={itemStyle}
               onClick={() => handleItemClick(item.id, item.title)}
             >
               <CardHeader className="pb-1 pt-3">
@@ -909,8 +912,8 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
         return (
           <Card
             key={item.id}
-            className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-            style={itemGridStyle}
+            className={`${itemClassName} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+            style={itemStyle}
             onClick={() => handleItemClick(item.id, item.title)}
           >
             <CardHeader className="pb-1 pt-3">

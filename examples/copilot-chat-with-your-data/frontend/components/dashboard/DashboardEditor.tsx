@@ -210,7 +210,9 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
     let currentRow = 0;
     let currentCol = 0;
 
-    config.items.forEach((item) => {
+    console.log('DashboardEditor: Updating item positions for', config.items.length, 'items');
+
+    config.items.forEach((item, index) => {
       const { width, height } = parseGridSpan(item.span);
 
       const position: GridPosition = {
@@ -224,6 +226,13 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
         position.x = Math.max(0, config.grid.cols - position.width);
       }
 
+      console.log(`Item ${index} (${item.id}):`, {
+        title: item.title,
+        span: item.span,
+        itemPosition: item.position,
+        gridPosition: position
+      });
+
       newPositions.set(item.id, position);
 
       if (item.position.col === undefined) {
@@ -235,6 +244,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
       }
     });
 
+    console.log('DashboardEditor: Final item positions map:', newPositions);
     setItemPositions(newPositions);
   }, [config.items, config.grid.cols]);
 
@@ -260,16 +270,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
     }
   };
 
-  const updateItem = (itemId: string, updates: Partial<DashboardItem>) => {
-    onChange({
-      ...config,
-      items: config.items.map(item =>
-        item.id === itemId ? { ...item, ...updates } : item
-      ),
-    });
-  };
-
-  const selectedItemData = selectedItem ? config.items.find(item => item.id === selectedItem) : null;
 
 
   // Helper function to convert grid width to span class
@@ -507,7 +507,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
       const draggedItem = itemPositions.get(dragState.draggedItemId);
       if (draggedItem) {
         // Convert pixel position to grid coordinates for dragged item
-        const containerWidth = containerRef.current?.getBoundingClientRect().width || 800;
         const draggedGridY = Math.floor(dragState.currentPosition.y / effectiveGridSize);
         const draggedBottomRow = draggedGridY + draggedItem.height;
         maxRow = Math.max(maxRow, draggedBottomRow);
@@ -560,7 +559,15 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
               >
               {config.items.map((item) => {
                 const position = itemPositions.get(item.id);
-                if (!position) return null;
+                console.log(`Rendering item ${item.id} (${item.title}):`, {
+                  hasPosition: !!position,
+                  position: position,
+                  itemPositionsSize: itemPositions.size
+                });
+                if (!position) {
+                  console.warn(`No position found for item ${item.id}, skipping render`);
+                  return null;
+                }
 
                 const isDragged = dragState.draggedItemId === item.id;
                 const isResized = resizeState.resizedItemId === item.id;
@@ -737,9 +744,12 @@ export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantPr
   // No AgUI messaging needed for direct UI updates
 
   const addItem = (type: DashboardItem["type"]) => {
+    console.log('AddItemsCard: Starting to add item of type:', type);
+    console.log('AddItemsCard: Current config.items length:', config.items.length);
+
     // Direct UI update - no LLM involved
     // Generate new item with unique ID
-    const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newItemId = `item-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
     const itemTypeNames = {
       chart: "Chart",
@@ -762,11 +772,16 @@ export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantPr
       config: {}
     };
 
+    console.log('AddItemsCard: Created new item:', newItem);
+
     // Add item directly to configuration without LLM
     const updatedConfig = {
       ...config,
       items: [...config.items, newItem]
     };
+
+    console.log('AddItemsCard: Updated config items length:', updatedConfig.items.length);
+    console.log('AddItemsCard: Calling onChange with updated config');
 
     onChange(updatedConfig);
 
@@ -997,7 +1012,7 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
 }
 
 // Dashboard Properties Component for Data Assistant (when clicking dashboard title)
-export function DashboardPropertiesCard({ config, onChange, dashboard, saving, onDashboardUpdate }: DataAssistantProps & {
+export function DashboardPropertiesCard({ dashboard, saving, onDashboardUpdate }: {
   dashboard?: any;
   saving?: boolean;
   onDashboardUpdate?: (updates: any) => void;

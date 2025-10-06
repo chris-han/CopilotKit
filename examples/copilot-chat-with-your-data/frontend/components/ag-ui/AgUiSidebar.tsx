@@ -20,7 +20,7 @@ type AgUiSidebarProps = {
 };
 
 export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
-  const { messages, sendMessage, isRunning, error } = useAgUiAgent();
+  const { messages, sendAIMessage, isRunning, error } = useAgUiAgent();
   const dashboardContext = useDashboardContext();
   const {
     state: dataStoryState,
@@ -43,7 +43,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
     if (!draft.trim()) {
       return;
     }
-    sendMessage(draft.trim());
+    sendAIMessage(draft.trim());
     setDraft("");
   };
 
@@ -95,7 +95,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
                     size="sm"
                     onClick={() => {
                       // Send AgUI message for protocol compliance
-                      sendMessage("Reset all changes to the dashboard");
+                      sendAIMessage("Reset all changes to the dashboard");
                       // Call actual reset function
                       if (dashboardContext.onReset) {
                         dashboardContext.onReset();
@@ -110,7 +110,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
                     size="sm"
                     onClick={() => {
                       // Send AgUI message for protocol compliance
-                      sendMessage("Save all dashboard changes");
+                      sendAIMessage("Save all dashboard changes");
                       // Call actual save function
                       if (dashboardContext.onSave) {
                         dashboardContext.onSave();
@@ -128,18 +128,6 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
             {/* Dashboard Properties - shown when clicking dashboard title */}
             {dashboardContext.activeSection === "dashboard-title" && (
               <DashboardPropertiesCard
-                config={{
-                  grid: dashboardContext.dashboard.layout_config?.grid || { cols: 4, rows: "auto" },
-                  items: dashboardContext.dashboard.layout_config?.items || []
-                }}
-                onChange={(config) => {
-                  if (dashboardContext.onDashboardChange && dashboardContext.dashboard) {
-                    dashboardContext.onDashboardChange({
-                      ...dashboardContext.dashboard,
-                      layout_config: config
-                    });
-                  }
-                }}
                 dashboard={dashboardContext.dashboard}
                 saving={dashboardContext.saving}
                 onDashboardUpdate={(updates) => {
@@ -305,7 +293,7 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
                   <button
                     key={suggestion.message}
                     type="button"
-                    onClick={() => sendMessage(suggestion.message)}
+                    onClick={() => sendAIMessage(suggestion.message)}
                     className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-muted px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {suggestion.label}

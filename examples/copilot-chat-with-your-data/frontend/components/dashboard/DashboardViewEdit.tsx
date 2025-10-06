@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart } from "@/components/ui/area-chart";
 import { BarChart } from "@/components/ui/bar-chart";
@@ -11,20 +10,12 @@ import { DonutChart } from "@/components/ui/pie-chart";
 import { ReactEChartsCore, echarts } from "@/components/ui/echarts-base";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  STRATEGIC_COMMENTARY_TAB_EVENT,
-  type StrategicCommentaryTabEventDetail,
-} from "@/lib/chart-highlighting";
-import {
   isDashboardDataPayload,
   type DashboardDataPayload,
   type DashboardMetrics,
 } from "@/data/dashboard-data";
 import { Dashboard } from "@/types/dashboard";
 import { DashboardEditor } from "./DashboardEditor";
-import { Save, RotateCcw } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { useAgUiAgent } from "../ag-ui/AgUiProvider";
 
@@ -229,9 +220,16 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Sync local state with dashboard prop changes (e.g., from context updates)
+  useEffect(() => {
+    setCurrentConfig(dashboard.layout_config);
+    setCurrentName(dashboard.name);
+    setCurrentDescription(dashboard.description || "");
+  }, [dashboard.layout_config, dashboard.name, dashboard.description]);
+
   // Use dashboard context for managing active section and save/reset handlers
   const { setOnSave, setOnReset, setOnNameChange, setOnDescriptionChange, setHasChanges: setContextHasChanges, setSaving: setContextSaving, setActiveSection, setSelectedItemId, activeSection } = useDashboardContext();
-  const { sendDirectUIUpdate, sendAIMessage } = useAgUiAgent();
+  const { sendDirectUIUpdate } = useAgUiAgent();
 
   // Set default active section when entering edit mode (only if no section is already active)
   useEffect(() => {
@@ -471,10 +469,21 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   const commentarySections = useMemo(() => parseStrategicCommentary(commentary), [commentary]);
 
-  // Get configured dashboard items
+  // Get configured dashboard items - use currentConfig to reflect any changes
   const dashboardItems = useMemo(() => {
-    return dashboard.layout_config?.items || [];
-  }, [dashboard.layout_config]);
+    const items = currentConfig?.items || [];
+    // Sort items by their grid position (row first, then column) for proper rendering order
+    return items.sort((a, b) => {
+      const rowA = a.position?.row || 0;
+      const rowB = b.position?.row || 0;
+      if (rowA !== rowB) {
+        return rowA - rowB;
+      }
+      const colA = a.position?.col || 0;
+      const colB = b.position?.col || 0;
+      return colA - colB;
+    });
+  }, [currentConfig]);
 
   const hasDashboardItems = dashboardItems.length > 0;
 
@@ -487,6 +496,30 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
       6: "grid-cols-2 md:grid-cols-3 lg:grid-cols-6",
     };
     return `grid w-full gap-4 ${colsMap[cols] || "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"}`;
+  };
+
+  // Helper function to convert item position to CSS Grid positioning (similar to DashboardEditor)
+  const getItemGridStyle = (item: any, cols: number) => {
+    if (!item.position || (!item.position.row && !item.position.col)) {
+      // If no position data, let CSS Grid auto-place the item
+      return {};
+    }
+
+    // Parse span to get width
+    const spanMatch = item.span?.match(/col-span-(\d+)/);
+    const width = spanMatch ? parseInt(spanMatch[1]) : 1;
+
+    // Calculate grid position (convert from 1-based to 1-based CSS Grid)
+    const startCol = Math.max(1, Math.min((item.position.col || 0) + 1, cols));
+    const endCol = Math.max(2, Math.min(startCol + width, cols + 1));
+    const startRow = Math.max(1, (item.position.row || 1));
+
+    return {
+      gridColumnStart: startCol,
+      gridColumnEnd: endCol,
+      gridRowStart: startRow,
+      gridRowEnd: startRow + 1, // Single row height for now
+    };
   };
 
   if (mode === "edit") {
@@ -528,15 +561,19 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
     );
   }
 
+  const gridCols = currentConfig?.grid?.cols || 4;
+  const gridClass = getGridClass(gridCols);
+
   return (
-    <div className={getGridClass(dashboard.layout_config?.grid?.cols || 4)}>
+    <div className={gridClass}>
       {dashboardItems.map((item) => {
+        const itemGridStyle = getItemGridStyle(item, gridCols);
         // Handle metric items (including Base Layout metrics)
         if (item.type === "metric") {
           if (item.config?.type === "metrics") {
             // Base Layout metrics - render the dynamic metrics
             return (
-              <div key={item.id} className={item.span}>
+              <div key={item.id} className={item.span} style={itemGridStyle}>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {metrics.length === 0 && dataLoading ? (
                     Array.from({ length: 6 }).map((_, index) => (
@@ -572,6 +609,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemGridStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -598,6 +636,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemGridStyle}
                 data-chart-id={item.id}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
@@ -630,6 +669,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                   <Card
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemGridStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -663,6 +703,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                   <Card
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemGridStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -695,6 +736,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                   <Card
                     key={item.id}
                     className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                    style={itemGridStyle}
                     data-chart-id={chart.chartId}
                     onClick={(e) => handleItemClick(item.id, item.title, e)}
                   >
@@ -731,6 +773,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemGridStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -757,6 +800,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemGridStyle}
                 data-chart-id="strategic-commentary"
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
@@ -810,6 +854,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
               <Card
                 key={item.id}
                 className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                style={itemGridStyle}
                 onClick={(e) => handleItemClick(item.id, item.title, e)}
               >
                 <CardHeader className="pb-1 pt-3">
@@ -842,6 +887,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
             <Card
               key={item.id}
               className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+              style={itemGridStyle}
               onClick={() => handleItemClick(item.id, item.title)}
             >
               <CardHeader className="pb-1 pt-3">
@@ -864,6 +910,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
           <Card
             key={item.id}
             className={`${item.span} ${mode === "edit" ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+            style={itemGridStyle}
             onClick={() => handleItemClick(item.id, item.title)}
           >
             <CardHeader className="pb-1 pt-3">

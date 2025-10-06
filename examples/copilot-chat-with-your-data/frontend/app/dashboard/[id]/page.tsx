@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Edit, Eye, ArrowLeft } from "lucide-react";
 import { Dashboard } from "@/types/dashboard";
 import { useDashboardContext } from "@/contexts/DashboardContext";
-import { useAgUiAgent } from "@/components/ag-ui/AgUiProvider";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -22,9 +21,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"view" | "edit">(initialMode);
 
-  // Use dashboard context and AgUI for messaging
+  // Use dashboard context
   const { setDashboard: setContextDashboard, setMode: setContextMode, setOnDashboardChange, setActiveSection } = useDashboardContext();
-  const { sendMessage } = useAgUiAgent();
 
   useEffect(() => {
     const fetchDashboard = async () => {

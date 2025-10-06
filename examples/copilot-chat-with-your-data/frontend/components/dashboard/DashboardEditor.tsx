@@ -734,9 +734,13 @@ export interface DataAssistantProps {
 
 // Add Items Component for Data Assistant
 export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantProps) {
-  const { sendMessage } = useAgUiAgent();
+  // No AgUI messaging needed for direct UI updates
 
   const addItem = (type: DashboardItem["type"]) => {
+    // Direct UI update - no LLM involved
+    // Generate new item with unique ID
+    const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const itemTypeNames = {
       chart: "Chart",
       metric: "Metrics",
@@ -745,7 +749,33 @@ export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantPr
     };
 
     const itemName = itemTypeNames[type] || type;
-    sendMessage(`Add a new ${itemName} item to the dashboard`);
+
+    // Create new dashboard item
+    const newItem: DashboardItem = {
+      id: newItemId,
+      type: type,
+      chartType: type === "chart" ? "bar" : undefined,
+      title: `New ${itemName}`,
+      description: `${itemName} component`,
+      span: "col-span-1 md:col-span-2",
+      position: { row: config.items.length + 1, col: 0 },
+      config: {}
+    };
+
+    // Add item directly to configuration without LLM
+    const updatedConfig = {
+      ...config,
+      items: [...config.items, newItem]
+    };
+
+    onChange(updatedConfig);
+
+    // Optionally select the new item for immediate editing
+    if (onItemSelect) {
+      onItemSelect(newItemId);
+    }
+
+    console.log(`Added new ${itemName} item to dashboard preview canvas - Direct UI update`);
   };
 
   return (
@@ -776,7 +806,17 @@ export function AddItemsCard({ config, onChange, onItemSelect }: DataAssistantPr
 
 // Dashboard Settings Component for Data Assistant
 export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) {
-  const { sendMessage } = useAgUiAgent();
+  const { sendDirectUIUpdate } = useAgUiAgent();
+
+  const handleGridChange = (value: string) => {
+    const cols = parseInt(value);
+    // Send direct UI update for protocol compliance (no LLM)
+    sendDirectUIUpdate(`Change dashboard grid to ${value} columns`);
+    onChange({
+      ...config,
+      grid: { ...config.grid, cols }
+    });
+  };
 
   return (
     <Card>
@@ -790,7 +830,7 @@ export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) 
             <Label htmlFor="grid-cols">Grid Columns</Label>
             <Select
               value={config.grid.cols.toString()}
-              onValueChange={(value) => sendMessage(`Change dashboard grid to ${value} columns`)}
+              onValueChange={handleGridChange}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -813,7 +853,7 @@ export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) 
 export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAssistantProps & {
   selectedItemId?: string | null;
 }) {
-  const { sendMessage, isRunning } = useAgUiAgent();
+  const { sendDirectUIUpdate, isRunning } = useAgUiAgent();
 
   const selectedItemData = selectedItemId ? config.items.find(item => item.id === selectedItemId) : null;
 
@@ -839,10 +879,8 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
       ),
     };
 
-    // Send AgUI message for protocol compliance
-    sendMessage(`Update ${selectedItemData.type} item "${selectedItemData.title}"`);
-
-    // Update configuration
+    // Send direct UI update for protocol compliance (no LLM)
+    sendDirectUIUpdate(`Update ${selectedItemData.type} item "${selectedItemData.title}"`);
     onChange(newConfig);
   };
 
@@ -851,7 +889,8 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
       ...config,
       items: config.items.filter(item => item.id !== itemId),
     };
-    sendMessage(`Remove ${selectedItemData.type} item "${selectedItemData.title}"`);
+    // Send direct UI update for protocol compliance (no LLM)
+    sendDirectUIUpdate(`Remove ${selectedItemData.type} item "${selectedItemData.title}"`);
     onChange(newConfig);
   };
 
@@ -963,7 +1002,7 @@ export function DashboardPropertiesCard({ config, onChange, dashboard, saving, o
   saving?: boolean;
   onDashboardUpdate?: (updates: any) => void;
 }) {
-  const { sendMessage, isRunning } = useAgUiAgent();
+  const { sendDirectUIUpdate } = useAgUiAgent();
 
   // Use local state for immediate UI responsiveness
   const [localName, setLocalName] = useState(dashboard?.name || "");
@@ -981,8 +1020,8 @@ export function DashboardPropertiesCard({ config, onChange, dashboard, saving, o
   const handleNameChange = (newName: string) => {
     // Update local state immediately for responsive UI
     setLocalName(newName);
-    // Send AgUI message for protocol compliance
-    sendMessage(`Change dashboard name to "${newName}"`);
+    // Send direct UI update for protocol compliance (no LLM)
+    sendDirectUIUpdate(`Change dashboard name to "${newName}"`);
     // Update dashboard state
     if (onDashboardUpdate) {
       onDashboardUpdate({ name: newName });
@@ -992,8 +1031,8 @@ export function DashboardPropertiesCard({ config, onChange, dashboard, saving, o
   const handleDescriptionChange = (newDescription: string) => {
     // Update local state immediately for responsive UI
     setLocalDescription(newDescription);
-    // Send AgUI message for protocol compliance
-    sendMessage(`Change dashboard description to "${newDescription}"`);
+    // Send direct UI update for protocol compliance (no LLM)
+    sendDirectUIUpdate(`Change dashboard description to "${newDescription}"`);
     // Update dashboard state
     if (onDashboardUpdate) {
       onDashboardUpdate({ description: newDescription });

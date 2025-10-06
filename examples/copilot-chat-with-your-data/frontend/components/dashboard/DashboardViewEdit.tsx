@@ -231,7 +231,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   // Use dashboard context for managing active section and save/reset handlers
   const { setOnSave, setOnReset, setOnNameChange, setOnDescriptionChange, setHasChanges: setContextHasChanges, setSaving: setContextSaving, setActiveSection, setSelectedItemId, activeSection } = useDashboardContext();
-  const { sendMessage } = useAgUiAgent();
+  const { sendDirectUIUpdate, sendAIMessage } = useAgUiAgent();
 
   // Set default active section when entering edit mode (only if no section is already active)
   useEffect(() => {
@@ -310,11 +310,11 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
       // Send direct UI update message to notify Data Assistant panel
       // This "supersizes" the item click over dashboard clicks
-      sendMessage(`DIRECT_UI_UPDATE:Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`);
+      sendDirectUIUpdate(`Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`);
 
       console.log(`Dashboard item clicked: ${itemTitle} (${itemId}) - Data Assistant showing item properties`);
     }
-  }, [mode, sendMessage]);
+  }, [mode, sendDirectUIUpdate]);
 
   // Set up save and reset handlers in context
   useEffect(() => {

@@ -49,6 +49,7 @@ from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_mana
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
 from pydantic import BaseModel
 from lida_visualization_store import LidaVisualizationStore
+from semantic_layer_integration import SemanticLayerIntegration
 from fastmcp import FastMCP
 
 load_dotenv()
@@ -148,6 +149,7 @@ _focus_integration: Optional[FocusSampleDataIntegration] = None
 # Global FastMCP ECharts server instance
 _echarts_mcp: Optional[FastMCP] = None
 lida_visualization_store = LidaVisualizationStore()
+semantic_layer_integration = SemanticLayerIntegration()
 
 
 app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
@@ -1012,6 +1014,161 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
     )
 
     return JSONResponse(saved, status_code=201)
+
+
+# Semantic Model API Endpoints
+
+@app.get("/semantic-model/{model_name}")
+async def get_semantic_model(model_name: str):
+    """Get semantic model by name."""
+    try:
+        model = await semantic_layer_integration.get_semantic_model(model_name)
+        if model is None:
+            raise HTTPException(status_code=404, detail=f"Semantic model '{model_name}' not found")
+
+        # Convert model to dict for JSON response
+        return {
+            "name": model.name,
+            "entities": [
+                {
+                    "name": entity.name,
+                    "type": entity.type,
+                    "description": entity.description,
+                    "primary_key": entity.primary_key,
+                    "relationships": entity.relationships or [],
+                    "business_rules": entity.business_rules or []
+                }
+                for entity in model.entities
+            ],
+            "metrics": [
+                {
+                    "name": metric.name,
+                    "description": metric.description,
+                    "type": metric.type.value if hasattr(metric.type, 'value') else str(metric.type),
+                    "base_field": metric.base_field,
+                    "sql": metric.sql,
+                    "dimensions": metric.dimensions,
+                    "narrative_goal": metric.narrative_goal,
+                    "recommended_chart": metric.recommended_chart,
+                    "focus_compliant": metric.focus_compliant,
+                    "business_context": metric.business_context,
+                    "unit": metric.unit,
+                    "format": metric.format
+                }
+                for metric in model.metrics
+            ],
+            "relationships": model.relationships
+        }
+    except Exception as exc:
+        logger.error("Failed to get semantic model '%s': %s", model_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/semantic-model/{model_name}/metrics")
+async def get_model_metrics(model_name: str, entity_name: Optional[str] = None):
+    """Get available metrics for a semantic model, optionally filtered by entity."""
+    try:
+        metrics = await semantic_layer_integration.get_available_metrics(entity_name)
+        return [
+            {
+                "name": metric.name,
+                "description": metric.description,
+                "type": metric.type.value if hasattr(metric.type, 'value') else str(metric.type),
+                "base_field": metric.base_field,
+                "sql": metric.sql,
+                "dimensions": metric.dimensions,
+                "narrative_goal": metric.narrative_goal,
+                "recommended_chart": metric.recommended_chart,
+                "focus_compliant": metric.focus_compliant,
+                "business_context": metric.business_context,
+                "unit": metric.unit,
+                "format": metric.format
+            }
+            for metric in metrics
+        ]
+    except Exception as exc:
+        logger.error("Failed to get metrics for model '%s': %s", model_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/semantic-model/{model_name}/enhance-summary")
+async def enhance_data_summary_with_semantic_model(model_name: str, request: Request):
+    """Enhance data summary with semantic model information."""
+    try:
+        payload = await request.json()
+        data_summary = payload.get("data_summary", {})
+
+        enhanced_summary = await semantic_layer_integration.enhance_data_summary(
+            data_summary, domain=model_name
+        )
+        return enhanced_summary
+    except Exception as exc:
+        logger.error("Failed to enhance data summary with semantic model '%s': %s", model_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/semantic-model/{model_name}/lineage")
+async def get_data_lineage(model_name: str):
+    """Get data lineage for semantic model."""
+    try:
+        model = await semantic_layer_integration.get_semantic_model(model_name)
+        if model is None:
+            raise HTTPException(status_code=404, detail=f"Semantic model '{model_name}' not found")
+
+        # Generate data lineage information
+        lineage = {
+            "model_name": model_name,
+            "entities": [],
+            "relationships": model.relationships,
+            "data_flow": []
+        }
+
+        # Build entity lineage
+        for entity in model.entities:
+            entity_lineage = {
+                "name": entity.name,
+                "type": "entity",
+                "description": entity.description,
+                "upstream_dependencies": [],
+                "downstream_dependencies": [],
+                "business_rules": entity.business_rules or []
+            }
+
+            # Find relationships for this entity
+            for rel in model.relationships:
+                if rel.get("from_entity") == entity.name:
+                    entity_lineage["downstream_dependencies"].append({
+                        "name": rel.get("to_entity"),
+                        "type": "entity",
+                        "relationship_type": rel.get("type", "unknown")
+                    })
+                elif rel.get("to_entity") == entity.name:
+                    entity_lineage["upstream_dependencies"].append({
+                        "name": rel.get("from_entity"),
+                        "type": "entity",
+                        "relationship_type": rel.get("type", "unknown")
+                    })
+
+            lineage["entities"].append(entity_lineage)
+
+        # Build metric lineage
+        for metric in model.metrics:
+            metric_lineage = {
+                "name": metric.name,
+                "type": "metric",
+                "description": metric.description,
+                "base_field": metric.base_field,
+                "upstream_dependencies": [
+                    {"name": dim, "type": "dimension"} for dim in metric.dimensions
+                ],
+                "downstream_dependencies": []
+            }
+            lineage["data_flow"].append(metric_lineage)
+
+        return lineage
+    except Exception as exc:
+        logger.error("Failed to get data lineage for model '%s': %s", model_name, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 async def _generate_strategic_commentary_markdown() -> str:

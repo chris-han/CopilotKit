@@ -11,6 +11,8 @@ import { DataSummary } from "./DataSummary";
 import { VisualizationChat } from "./VisualizationChat";
 import { ChartGallery } from "./ChartGallery";
 import { DatasetSelector } from "./DatasetSelector";
+import { SemanticModelEditor } from "./SemanticModelEditor";
+import { DataLineageView } from "./DataLineageView";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 import { Dashboard } from "@/types/dashboard";
 import { Plus, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
@@ -686,75 +688,108 @@ export function LidaInterface() {
         </TabsContent>
 
         <TabsContent value="explore" className="space-y-6">
-          {dataSummary && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Dataset Overview</CardTitle>
-                    <CardDescription>
-                      Detailed information about {currentDataset}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <DataSummary summary={dataSummary} detailed />
-                  </CardContent>
-                </Card>
-              </div>
+          {currentDataset ? (
+            <Tabs defaultValue="semantic-model" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="semantic-model">Semantic Model</TabsTrigger>
+                <TabsTrigger value="lineage">Data Lineage</TabsTrigger>
+                <TabsTrigger value="dataset-info">Dataset Info</TabsTrigger>
+              </TabsList>
 
-              <div className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Quick Actions</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <button
-                      onClick={() => setActiveTab("visualize")}
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      Start Visualizing
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("gallery")}
-                      className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      View Gallery
-                    </button>
-                  </CardContent>
-                </Card>
+              <TabsContent value="semantic-model" className="space-y-4">
+                <SemanticModelEditor
+                  modelName="sales_analytics"
+                  onModelChange={(model) => {
+                    console.log("Semantic model updated:", model);
+                  }}
+                />
+              </TabsContent>
 
-                {dataSummary.focus_compliance && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>FOCUS Compliance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm">Level:</span>
-                          <span className="text-sm font-medium capitalize">
-                            {dataSummary.focus_compliance.compliance_level.replace("_", " ")}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">Score:</span>
-                          <span className="text-sm font-medium">
-                            {(dataSummary.focus_compliance.compliance_score * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                        {dataSummary.focus_compliance.missing_fields.length > 0 && (
-                          <div className="pt-2">
-                            <span className="text-sm text-muted-foreground">
-                              Missing fields: {dataSummary.focus_compliance.missing_fields.length}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
+              <TabsContent value="lineage" className="space-y-4">
+                <DataLineageView modelName="sales_analytics" />
+              </TabsContent>
+
+              <TabsContent value="dataset-info" className="space-y-4">
+                {dataSummary && (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Dataset Overview</CardTitle>
+                          <CardDescription>
+                            Detailed information about {currentDataset}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <DataSummary summary={dataSummary} detailed />
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Quick Actions</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <button
+                            onClick={() => setActiveTab("visualize")}
+                            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                          >
+                            Start Visualizing
+                          </button>
+                          <button
+                            onClick={() => setActiveTab("gallery")}
+                            className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                          >
+                            View Gallery
+                          </button>
+                        </CardContent>
+                      </Card>
+
+                      {dataSummary.focus_compliance && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>FOCUS Compliance</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-sm">Level:</span>
+                                <span className="text-sm font-medium capitalize">
+                                  {dataSummary.focus_compliance.compliance_level.replace("_", " ")}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-sm">Score:</span>
+                                <span className="text-sm font-medium">
+                                  {(dataSummary.focus_compliance.compliance_score * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                              {dataSummary.focus_compliance.missing_fields.length > 0 && (
+                                <div className="pt-2">
+                                  <span className="text-sm text-muted-foreground">
+                                    Missing fields: {dataSummary.focus_compliance.missing_fields.length}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
+          ) : (
+            <Card>
+              <CardContent className="p-6">
+                <div className="text-center text-muted-foreground">
+                  Please select a dataset to explore its semantic model
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 

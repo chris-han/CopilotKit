@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardTemplateGallery } from "@/components/dashboard/DashboardTemplateGallery";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
@@ -139,30 +140,33 @@ export default function DashboardsPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-          <TabsTrigger value="my-dashboards">My Dashboards</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-        </TabsList>
+      <Card>
+        <CardContent className="p-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+              <TabsTrigger value="my-dashboards">My Dashboards</TabsTrigger>
+              <TabsTrigger value="templates">Templates</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="my-dashboards" className="space-y-6">
-          <DashboardGrid
-            dashboards={dashboards}
-            loading={loading}
-            error={error}
-            onCreateDashboard={createBlankDashboard}
-            onDeleteDashboard={handleDeleteDashboard}
-            onBrowseTemplates={() => setActiveTab("templates")}
-            showSearch={true}
-            showBrowseTemplates={true}
-          />
-        </TabsContent>
+            <TabsContent value="my-dashboards" className="space-y-6">
+              <DashboardGrid
+                dashboards={dashboards}
+                loading={loading}
+                error={error}
+                onCreateDashboard={createBlankDashboard}
+                onDeleteDashboard={handleDeleteDashboard}
+                onBrowseTemplates={() => setActiveTab("templates")}
+                showSearch={true}
+                showBrowseTemplates={true}
+              />
+            </TabsContent>
 
-        <TabsContent value="templates" className="space-y-6">
-          <DashboardTemplateGallery onCreateFromTemplate={handleCreateFromTemplate} />
-        </TabsContent>
-      </Tabs>
+            <TabsContent value="templates" className="space-y-6">
+              <DashboardTemplateGallery onCreateFromTemplate={handleCreateFromTemplate} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-

@@ -119,3 +119,5 @@ This separation ensures:
 - **Proper AI integration** for content and data operations
 - **Optimal performance** by avoiding unnecessary API calls
 - **Clear architectural boundaries** between UI state and AI logic
+
+When wiring the dashboard editor, card clicks in edit mode must stop event bubbling, send a `DirectUIUpdate` such as `Show item properties for "<title>" (<id>) in Data Assistant panel`, and rely on `handleDirectUIUpdate` to open the item-properties card without invoking the LLM.

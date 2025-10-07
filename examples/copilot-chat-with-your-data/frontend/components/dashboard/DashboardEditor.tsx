@@ -111,20 +111,27 @@ function gridToCSS(position: GridPosition, cols: number) {
   };
 }
 
-function snapToGrid(x: number, y: number, gridSize: number, gridGap: number): { x: number; y: number } {
-  const effectiveSize = gridSize + gridGap;
-  return {
-    x: Math.round(x / effectiveSize) * effectiveSize,
-    y: Math.round(y / effectiveSize) * effectiveSize,
-  };
+function pixelToGrid(pixelX: number, pixelY: number, containerWidth: number, cols: number, gridSize: number, gridGap: number): GridPosition {
+  const totalGapWidth = gridGap * (cols - 1);
+  const availableWidth = containerWidth - totalGapWidth;
+  const cellWidth = cols > 0 ? Math.max(availableWidth, 0) / cols : 0;
+  const effectiveCellWidth = cellWidth + gridGap;
+  const rowHeight = gridSize + gridGap;
+  const gridX = Math.max(0, Math.min(Math.floor(pixelX / effectiveCellWidth), cols - 1));
+  const gridY = Math.max(0, Math.floor(pixelY / rowHeight));
+  return { x: gridX, y: gridY, width: 1, height: 1 };
 }
 
-function pixelToGrid(pixelX: number, pixelY: number, containerWidth: number, cols: number, gridSize: number, gridGap: number): GridPosition {
-  const cellWidth = containerWidth / cols;
-  const effectiveGridSize = gridSize + gridGap;
-  const gridX = Math.max(0, Math.min(Math.floor(pixelX / cellWidth), cols - 1));
-  const gridY = Math.max(0, Math.floor(pixelY / effectiveGridSize));
-  return { x: gridX, y: gridY, width: 1, height: 1 };
+function gridToPixel(gridX: number, gridY: number, containerWidth: number, cols: number, gridSize: number, gridGap: number): { x: number; y: number } {
+  const totalGapWidth = gridGap * (cols - 1);
+  const availableWidth = containerWidth - totalGapWidth;
+  const cellWidth = cols > 0 ? Math.max(availableWidth, 0) / cols : 0;
+  const effectiveCellWidth = cellWidth + gridGap;
+  const rowHeight = gridSize + gridGap;
+  return {
+    x: gridX * effectiveCellWidth,
+    y: gridY * rowHeight,
+  };
 }
 
 function isOverlapping(pos1: GridPosition, pos2: GridPosition): boolean {
@@ -336,12 +343,22 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
       const itemPosition = itemPositions.get(itemId);
       if (!itemPosition) return;
 
+      const containerWidth = rect.width;
+      const startPixelPosition = gridToPixel(
+        itemPosition.x,
+        itemPosition.y,
+        containerWidth,
+        config.grid.cols,
+        gridSize,
+        gridGap
+      );
+
       setDragState({
         isDragging: true,
         draggedItemId: itemId,
         startPosition: { x: startX, y: startY },
-        currentPosition: { x: startX, y: startY },
-        itemStartPosition: { x: itemPosition.x * effectiveGridSize, y: itemPosition.y * effectiveGridSize },
+        currentPosition: startPixelPosition,
+        itemStartPosition: startPixelPosition,
       });
     } else if (type === 'resize') {
       const itemPosition = itemPositions.get(itemId);
@@ -371,11 +388,10 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
       const newPixelX = dragState.itemStartPosition.x + deltaX;
       const newPixelY = dragState.itemStartPosition.y + deltaY;
 
-      const snapped = snapToGrid(newPixelX, newPixelY, gridSize, gridGap);
-
       // Check for potential collision at current drag position
       const containerWidth = rect.width;
-      const gridPos = pixelToGrid(snapped.x, snapped.y, containerWidth, config.grid.cols, gridSize, gridGap);
+      const gridPos = pixelToGrid(newPixelX, newPixelY, containerWidth, config.grid.cols, gridSize, gridGap);
+      const snappedPixel = gridToPixel(gridPos.x, gridPos.y, containerWidth, config.grid.cols, gridSize, gridGap);
       const currentItemPos = itemPositions.get(dragState.draggedItemId);
 
       if (currentItemPos) {
@@ -395,7 +411,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
 
       setDragState(prev => ({
         ...prev,
-        currentPosition: { x: snapped.x, y: snapped.y },
+        currentPosition: snappedPixel,
       }));
     }
 
@@ -629,9 +645,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
                           ? "border-red-500 bg-red-500/20"
                           : "border-primary bg-primary/10"
                       }`}
-                      style={{
-                        transform: `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`,
-                      }}
                     />
                   )}
                   <Card className={`h-full flex flex-col ${isCompact ? "text-xs" : ""}`}>

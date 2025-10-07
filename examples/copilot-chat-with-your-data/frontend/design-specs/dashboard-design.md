@@ -44,6 +44,7 @@ This document captures the current dashboard experience rendered by `components/
 - **Highlight integration**: Cards include `data-chart-id` attributes. AG-UI events trigger `chart.highlight` custom events that focus charts or switch commentary tabs.
 - **Tab synchronisation**: Custom event `STRATEGIC_COMMENTARY_TAB_EVENT` keeps commentary tabs in sync with narration/story review.
 - **Responsive**: On small screens, charts stack vertically; metrics show in 2-column grid; commentary tabs degrade to single-column buttons.
+- **Edit mode ergonomics**: During drag or resize operations the grid overlay is constrained to the Dashboard Preview card, cards snap to column/row cells (gaps are ignored), single-cell cards collapse into a compact header that preserves the icon, delete action, and a truncated title so essential controls stay visible, and selecting a card triggers an AG-UI `DirectUIUpdate` instructing the Data Assistant to show that item's properties.
 
 ## 6. Generative UI Guidance
 - **Inputs to provide the agent**:

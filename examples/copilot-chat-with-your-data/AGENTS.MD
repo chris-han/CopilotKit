@@ -82,6 +82,7 @@ onClick={() => sendAIMessage("Add a new Chart item to the dashboard")}
 - Extend `AgUiProvider` so it handles new custom events, tool outputs, and thread state without breaking existing chat flows.
 - Guard assistant responses in `frontend/components/AssistantMessage.tsx`: render markdown safely, surface streaming indicators, and rely on AG-UI custom events for highlight orchestration.
 - Keep UI primitives in `frontend/components/ui/*.tsx` consistent with Recharts wrappers, tooltips, legends, and lucide-react status icons.
+- Ensure the dashboard editor keeps drag/resize overlays inside the preview card, snaps positions to pure grid cells (ignoring inter-cell gaps), renders compact single-cell cards with truncated titles while retaining icon and delete controls, and emits DirectUIUpdate messages when a card is selected so the Data Assistant panel opens item properties immediately.
 
 ## Backend Responsibilities
 - Load env vars via `python-dotenv`; require Azure OpenAI credentials (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, deployment name, API version). Optionally accept `TAVILY_API_KEY`.

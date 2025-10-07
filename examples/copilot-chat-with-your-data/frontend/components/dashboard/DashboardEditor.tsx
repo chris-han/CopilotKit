@@ -20,6 +20,7 @@ import {
   FileText
 } from "lucide-react";
 import { useRef, useCallback, useEffect, useMemo } from "react";
+import type { MouseEvent } from "react";
 import { useAgUiAgent } from "../ag-ui/AgUiProvider";
 
 interface DashboardItem {
@@ -190,6 +191,7 @@ function findNextAvailablePosition(
 
 export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const { sendDirectUIUpdate } = useAgUiAgent();
 
   // Grid system state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -327,6 +329,15 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
 
     onChange({ ...config, items: updatedItems });
   };
+
+  const handleSelectItem = useCallback((event: MouseEvent, item: DashboardItem) => {
+    event.stopPropagation();
+    if (dragState.isDragging || resizeState.isResizing) {
+      return;
+    }
+    setSelectedItem(item.id);
+    sendDirectUIUpdate(`Show item properties for "${item.title}" (${item.id}) in Data Assistant panel`);
+  }, [dragState.isDragging, resizeState.isResizing, sendDirectUIUpdate]);
 
   // Mouse event handlers for drag and resize
   const handleMouseDown = useCallback((e: React.MouseEvent, itemId: string, type: 'drag' | 'resize', handle?: string) => {
@@ -612,7 +623,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
                       ? `translate(${dragState.currentPosition.x - dragState.itemStartPosition.x}px, ${dragState.currentPosition.y - dragState.itemStartPosition.y}px)`
                       : undefined,
                   }}
-                  onClick={() => setSelectedItem(item.id)}
+                  onClick={(event) => handleSelectItem(event, item)}
                 >
                   {/* Drag handle */}
                   <div

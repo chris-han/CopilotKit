@@ -1002,18 +1002,27 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
             <div className="space-y-2">
               <Label htmlFor="item-span">Column Span</Label>
               <Select
-                value={selectedItemData.span}
+                value={(() => {
+                  const match = selectedItemData.span?.match(/col-span-(\d+)/);
+                  const current = match ? parseInt(match[1], 10) : 1;
+                  const clamped = Math.min(Math.max(current, 1), config.grid.cols);
+                  return `col-span-${clamped}`;
+                })()}
                 onValueChange={(value) => updateItem(selectedItemData.id, { span: value })}
+                disabled={isRunning}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SPAN_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
+                  {Array.from({ length: config.grid.cols }, (_, i) => {
+                    const spanValue = `col-span-${i + 1}`;
+                    return (
+                      <SelectItem key={spanValue} value={spanValue}>
+                        {i + 1} Column{i === 0 ? "" : "s"}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>

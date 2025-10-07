@@ -78,59 +78,48 @@ export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
 
   const renderContent = (closeControl: React.ReactNode) => (
     <>
-      <header className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-        <div className="space-y-1">
-          <div className="text-lg font-semibold text-foreground">Data Assistant</div>
-          <p className="text-sm text-muted-foreground">
-            Ask about sales trends, product performance, and key SaaS KPIs.
-          </p>
+      <header className="flex flex-col gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-lg font-semibold text-foreground">Data Assistant</div>
+          </div>
+          {closeControl}
         </div>
-        {closeControl}
+        {dashboardContext.dashboard && dashboardContext.mode === "edit" && dashboardContext.hasChanges && (
+          <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
+            <span className="text-sm text-orange-800">You have unsaved changes</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  sendAIMessage("Reset all changes to the dashboard");
+                  dashboardContext.onReset?.();
+                }}
+                disabled={isRunning || dashboardContext.saving}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  sendAIMessage("Save all dashboard changes");
+                  dashboardContext.onSave?.();
+                }}
+                disabled={isRunning || dashboardContext.saving}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {dashboardContext.saving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        )}
       </header>
       <div className="flex-1 overflow-y-auto space-y-4 px-5 py-4">
         {/* Context-aware content for dashboard editing */}
         {dashboardContext.dashboard && dashboardContext.mode === "edit" ? (
           <>
-            {/* Save/Reset buttons for edit mode */}
-            {dashboardContext.hasChanges && (
-              <div className="flex items-center justify-between rounded-md border border-orange-200 bg-orange-50 px-4 py-3">
-                <span className="text-sm text-orange-800">You have unsaved changes</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Send AgUI message for protocol compliance
-                      sendAIMessage("Reset all changes to the dashboard");
-                      // Call actual reset function
-                      if (dashboardContext.onReset) {
-                        dashboardContext.onReset();
-                      }
-                    }}
-                    disabled={isRunning || dashboardContext.saving}
-                  >
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      // Send AgUI message for protocol compliance
-                      sendAIMessage("Save all dashboard changes");
-                      // Call actual save function
-                      if (dashboardContext.onSave) {
-                        dashboardContext.onSave();
-                      }
-                    }}
-                    disabled={isRunning || dashboardContext.saving}
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {dashboardContext.saving ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {/* Dashboard Properties - shown when clicking dashboard title */}
             {dashboardContext.activeSection === "dashboard-title" && (
               <DashboardPropertiesCard

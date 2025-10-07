@@ -88,6 +88,11 @@ const SPAN_OPTIONS = [
   { value: "col-span-1 md:col-span-2 lg:col-span-4", label: "1-2-4 Columns (Responsive)" },
 ];
 
+function truncateTitle(title: string, maxLength = 18): string {
+  if (title.length <= maxLength) return title;
+  return `${title.slice(0, maxLength - 3)}...`;
+}
+
 
 // Grid utility functions
 function parseGridSpan(span: string): { width: number; height: number } {
@@ -571,6 +576,8 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
 
                 const isDragged = dragState.draggedItemId === item.id;
                 const isResized = resizeState.resizedItemId === item.id;
+                const isCompact = position.width === 1 && position.height === 1;
+                const displayTitle = isCompact ? truncateTitle(item.title, 16) : item.title;
 
                 return (
                 <div
@@ -627,39 +634,55 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
                       }}
                     />
                   )}
-                  <Card className="h-full flex flex-col">
-                    <CardHeader className="pb-2 flex-shrink-0">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {item.type === "chart" && <BarChart3 className="h-4 w-4" />}
-                          {item.type === "metric" && <Activity className="h-4 w-4" />}
-                          {item.type === "text" && <FileText className="h-4 w-4" />}
-                          {item.type === "commentary" && <FileText className="h-4 w-4" />}
-                          <CardTitle className="text-sm">{item.title}</CardTitle>
+                  <Card className={`h-full flex flex-col ${isCompact ? "text-xs" : ""}`}>
+                    <CardHeader className={`flex-shrink-0 ${isCompact ? "px-2 py-2" : "pb-2"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className={`flex items-center ${isCompact ? "gap-1" : "gap-2"}`}>
+                          {item.type === "chart" && (
+                            <BarChart3 className={isCompact ? "h-3 w-3" : "h-4 w-4"} />
+                          )}
+                          {item.type === "metric" && (
+                            <Activity className={isCompact ? "h-3 w-3" : "h-4 w-4"} />
+                          )}
+                          {item.type === "text" && (
+                            <FileText className={isCompact ? "h-3 w-3" : "h-4 w-4"} />
+                          )}
+                          {item.type === "commentary" && (
+                            <FileText className={isCompact ? "h-3 w-3" : "h-4 w-4"} />
+                          )}
+                          <CardTitle
+                            className={`${isCompact ? "max-w-[5.5rem] truncate font-medium" : "text-sm"}`}
+                          >
+                            {displayTitle}
+                          </CardTitle>
                         </div>
                         <div className="flex items-center gap-1">
-                          <Badge variant="secondary" className="text-xs">
-                            {item.type}
-                            {item.chartType && ` (${item.chartType})`}
-                          </Badge>
+                          {!isCompact && (
+                            <Badge variant="secondary" className="text-xs">
+                              {item.type}
+                              {item.chartType && ` (${item.chartType})`}
+                            </Badge>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                            className={`${isCompact ? "h-5 w-5" : "h-6 w-6"} p-0 opacity-60 hover:opacity-100`}
                             onClick={(e) => {
                               e.stopPropagation();
                               removeItem(item.id);
                             }}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className={isCompact ? "h-3 w-3" : "h-3 w-3"} />
                           </Button>
                         </div>
                       </div>
-                      {item.description && (
+                      {item.description && !isCompact && (
                         <CardDescription className="text-xs">{item.description}</CardDescription>
                       )}
                     </CardHeader>
-                    <CardContent className="pt-0 flex-1 flex flex-col p-0">
+                    <CardContent
+                      className={`${isCompact ? "flex-1 flex flex-col px-2 pb-2 pt-0" : "pt-0 flex-1 flex flex-col p-0"}`}
+                    >
                       
                     </CardContent>
                   </Card>

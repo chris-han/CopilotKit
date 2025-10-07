@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import os
@@ -97,7 +98,17 @@ class LidaVisualizationStore:
 
     async def upsert(self, visualization: Dict[str, Any]) -> Dict[str, Any]:
         viz_id = visualization.get("id") or f"viz-{datetime.now(timezone.utc).timestamp()}-{os.urandom(4).hex()}"
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
+
+        # Parse created_at if it's a string, otherwise use current time
+        created_at = visualization.get("created_at")
+        if created_at and isinstance(created_at, str):
+            try:
+                created_at_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                created_at_dt = now_dt
+        else:
+            created_at_dt = created_at if isinstance(created_at, datetime) else now_dt
 
         payload = {
             "id": viz_id,
@@ -108,8 +119,8 @@ class LidaVisualizationStore:
             "code": visualization.get("code", ""),
             "insights": visualization.get("insights", []) or [],
             "dataset_name": visualization.get("dataset_name"),
-            "created_at": visualization.get("created_at") or now_iso,
-            "updated_at": now_iso,
+            "created_at": created_at_dt,
+            "updated_at": now_dt,
         }
 
         if self._pool:
@@ -119,7 +130,7 @@ class LidaVisualizationStore:
                     """
                     INSERT INTO dashboards.lida_visualizations
                         (id, title, description, chart_type, chart_config, code, insights, dataset_name, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), NOW())
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     ON CONFLICT (id) DO UPDATE
                       SET title = EXCLUDED.title,
                           description = EXCLUDED.description,
@@ -128,24 +139,31 @@ class LidaVisualizationStore:
                           code = EXCLUDED.code,
                           insights = EXCLUDED.insights,
                           dataset_name = EXCLUDED.dataset_name,
-                          updated_at = NOW()
+                          updated_at = EXCLUDED.updated_at
                     RETURNING id, title, description, chart_type, chart_config, code, insights, dataset_name, created_at, updated_at
                     """,
                     payload["id"],
                     payload["title"],
                     payload["description"],
                     payload["chart_type"],
-                    payload["chart_config"],
+                    json.dumps(payload["chart_config"]),
                     payload["code"],
-                    payload["insights"],
+                    json.dumps(payload["insights"]),
                     payload["dataset_name"],
                     payload["created_at"],
+                    payload["updated_at"],
                 )
             return self._row_to_dict(row)
 
         async with self._memory_lock:
-            self._memory[payload["id"]] = payload
-            return payload
+            # Convert datetime objects to ISO strings for memory storage
+            memory_payload = {
+                **payload,
+                "created_at": payload["created_at"].isoformat() if isinstance(payload["created_at"], datetime) else payload["created_at"],
+                "updated_at": payload["updated_at"].isoformat() if isinstance(payload["updated_at"], datetime) else payload["updated_at"],
+            }
+            self._memory[payload["id"]] = memory_payload
+            return memory_payload
 
     @staticmethod
     def _row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:

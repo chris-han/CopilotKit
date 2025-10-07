@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus, CheckCircle } from "lucide-react";
+import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus, CheckCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
@@ -25,6 +25,7 @@ interface ChartGalleryProps {
   visualizations: GeneratedVisualization[];
   onVisualizationSelect: (visualization: GeneratedVisualization) => void;
   onAddToDashboard?: (visualization: GeneratedVisualization) => void;
+  onDeleteVisualization?: (visualization: GeneratedVisualization) => Promise<void> | void;
 }
 
 const CHART_TYPE_ICONS = {
@@ -124,7 +125,7 @@ order by total_spend desc;`,
   },
 };
 
-export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard }: ChartGalleryProps) {
+export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard, onDeleteVisualization }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
@@ -200,6 +201,21 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
     }
   };
 
+  const handleDeleteVisualization = async (viz: GeneratedVisualization) => {
+    console.log("ChartGallery: Delete button clicked for:", viz.title);
+
+    if (onDeleteVisualization) {
+      try {
+        await onDeleteVisualization(viz);
+        console.log("ChartGallery: Visualization deleted successfully");
+      } catch (error) {
+        console.error("ChartGallery: Failed to delete visualization:", error);
+      }
+    } else {
+      console.log("ChartGallery: No onDeleteVisualization handler provided");
+    }
+  };
+
   const renderVisualizationCard = (viz: GeneratedVisualization) => {
     const insightsRaw = viz.insights;
     let insights: string[] = [];
@@ -224,6 +240,17 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
               <CardTitle className="text-sm font-medium truncate">{viz.title}</CardTitle>
             </div>
             <div className="flex items-center space-x-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteVisualization(viz);
+                }}
+                className="p-1 hover:bg-destructive/10 text-destructive rounded-md"
+                title="Delete visualization"
+                aria-label={`Delete ${viz.title}`}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -322,6 +349,17 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
               <div className="flex items-start justify-between mb-2">
                 <h3 className="text-sm font-medium truncate pr-2">{viz.title}</h3>
                 <div className="flex items-center space-x-1 flex-shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteVisualization(viz);
+                    }}
+                    className="p-1 hover:bg-destructive/10 text-destructive rounded-md"
+                    title="Delete visualization"
+                    aria-label={`Delete ${viz.title}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

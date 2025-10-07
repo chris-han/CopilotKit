@@ -70,6 +70,34 @@ onClick={() => sendAIMessage("Save all dashboard changes")}
 onClick={() => sendAIMessage("Add a new Chart item to the dashboard")}
 ```
 
+### Database Operations (DatabaseCRUD Messages - Structured Persistence)
+Use **DirectDatabaseCRUD messages** for UI-initiated persistence that should complete immediately without invoking the LLM, and **AiDatabaseCRUD messages** when the assistant needs to reason about a change before executing it. Both flows keep database activity inside the AG-UI protocol and provide an auditable transcript.
+
+- **DirectDatabaseCRUD**: Optimistic UI actions (create/read/update/delete) that should bypass the LLM, e.g., deleting a gallery card.
+- **AiDatabaseCRUD**: Persistence requests initiated by the assistant after producing natural-language confirmation or validation.
+
+```typescript
+// ✅ CORRECT - DirectDatabaseCRUD message for persistence
+await sendDirectDatabaseCrud({
+  operation: 'delete',
+  resource: 'lida_visualizations',
+  record_id: viz.id,
+  content: `Delete visualization "${viz.title}"`
+});
+```
+
+```typescript
+// ✅ AiDatabaseCRUD - route through the assistant for confirmation
+sendAiDatabaseCrud({
+  operation: 'update',
+  resource: 'lida_visualizations',
+  payload: { id: viz.id, title: proposedTitle },
+  content: `Please rename this visualization to "${proposedTitle}"`,
+});
+```
+
+**Note**: `sendDirectDatabaseCrud` serialises a `DirectDatabaseCRUD` message that the provider forwards to `/ag-ui/database`, while `sendAiDatabaseCrud` wraps the payload for the assistant so LLM reasoning happens before persistence. Avoid hitting REST endpoints directly from the UI—channel all persistence through the protocol.
+
 ### Benefits of This Architecture
 - **Immediate UI feedback** for navigation actions (0ms delay)
 - **Proper AI integration** for content and data operations

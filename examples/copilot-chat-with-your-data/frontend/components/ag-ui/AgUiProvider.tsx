@@ -73,8 +73,32 @@ export interface DirectUIUpdateMessage extends BaseMessage {
   priority?: 'high' | 'normal' | 'low';
 }
 
+export interface DirectDatabaseCrudMessage extends BaseMessage {
+  type: 'direct_database_crud';
+  operation: 'create' | 'read' | 'update' | 'delete';
+  resource: string;
+  payload?: Record<string, any> | null;
+  record_id?: string | null;
+  query?: Record<string, any> | null;
+  metadata?: Record<string, any>;
+}
+
+export interface AiDatabaseCrudMessage extends BaseMessage {
+  type: 'ai_database_crud';
+  operation: 'create' | 'read' | 'update' | 'delete';
+  resource: string;
+  payload?: Record<string, any> | null;
+  record_id?: string | null;
+  query?: Record<string, any> | null;
+  metadata?: Record<string, any>;
+}
+
 // Discriminated union of all message types
-export type AgUIMessage = AiMessage | DirectUIUpdateMessage;
+export type AgUIMessage =
+  | AiMessage
+  | DirectUIUpdateMessage
+  | DirectDatabaseCrudMessage
+  | AiDatabaseCrudMessage;
 
 export type AgUiContextValue = {
   messages: ChatMessage[];
@@ -88,6 +112,12 @@ export type AgUiContextValue = {
   sendAIMessage: (
     content: string,
     options?: Partial<Omit<AiMessage, 'type' | 'content' | 'timestamp'>>
+  ) => void;
+  sendDirectDatabaseCrud: (
+    params: Omit<DirectDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
+  ) => Promise<any>;
+  sendAiDatabaseCrud: (
+    params: Omit<AiDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
   ) => void;
   highlightCharts: (chartIds: string[], options?: HighlightOptions) => void;
 };
@@ -958,155 +988,270 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
     }]);
   }, [dashboardContext]);
 
+  const handleDirectDatabaseCrud = useCallback(async (message: DirectDatabaseCrudMessage) => {
+    const summary = message.content?.trim() || `${message.operation.toUpperCase()} ${message.resource}`;
+    const requestId = generateId("database-crud-request");
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: requestId,
+        role: "user",
+        content: `[DatabaseCRUD] ${summary}`,
+      },
+    ]);
+
+    try {
+      const response = await fetch(`${runtimeBaseUrl}/database`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: 'direct_database_crud',
+          operation: message.operation,
+          resource: message.resource,
+          payload: message.payload ?? null,
+          record_id: message.record_id ?? null,
+          query: message.query ?? null,
+          metadata: message.metadata ?? undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(errorBody || `Failed to ${message.operation} ${message.resource}`);
+      }
+
+      let payload: any = null;
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        payload = await response.json();
+      }
+
+      const responseId = generateId("database-crud-response");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: responseId,
+          role: "assistant",
+          content: `[DatabaseCRUD] ${message.operation.toUpperCase()} ${message.resource} succeeded`,
+        },
+      ]);
+
+      return payload?.data ?? payload;
+    } catch (error) {
+      const errorId = generateId("database-crud-error");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: errorId,
+          role: "assistant",
+          content: `[DatabaseCRUD] ${message.operation.toUpperCase()} ${message.resource} failed: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ]);
+      throw error;
+    }
+  }, [runtimeBaseUrl]);
+
+  const runAiMessage = useCallback((message: AiMessage) => {
+    const trimmed = message.content.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    if (!agentRef.current) {
+      console.error('AgUI agent not initialized');
+      return;
+    }
+    if (isRunning) {
+      console.warn('Agent is already running, ignoring new AI message');
+      return;
+    }
+
+    ensureSystemMessage();
+    setError(null);
+
+    const userMessageId = generateId("user");
+    const userMessage: Message = {
+      id: userMessageId,
+      role: "user",
+      content: trimmed,
+    };
+
+    historyRef.current = [...historyRef.current, userMessage];
+    setMessages((prev) => [...prev, { id: userMessageId, role: "user", content: trimmed }]);
+
+    const runId = generateId("run");
+    const agent = agentRef.current;
+
+    clearAllHighlights();
+    setIsRunning(true);
+
+    const subscriber: AgentSubscriber = {
+      onRunErrorEvent: ({ event }) => {
+        setIsRunning(false);
+        setError(event.message ?? "Agent error");
+      },
+      onRunFinishedEvent: () => {
+        setIsRunning(false);
+      },
+      onTextMessageStartEvent: ({ event }) => {
+        const assistantId = event.messageId ?? generateId("assistant");
+        const assistantMessage: Message = {
+          id: assistantId,
+          role: "assistant",
+          content: "",
+        };
+        historyRef.current = [...historyRef.current, assistantMessage];
+        setMessages((prev) => [
+          ...prev,
+          { id: assistantId, role: "assistant", content: "", pending: true },
+        ]);
+      },
+      onTextMessageContentEvent: ({ event, textMessageBuffer }) => {
+        const { messageId } = event;
+        if (!messageId) return;
+        historyRef.current = historyRef.current.map((msg) =>
+          msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
+        );
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
+          ),
+        );
+      },
+      onTextMessageEndEvent: ({ event, textMessageBuffer }) => {
+        const { messageId } = event;
+        if (!messageId) return;
+        historyRef.current = historyRef.current.map((msg) =>
+          msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
+        );
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId ? { ...msg, content: textMessageBuffer, pending: false } : msg,
+          ),
+        );
+      },
+      onCustomEvent: ({ event }) => {
+        if (event.name === "dataStory.suggestion") {
+          const payload = (event.value ?? {}) as Partial<DataStorySuggestion> & { intentId?: string };
+          if (payload.intentId && payload.summary) {
+            enqueueSuggestion({
+              intentId: payload.intentId,
+              summary: payload.summary,
+              confidence: payload.confidence,
+              focusAreas: payload.focusAreas,
+            });
+          }
+          return;
+        }
+
+        if (event.name === "chart.highlight") {
+          const value = event.value ?? {};
+          const ids = Array.isArray(value.chartIds)
+            ? value.chartIds
+            : value.chartId
+              ? [value.chartId]
+              : [];
+          if (ids.length > 0) {
+            applyHighlights(ids);
+          }
+          const tabValue = typeof value.tab === "string" ? value.tab : undefined;
+          if (tabValue) {
+            dispatchStrategicCommentaryTab(tabValue);
+          }
+        }
+      },
+    };
+
+    agent.threadId = threadIdRef.current;
+    agent.messages = historyRef.current;
+    agent.state = agent.state ?? {};
+
+    agent
+      .runAgent(
+        {
+          runId,
+          tools: [],
+          context: [],
+          forwardedProps: {},
+        },
+        subscriber,
+      )
+      .catch((err) => {
+        console.error("AG-UI run error", err);
+        setIsRunning(false);
+        setError(err?.message ?? String(err));
+      });
+  }, [
+    agentRef,
+    isRunning,
+    ensureSystemMessage,
+    setError,
+    historyRef,
+    setMessages,
+    clearAllHighlights,
+    setIsRunning,
+    enqueueSuggestion,
+    applyHighlights,
+    dispatchStrategicCommentaryTab,
+  ]);
+
   const processMessage = useCallback(
     (message: AgUIMessage) => {
-      const trimmed = message.content.trim();
-      if (!trimmed) {
+      const trimmed = message.content?.trim?.() ?? '';
+      if (!trimmed && message.type !== 'direct_database_crud' && message.type !== 'ai_database_crud') {
         return;
       }
 
-      // Use pattern matching with discriminated unions for type-safe message processing
       switch (message.type) {
         case 'direct_ui_update':
-          // Handle immediate UI updates without LLM processing
           handleDirectUIUpdate(message);
           return;
 
-        case 'ai':
-          // Process AI-powered messages requiring LLM
-          if (!agentRef.current) {
-            console.error('AgUI agent not initialized');
-            return;
-          }
-          if (isRunning) {
-            console.warn('Agent is already running, ignoring new AI message');
-            return;
-          }
-
-          ensureSystemMessage();
-          setError(null);
-
-          const userMessageId = generateId("user");
-          const userMessage: Message = {
-            id: userMessageId,
-            role: "user",
-            content: trimmed,
-          };
-
-          historyRef.current = [...historyRef.current, userMessage];
-          setMessages((prev) => [...prev, { id: userMessageId, role: "user", content: trimmed }]);
-
-          const runId = generateId("run");
-          const agent = agentRef.current;
-
-          clearAllHighlights();
-          setIsRunning(true);
-
-          const subscriber: AgentSubscriber = {
-            onRunErrorEvent: ({ event }) => {
-              setIsRunning(false);
-              setError(event.message ?? "Agent error");
-            },
-            onRunFinishedEvent: () => {
-              setIsRunning(false);
-            },
-            onTextMessageStartEvent: ({ event }) => {
-              const assistantId = event.messageId ?? generateId("assistant");
-              const assistantMessage: Message = {
-                id: assistantId,
-                role: "assistant",
-                content: "",
-              };
-              historyRef.current = [...historyRef.current, assistantMessage];
-              setMessages((prev) => [
-                ...prev,
-                { id: assistantId, role: "assistant", content: "", pending: true },
-              ]);
-            },
-            onTextMessageContentEvent: ({ event, textMessageBuffer }) => {
-              const { messageId } = event;
-              if (!messageId) return;
-              historyRef.current = historyRef.current.map((msg) =>
-                msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
-              );
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
-                ),
-              );
-            },
-            onTextMessageEndEvent: ({ event, textMessageBuffer }) => {
-              const { messageId } = event;
-              if (!messageId) return;
-              historyRef.current = historyRef.current.map((msg) =>
-                msg.id === messageId ? { ...msg, content: textMessageBuffer } : msg,
-              );
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === messageId ? { ...msg, content: textMessageBuffer, pending: false } : msg,
-                ),
-              );
-            },
-            onCustomEvent: ({ event }) => {
-              if (event.name === "dataStory.suggestion") {
-                const payload = (event.value ?? {}) as Partial<DataStorySuggestion> & { intentId?: string };
-                if (payload.intentId && payload.summary) {
-                  enqueueSuggestion({
-                    intentId: payload.intentId,
-                    summary: payload.summary,
-                    confidence: payload.confidence,
-                    focusAreas: payload.focusAreas,
-                  });
-                }
-                return;
-              }
-
-              if (event.name === "chart.highlight") {
-                const value = event.value ?? {};
-                const ids = Array.isArray(value.chartIds)
-                  ? value.chartIds
-                  : value.chartId
-                    ? [value.chartId]
-                    : [];
-                if (ids.length > 0) {
-                  applyHighlights(ids);
-                }
-                const tabValue = typeof value.tab === "string" ? value.tab : undefined;
-                if (tabValue) {
-                  dispatchStrategicCommentaryTab(tabValue);
-                }
-              }
-            },
-          };
-
-          agent.threadId = threadIdRef.current;
-          agent.messages = historyRef.current;
-          agent.state = agent.state ?? {};
-
-          agent
-            .runAgent(
-              {
-                runId,
-                tools: [],
-                context: [],
-                forwardedProps: {},
-              },
-              subscriber,
-            )
-            .catch((err) => {
-              console.error("AG-UI run error", err);
-              setIsRunning(false);
-              setError(err?.message ?? String(err));
-            });
+        case 'direct_database_crud':
+          handleDirectDatabaseCrud(message).catch((error) => {
+            console.error('Database CRUD message failed:', error);
+          });
           return;
 
-        default:
-          // Exhaustive check - TypeScript will error if we miss a case
+        case 'ai_database_crud': {
+          const serializedDetails = JSON.stringify(
+            {
+              operation: message.operation,
+              resource: message.resource,
+              payload: message.payload ?? null,
+              record_id: message.record_id ?? null,
+              query: message.query ?? null,
+              metadata: message.metadata ?? null,
+            },
+            null,
+            2,
+          );
+          const baseContent = trimmed;
+          const aiContent = baseContent.length > 0
+            ? `${baseContent}\n\nDatabase CRUD Request:\n\n${serializedDetails}`
+            : `Execute database CRUD operation:\n\n${serializedDetails}`;
+          runAiMessage({
+            type: 'ai',
+            content: aiContent,
+            timestamp: message.timestamp,
+            thread_id: message.thread_id,
+            context: message.context,
+          });
+          return;
+        }
+
+        case 'ai':
+          runAiMessage(message);
+          return;
+
+        default: {
           const _exhaustive: never = message;
           throw new Error(`Unknown message type: ${(_exhaustive as any).type}`);
+        }
       }
     },
-    [ensureSystemMessage, isRunning, enqueueSuggestion, handleDirectUIUpdate],
+    [handleDirectUIUpdate, handleDirectDatabaseCrud, runAiMessage],
   );
 
   const sendDirectUIUpdate = useCallback((
@@ -1133,6 +1278,42 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       timestamp: Date.now(),
       thread_id: threadIdRef.current,
       ...options
+    };
+    processMessage(message);
+  }, [processMessage]);
+
+  const sendDirectDatabaseCrud = useCallback((
+    params: Omit<DirectDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
+  ) => {
+    const message: DirectDatabaseCrudMessage = {
+      type: 'direct_database_crud',
+      content: params.content ?? `${params.operation.toUpperCase()} ${params.resource}`,
+      timestamp: Date.now(),
+      thread_id: threadIdRef.current,
+      operation: params.operation,
+      resource: params.resource,
+      payload: params.payload ?? null,
+      record_id: params.record_id ?? null,
+      query: params.query ?? null,
+      metadata: params.metadata ?? undefined,
+    };
+    return handleDirectDatabaseCrud(message);
+  }, [handleDirectDatabaseCrud]);
+
+  const sendAiDatabaseCrud = useCallback((
+    params: Omit<AiDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
+  ) => {
+    const message: AiDatabaseCrudMessage = {
+      type: 'ai_database_crud',
+      content: params.content ?? '',
+      timestamp: Date.now(),
+      thread_id: threadIdRef.current,
+      operation: params.operation,
+      resource: params.resource,
+      payload: params.payload ?? null,
+      record_id: params.record_id ?? null,
+      query: params.query ?? null,
+      metadata: params.metadata ?? undefined,
     };
     processMessage(message);
   }, [processMessage]);
@@ -1173,6 +1354,8 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       processMessage,
       sendDirectUIUpdate,
       sendAIMessage,
+      sendDirectDatabaseCrud,
+      sendAiDatabaseCrud,
       highlightCharts
     }}>
       <DataStoryContext.Provider value={dataStoryContextValue}>

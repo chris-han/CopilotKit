@@ -12,7 +12,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Literal
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -195,6 +195,16 @@ class LidaVisualizationPayload(BaseModel):
     created_at: Optional[str] = None
 
 
+class DatabaseCrudRequest(BaseModel):
+    type: Literal["direct_database_crud"] = "direct_database_crud"
+    operation: Literal["create", "read", "update", "delete"]
+    resource: Literal["lida_visualizations"]
+    payload: Optional[Dict[str, Any]] = None
+    record_id: Optional[str] = None
+    query: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 @app.middleware("http")
 async def handle_options(request: Request, call_next):
     if request.method == "OPTIONS":
@@ -210,7 +220,7 @@ def _corsify(response: Response, request: Request) -> Response:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Vary"] = "Origin"
-    response.headers.setdefault("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    response.headers.setdefault("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
     response.headers.setdefault("Access-Control-Allow-Headers", "*")
     return response
 
@@ -960,6 +970,59 @@ async def deprecated_copilot_endpoint_trailing() -> JSONResponse:
     return await deprecated_copilot_endpoint()
 
 
+@app.post("/ag-ui/database")
+async def ag_ui_database_crud(request: DatabaseCrudRequest) -> JSONResponse:
+    if request.resource != "lida_visualizations":
+        raise HTTPException(status_code=400, detail=f"Unsupported resource: {request.resource}")
+
+    if request.operation == "read":
+        visualizations = await lida_visualization_store.fetch_all()
+        return JSONResponse(
+            {
+                "type": request.type,
+                "operation": request.operation,
+                "resource": request.resource,
+                "data": visualizations,
+            }
+        )
+
+    if request.operation in {"create", "update"}:
+        if not request.payload:
+            raise HTTPException(status_code=400, detail="Payload is required for create/update operations")
+
+        saved = await lida_visualization_store.upsert(request.payload)
+        status_code = 201 if request.operation == "create" else 200
+        return JSONResponse(
+            {
+                "type": request.type,
+                "operation": request.operation,
+                "resource": request.resource,
+                "data": saved,
+            },
+            status_code=status_code,
+        )
+
+    if request.operation == "delete":
+        visualization_id = request.record_id or (request.payload or {}).get("id")
+        if not visualization_id:
+            raise HTTPException(status_code=400, detail="Visualization id is required for delete operations")
+
+        deleted = await lida_visualization_store.delete(visualization_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Visualization '{visualization_id}' not found")
+
+        return JSONResponse(
+            {
+                "type": request.type,
+                "operation": request.operation,
+                "resource": request.resource,
+                "data": {"id": visualization_id},
+            }
+        )
+
+    raise HTTPException(status_code=400, detail=f"Unsupported operation: {request.operation}")
+
+
 @app.get("/ag-ui/dashboard-data")
 async def stream_dashboard_data() -> StreamingResponse:
     """Stream the dashboard dataset as a server-sent events feed."""
@@ -1014,6 +1077,20 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
     )
 
     return JSONResponse(saved, status_code=201)
+
+
+@app.delete("/lida/visualizations/{visualization_id}")
+async def delete_lida_visualization(visualization_id: str):
+    """Delete a stored LIDA visualization."""
+
+    if not visualization_id:
+        raise HTTPException(status_code=400, detail="Visualization id is required")
+
+    deleted = await lida_visualization_store.delete(visualization_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Visualization '{visualization_id}' not found")
+
+    return Response(status_code=204)
 
 
 # Semantic Model API Endpoints

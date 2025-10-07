@@ -165,6 +165,28 @@ class LidaVisualizationStore:
             self._memory[payload["id"]] = memory_payload
             return memory_payload
 
+    async def delete(self, visualization_id: str) -> bool:
+        """Delete a visualization by identifier.
+
+        Returns True when a record was removed, False otherwise.
+        """
+
+        if self._pool:
+            await self._ensure_table()
+            async with self._pool.acquire() as conn:
+                result = await conn.execute(
+                    "DELETE FROM dashboards.lida_visualizations WHERE id = $1",
+                    visualization_id,
+                )
+            try:
+                deleted_count = int(result.split()[-1])
+            except (IndexError, ValueError):  # pragma: no cover - defensive parsing
+                deleted_count = 0
+            return deleted_count > 0
+
+        async with self._memory_lock:
+            return self._memory.pop(visualization_id, None) is not None
+
     @staticmethod
     def _row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
         return {

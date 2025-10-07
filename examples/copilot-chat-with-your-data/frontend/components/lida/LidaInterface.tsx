@@ -16,6 +16,7 @@ import { DataLineageView } from "./DataLineageView";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 import { Dashboard } from "@/types/dashboard";
 import { Plus, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
+import { useAgUiAgent } from "@/components/ag-ui/AgUiProvider";
 
 interface DataSummaryData {
   name: string;
@@ -52,6 +53,7 @@ interface GeneratedVisualization {
 
 export function LidaInterface() {
   const router = useRouter();
+  const { sendDirectDatabaseCrud } = useAgUiAgent();
   const [activeTab, setActiveTab] = useState("upload");
   const [currentDataset, setCurrentDataset] = useState<string | null>(null);
   const [dataSummary, setDataSummary] = useState<DataSummaryData | null>(null);
@@ -114,21 +116,20 @@ export function LidaInterface() {
   useEffect(() => {
     const loadPersistedVisualizations = async () => {
       try {
-        const response = await fetchWithFallback("/lida/visualizations");
-        if (response && response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            setVisualizations(data);
-          }
-        } else if (response) {
-          console.warn("Failed to load persisted visualizations:", await response.text());
+        const data = await sendDirectDatabaseCrud({
+          operation: 'read',
+          resource: 'lida_visualizations',
+          content: 'Load persisted visualizations',
+        });
+        if (Array.isArray(data)) {
+          setVisualizations(data);
         }
       } catch (error) {
         console.error("Error loading persisted visualizations:", error);
       }
     };
     loadPersistedVisualizations();
-  }, [fetchWithFallback]);
+  }, [sendDirectDatabaseCrud]);
 
   // Load dashboards from API on component mount
   useEffect(() => {
@@ -197,33 +198,69 @@ export function LidaInterface() {
     setVisualizations((prev) => [fallbackVisualization, ...prev.filter((viz) => viz.id !== visualization.id)]);
 
     try {
-      const response = await fetchWithFallback("/lida/visualizations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const saved = await sendDirectDatabaseCrud({
+        operation: 'create',
+        resource: 'lida_visualizations',
+        payload: {
           ...visualization,
           dataset_name: resolvedDataset,
-        }),
+        },
+        content: `Persist visualization "${visualization.title}"`,
       });
-      if (response && response.ok) {
-        const saved: GeneratedVisualization = await response.json();
-        setVisualizations((prev) => [saved, ...prev.filter((viz) => viz.id !== saved.id)]);
-        return saved;
-      }
-      if (response) {
-        console.warn("Failed to persist visualization:", await response.text());
+      if (saved && typeof saved === 'object' && 'id' in saved) {
+        const normalized = saved as GeneratedVisualization;
+        setVisualizations((prev) => [normalized, ...prev.filter((viz) => viz.id !== normalized.id)]);
+        return normalized;
       }
     } catch (error) {
       console.error("Error persisting visualization:", error);
     }
     return fallbackVisualization;
-  }, [fetchWithFallback]);
+  }, [sendDirectDatabaseCrud]);
 
   const handleVisualizationGenerated = useCallback(
     async (visualization: GeneratedVisualization) => {
       await persistVisualization(visualization);
     },
     [persistVisualization],
+  );
+
+  const handleDeleteVisualization = useCallback(
+    async (visualization: GeneratedVisualization) => {
+      if (!visualization.id) {
+        return;
+      }
+
+      const previousVisualizations = visualizations;
+
+      setVisualizations((prev) => prev.filter((item) => item.id !== visualization.id));
+
+      const restoreVisualization = () => {
+        setVisualizations((current) => {
+          if (current.some((item) => item.id === visualization.id)) {
+            return current;
+          }
+          const next = [...current];
+          const originalIndex = previousVisualizations.findIndex((item) => item.id === visualization.id);
+          const insertIndex = originalIndex >= 0 && originalIndex <= next.length ? originalIndex : next.length;
+          next.splice(insertIndex, 0, visualization);
+          return next;
+        });
+      };
+
+      try {
+        await sendDirectDatabaseCrud({
+          operation: 'delete',
+          resource: 'lida_visualizations',
+          record_id: visualization.id,
+          content: `Delete visualization "${visualization.title}"`,
+        });
+      } catch (error) {
+        console.error("Error deleting visualization:", error);
+        restoreVisualization();
+      }
+    },
+    [sendDirectDatabaseCrud, visualizations],
   );
 
   const handleVisualizationRequest = useCallback(async (request: {
@@ -816,6 +853,7 @@ export function LidaInterface() {
               console.log("Selected visualization:", viz);
             }}
             onAddToDashboard={handleAddToDashboard}
+            onDeleteVisualization={handleDeleteVisualization}
           />
         </TabsContent>
 

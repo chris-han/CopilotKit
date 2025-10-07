@@ -549,7 +549,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
             <div className="min-h-[360px] overflow-visible">
               <div
                 ref={containerRef}
-                className={`grid gap-4 ${getGridClass(config.grid.cols)}`}
+                className={`relative ${getGridClass(config.grid.cols)}`}
                 style={{
                   gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
                   gridAutoRows: `${gridSize}px`,

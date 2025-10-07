@@ -47,6 +47,8 @@ from data_story_generator import generate_data_story_steps
 from intent_detection import detect_data_story_intent
 from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_manager
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
+from pydantic import BaseModel
+from lida_visualization_store import LidaVisualizationStore
 from fastmcp import FastMCP
 
 load_dotenv()
@@ -145,6 +147,7 @@ _focus_integration: Optional[FocusSampleDataIntegration] = None
 
 # Global FastMCP ECharts server instance
 _echarts_mcp: Optional[FastMCP] = None
+lida_visualization_store = LidaVisualizationStore()
 
 
 app = FastAPI(title="CopilotKit FastAPI Runtime", version="2.0.0")
@@ -178,6 +181,18 @@ CHART_TITLES: Dict[str, str] = {
 }
 
 
+class LidaVisualizationPayload(BaseModel):
+    id: Optional[str] = None
+    title: str
+    description: Optional[str] = ""
+    chart_type: str
+    chart_config: Dict[str, Any]
+    code: Optional[str] = ""
+    insights: Optional[List[str]] = []
+    dataset_name: Optional[str] = None
+    created_at: Optional[str] = None
+
+
 @app.middleware("http")
 async def handle_options(request: Request, call_next):
     if request.method == "OPTIONS":
@@ -196,6 +211,16 @@ def _corsify(response: Response, request: Request) -> Response:
     response.headers.setdefault("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
     response.headers.setdefault("Access-Control-Allow-Headers", "*")
     return response
+
+
+@app.on_event("startup")
+async def _startup_event():
+    if lida_visualization_store.configured:
+        try:
+            await lida_visualization_store.init()
+            logger.info("Initialized LIDA visualization store with Postgres backend")
+        except Exception as exc:  # pragma: no cover - startup path
+            logger.warning("Failed to initialize LIDA visualization store: %s", exc)
 
 
 def _extract_prompt_details(messages: Sequence[Any]) -> Tuple[str, List[str], List[Tuple[str, str]]]:
@@ -947,6 +972,46 @@ async def stream_dashboard_data() -> StreamingResponse:
     }
 
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+
+@app.get("/lida/visualizations")
+async def list_lida_visualizations():
+    """Return persisted LIDA visualizations."""
+
+    visualizations = await lida_visualization_store.fetch_all()
+    return visualizations
+
+
+@app.post("/lida/visualizations")
+async def create_lida_visualization(payload: LidaVisualizationPayload):
+    """Persist or update a LIDA visualization."""
+
+    chart_config = payload.chart_config or {}
+    dataset_name = (
+        payload.dataset_name
+        or chart_config.get("dbtModel")
+        or chart_config.get("dbt_model")
+        or chart_config.get("datasetName")
+        or chart_config.get("dataset_name")
+        or chart_config.get("dataSource")
+        or chart_config.get("data_source")
+    )
+
+    saved = await lida_visualization_store.upsert(
+        {
+            "id": payload.id,
+            "title": payload.title,
+            "description": payload.description,
+            "chart_type": payload.chart_type,
+            "chart_config": chart_config,
+            "code": payload.code,
+            "insights": payload.insights,
+            "dataset_name": dataset_name,
+            "created_at": payload.created_at,
+        }
+    )
+
+    return JSONResponse(saved, status_code=201)
 
 
 async def _generate_strategic_commentary_markdown() -> str:

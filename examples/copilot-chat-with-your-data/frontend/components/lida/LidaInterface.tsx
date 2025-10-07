@@ -43,6 +43,8 @@ interface GeneratedVisualization {
   code: string;
   insights: string[];
   created_at: string;
+  updated_at?: string;
+  dataset_name?: string | null;
 }
 
 
@@ -73,9 +75,58 @@ export function LidaInterface() {
     suggestions?: any[];
   }>>(new Map());
 
-  const baseApiUrl = useMemo(() => {
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8004";
+  const apiCandidates = useMemo(() => {
+    const env = process.env.NEXT_PUBLIC_API_URL;
+    if (env) {
+      return env
+        .split(",")
+        .map((url) => url.trim())
+        .filter(Boolean);
+    }
+    return ["http://localhost:8004", "http://127.0.0.1:8004"];
   }, []);
+
+  const fetchWithFallback = useCallback(
+    async (path: string, init?: RequestInit): Promise<Response | null> => {
+      let lastError: unknown = new Error("No API base URL reachable");
+      for (const base of apiCandidates) {
+        try {
+          const response = await fetch(`${base}${path}`, init);
+          if (!response.ok) {
+            lastError = new Error(await response.text());
+            continue;
+          }
+          return response;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      console.warn("fetchWithFallback failed:", lastError);
+      return null;
+    },
+    [apiCandidates],
+  );
+
+  const primaryApiUrl = apiCandidates[0] ?? "";
+
+  useEffect(() => {
+    const loadPersistedVisualizations = async () => {
+      try {
+        const response = await fetchWithFallback("/lida/visualizations");
+        if (response && response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            setVisualizations(data);
+          }
+        } else if (response) {
+          console.warn("Failed to load persisted visualizations:", await response.text());
+        }
+      } catch (error) {
+        console.error("Error loading persisted visualizations:", error);
+      }
+    };
+    loadPersistedVisualizations();
+  }, [fetchWithFallback]);
 
   // Load dashboards from API on component mount
   useEffect(() => {
@@ -129,9 +180,49 @@ export function LidaInterface() {
     setActiveTab("explore");
   }, []);
 
-  const handleVisualizationGenerated = useCallback((visualization: GeneratedVisualization) => {
-    setVisualizations(prev => [visualization, ...prev]);
-  }, []);
+  const persistVisualization = useCallback(async (visualization: GeneratedVisualization): Promise<GeneratedVisualization> => {
+    const resolvedDataset =
+      visualization.dataset_name ??
+      visualization.chart_config?.dbtModel ??
+      visualization.chart_config?.dbt_model ??
+      visualization.chart_config?.datasetName ??
+      visualization.chart_config?.dataset_name ??
+      visualization.chart_config?.dataSource ??
+      visualization.chart_config?.data_source ??
+      null;
+
+    const fallbackVisualization = { ...visualization, dataset_name: resolvedDataset };
+    setVisualizations((prev) => [fallbackVisualization, ...prev.filter((viz) => viz.id !== visualization.id)]);
+
+    try {
+      const response = await fetchWithFallback("/lida/visualizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...visualization,
+          dataset_name: resolvedDataset,
+        }),
+      });
+      if (response && response.ok) {
+        const saved: GeneratedVisualization = await response.json();
+        setVisualizations((prev) => [saved, ...prev.filter((viz) => viz.id !== saved.id)]);
+        return saved;
+      }
+      if (response) {
+        console.warn("Failed to persist visualization:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error persisting visualization:", error);
+    }
+    return fallbackVisualization;
+  }, [fetchWithFallback]);
+
+  const handleVisualizationGenerated = useCallback(
+    async (visualization: GeneratedVisualization) => {
+      await persistVisualization(visualization);
+    },
+    [persistVisualization],
+  );
 
   const handleVisualizationRequest = useCallback(async (request: {
     goal: string;
@@ -162,7 +253,7 @@ export function LidaInterface() {
     }
 
     try {
-      const response = await fetch(`${baseApiUrl}/lida/visualize`, {
+      const response = await fetchWithFallback("/lida/visualize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -176,6 +267,10 @@ export function LidaInterface() {
           user_id: "web_user",
         }),
       });
+
+      if (!response) {
+        throw new Error("Unable to reach visualization service");
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to generate visualization: ${response.statusText}`);
@@ -229,8 +324,8 @@ export function LidaInterface() {
           created_at: new Date().toISOString(),
         };
 
-        handleVisualizationGenerated(newViz);
-        return { final_visualization: newViz };
+        const saved = await persistVisualization(newViz);
+        return { final_visualization: saved };
       }
 
       return {};
@@ -240,7 +335,7 @@ export function LidaInterface() {
     } finally {
       setIsLoading(false);
     }
-  }, [baseApiUrl, currentDataset, dataSummary, handleVisualizationGenerated, generateCacheKey, insightsCache, CACHE_EXPIRY_MS]);
+  }, [currentDataset, dataSummary, generateCacheKey, insightsCache, CACHE_EXPIRY_MS, fetchWithFallback, persistVisualization]);
 
   const handleChartSelected = useCallback((suggestion: any, config: any) => {
     // Generate final visualization from selected chart
@@ -257,9 +352,11 @@ export function LidaInterface() {
       created_at: new Date().toISOString(),
     };
 
-    handleVisualizationGenerated(newViz);
+    persistVisualization(newViz).catch((error) => {
+      console.error("Failed to persist visualization from suggestion:", error);
+    });
     setActiveTab("gallery"); // Switch to gallery to show the generated chart
-  }, [handleVisualizationGenerated, currentBackendInsights]);
+  }, [persistVisualization, currentBackendInsights]);
 
   // Dashboard management handlers
   const handleCreateDashboard = useCallback(async (name: string, description?: string) => {
@@ -532,7 +629,7 @@ export function LidaInterface() {
           <TabsTrigger value="visualize" disabled={!canExplore}>
             Visualize
           </TabsTrigger>
-          <TabsTrigger value="gallery" disabled={visualizations.length === 0}>
+          <TabsTrigger value="gallery">
             Gallery ({visualizations.length})
           </TabsTrigger>
           <TabsTrigger value="dashboard">
@@ -552,7 +649,7 @@ export function LidaInterface() {
               <CardContent>
                 <FileUpload
                   onFileUploaded={handleFileUploaded}
-                  baseApiUrl={baseApiUrl}
+                  baseApiUrl={primaryApiUrl}
                 />
               </CardContent>
             </Card>
@@ -567,7 +664,7 @@ export function LidaInterface() {
               <CardContent>
                 <DatasetSelector
                   onDatasetSelected={handleDatasetSelected}
-                  baseApiUrl={baseApiUrl}
+                  baseApiUrl={primaryApiUrl}
                 />
               </CardContent>
             </Card>
@@ -620,7 +717,6 @@ export function LidaInterface() {
                     <button
                       onClick={() => setActiveTab("gallery")}
                       className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                      disabled={visualizations.length === 0}
                     >
                       View Gallery
                     </button>
@@ -670,7 +766,7 @@ export function LidaInterface() {
               onChartSelected={handleChartSelected}
               isLoading={isLoading}
               recentVisualizations={visualizations.slice(0, 3)}
-              baseApiUrl={baseApiUrl}
+              baseApiUrl={primaryApiUrl}
               userId="web_user"
               datasetName={currentDataset || undefined}
             />

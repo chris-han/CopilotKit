@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   Plus,
   Settings,
@@ -88,6 +89,127 @@ const SPAN_OPTIONS = [
   { value: "col-span-1 md:col-span-2", label: "1-2 Columns (Responsive)" },
   { value: "col-span-1 md:col-span-2 lg:col-span-4", label: "1-2-4 Columns (Responsive)" },
 ];
+
+const DATA_CONFIG_MAP = {
+  dataSource: ["dataSource", "data_source"],
+  metricField: ["metricField", "metric_field"],
+  dimensionField: ["dimensionField", "dimension_field"],
+  filters: ["filters"],
+  dbtModel: ["dbtModel", "dbt_model"],
+} as const;
+
+type DataConfigKey = keyof typeof DATA_CONFIG_MAP;
+
+function normalizeDataConfigUpdates(updates: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...updates };
+  for (const key of Object.keys(updates)) {
+    if (key in DATA_CONFIG_MAP) {
+      const aliases = DATA_CONFIG_MAP[key as DataConfigKey];
+      for (const alias of aliases) {
+        normalized[alias] = updates[key];
+      }
+    }
+  }
+  return normalized;
+}
+
+function getConfigValue(item: DashboardItem, key: DataConfigKey) {
+  const config = item.config ?? {};
+  const aliases = DATA_CONFIG_MAP[key] ?? [key];
+  for (const alias of aliases) {
+    if (alias in config) {
+      return (config as Record<string, unknown>)[alias];
+    }
+  }
+  return undefined;
+}
+
+const DBT_MODEL_MAP: Record<
+  string,
+  { name: string; path: string; description: string; sql: string }
+> = {
+  salesData: {
+    name: "Sales Performance Model",
+    path: "models/marts/finance/sales_performance.sql",
+    description: "Aggregates revenue, profit, and expense metrics by month for executive dashboards.",
+    sql: `with source as (
+  select * from {{ ref('fct_sales_transactions') }}
+),
+calendar as (
+  select * from {{ ref('dim_calendar') }}
+)
+select
+  c.month_start as billing_period_start,
+  sum(s.revenue) as revenue,
+  sum(s.profit) as profit,
+  sum(s.expense) as expense,
+  sum(s.customer_count) as customers
+from source s
+left join calendar c
+  on s.date_id = c.date_id
+group by 1
+order by 1;`,
+  },
+  productData: {
+    name: "Product Performance Model",
+    path: "models/marts/finance/product_performance.sql",
+    description: "Computes sales, units, and growth percentages by product for ranking visualizations.",
+    sql: `select
+  p.product_id,
+  p.product_name,
+  sum(f.revenue) as sales,
+  sum(f.units) as units,
+  avg(f.growth_pct) as growth_percentage
+from {{ ref('dim_product') }} p
+join {{ ref('fct_product_revenue') }} f
+  on p.product_id = f.product_id
+group by 1,2
+order by sales desc;`,
+  },
+  categoryData: {
+    name: "Category Mix Model",
+    path: "models/marts/finance/category_mix.sql",
+    description: "Provides revenue share and growth metrics across product categories.",
+    sql: `select
+  c.category_name,
+  sum(f.revenue) as revenue,
+  sum(f.revenue) / sum(sum(f.revenue)) over () as revenue_share,
+  avg(f.growth_pct) as growth_percentage
+from {{ ref('dim_category') }} c
+join {{ ref('fct_category_revenue') }} f
+  on c.category_id = f.category_id
+group by 1
+order by revenue desc;`,
+  },
+  regionalData: {
+    name: "Regional Sales Model",
+    path: "models/marts/finance/regional_sales.sql",
+    description: "Summarizes sales and market share by region for geographic comparisons.",
+    sql: `select
+  r.region_name,
+  sum(f.revenue) as revenue,
+  sum(f.revenue) / sum(sum(f.revenue)) over () as market_share
+from {{ ref('dim_region') }} r
+join {{ ref('fct_regional_revenue') }} f
+  on r.region_id = f.region_id
+group by 1
+order by revenue desc;`,
+  },
+  demographicsData: {
+    name: "Customer Demographics Model",
+    path: "models/marts/finance/customer_demographics.sql",
+    description: "Tracks spend distribution by age cohort for demographic analysis.",
+    sql: `select
+  d.age_group,
+  sum(f.spend) as total_spend,
+  sum(f.customers) as customers
+from {{ ref('dim_demographic') }} d
+join {{ ref('fct_customer_spend') }} f
+  on d.demographic_id = f.demographic_id
+group by 1
+order by total_spend desc;`,
+  },
+};
 
 function truncateTitle(title: string, maxLength = 18): string {
   if (title.length <= maxLength) return title;
@@ -894,7 +1016,7 @@ export function DashboardSettingsCard({ config, onChange }: DataAssistantProps) 
 export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAssistantProps & {
   selectedItemId?: string | null;
 }) {
-  const { sendDirectUIUpdate, isRunning } = useAgUiAgent();
+  const { sendDirectUIUpdate, sendAIMessage, isRunning } = useAgUiAgent();
 
   const selectedItemData = selectedItemId ? config.items.find(item => item.id === selectedItemId) : null;
 
@@ -925,6 +1047,12 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
     onChange(newConfig);
   };
 
+  const updateItemConfig = (itemId: string, updates: Record<string, unknown>) => {
+    const currentItem = config.items.find(item => item.id === itemId);
+    const mergedConfig = { ...(currentItem?.config ?? {}), ...normalizeDataConfigUpdates(updates) };
+    updateItem(itemId, { config: mergedConfig });
+  };
+
   const removeItem = (itemId: string) => {
     const newConfig = {
       ...config,
@@ -943,9 +1071,10 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="general">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="layout">Layout</TabsTrigger>
+            <TabsTrigger value="data">Data</TabsTrigger>
           </TabsList>
 
           <TabsContent value="general" className="space-y-4">
@@ -1039,6 +1168,119 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
                 Remove Item
               </Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="data" className="space-y-4">
+            {selectedItemData.type === "chart" ? (
+              <>
+                {!(getConfigValue(selectedItemData, "dataSource") && getConfigValue(selectedItemData, "metricField") && getConfigValue(selectedItemData, "dimensionField")) && (
+                  <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      This visualization doesn&apos;t have data configured yet. Launch the LIDA data exploration workflow to map fields automatically.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        sendAIMessage(`Launch LIDA data exploration for "${selectedItemData.title}" (${selectedItemData.id})`);
+                      }}
+                      disabled={isRunning}
+                    >
+                      Launch LIDA Data Explore
+                    </Button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="data-source">Data Source</Label>
+                  <Input
+                    id="data-source"
+                    placeholder="e.g., salesData"
+                    value={(getConfigValue(selectedItemData, "dataSource") as string) ?? ""}
+                    onChange={(e) => updateItemConfig(selectedItemData.id, { dataSource: e.target.value })}
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="metric-field">Metric Field</Label>
+                  <Input
+                    id="metric-field"
+                    placeholder="e.g., revenue"
+                    value={(getConfigValue(selectedItemData, "metricField") as string) ?? ""}
+                    onChange={(e) => updateItemConfig(selectedItemData.id, { metricField: e.target.value })}
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dimension-field">Dimension Field</Label>
+                  <Input
+                    id="dimension-field"
+                    placeholder="e.g., month"
+                    value={(getConfigValue(selectedItemData, "dimensionField") as string) ?? ""}
+                    onChange={(e) => updateItemConfig(selectedItemData.id, { dimensionField: e.target.value })}
+                    disabled={isRunning}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="filters">Filters (JSON)</Label>
+                  <Textarea
+                    id="filters"
+                    placeholder='e.g., {"region": "EMEA"}'
+                    value={
+                      typeof getConfigValue(selectedItemData, "filters") === "string"
+                        ? (getConfigValue(selectedItemData, "filters") as string)
+                        : getConfigValue(selectedItemData, "filters")
+                        ? JSON.stringify(getConfigValue(selectedItemData, "filters"), null, 2)
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      let parsed: string | Record<string, unknown> = value;
+                      try {
+                        parsed = value ? JSON.parse(value) : "";
+                      } catch {
+                        parsed = value;
+                      }
+                      updateItemConfig(selectedItemData.id, { filters: parsed });
+                    }}
+                    rows={4}
+                    disabled={isRunning}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Provide filters as JSON (stored as-is if parsing fails).
+                  </p>
+                </div>
+                {(() => {
+                  const dataSource = ((getConfigValue(selectedItemData, "dbtModel") ||
+                    getConfigValue(selectedItemData, "dataSource")) as string) ?? "";
+                  const dbtModel = DBT_MODEL_MAP[dataSource];
+                  if (!dbtModel) return null;
+                  return (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          View dbt Model
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>{dbtModel.name}</DialogTitle>
+                          <DialogDescription className="space-y-1">
+                            <p>{dbtModel.description}</p>
+                            <p className="text-xs text-muted-foreground">Path: {dbtModel.path}</p>
+                          </DialogDescription>
+                        </DialogHeader>
+                        <pre className="max-h-[360px] overflow-auto rounded-md bg-muted p-4 text-xs">
+                          <code>{dbtModel.sql}</code>
+                        </pre>
+                      </DialogContent>
+                    </Dialog>
+                  );
+                })()}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Data configuration is available for chart items.
+              </p>
+            )}
           </TabsContent>
         </Tabs>
       </CardContent>

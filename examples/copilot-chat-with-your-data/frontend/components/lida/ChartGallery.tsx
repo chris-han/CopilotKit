@@ -5,7 +5,7 @@ import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye,
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "../ui/dialog";
 import { Button } from "../ui/button";
 
 interface GeneratedVisualization {
@@ -17,6 +17,8 @@ interface GeneratedVisualization {
   code: string;
   insights: string[];
   created_at: string;
+  updated_at?: string;
+  dataset_name?: string | null;
 }
 
 interface ChartGalleryProps {
@@ -35,11 +37,110 @@ const CHART_TYPE_ICONS = {
   auto: Sparkles,
 };
 
+const DBT_MODEL_MAP: Record<
+  string,
+  { name: string; path: string; description: string; sql: string }
+> = {
+  salesData: {
+    name: "Sales Performance Model",
+    path: "models/marts/finance/sales_performance.sql",
+    description: "Aggregates revenue, profit, and expense metrics by month for executive dashboards.",
+    sql: `with source as (
+  select * from {{ ref('fct_sales_transactions') }}
+),
+calendar as (
+  select * from {{ ref('dim_calendar') }}
+)
+select
+  c.month_start as billing_period_start,
+  sum(s.revenue) as revenue,
+  sum(s.profit) as profit,
+  sum(s.expense) as expense,
+  sum(s.customer_count) as customers
+from source s
+left join calendar c
+  on s.date_id = c.date_id
+group by 1
+order by 1;`,
+  },
+  productData: {
+    name: "Product Performance Model",
+    path: "models/marts/finance/product_performance.sql",
+    description: "Computes sales, units, and growth percentages by product for ranking visualizations.",
+    sql: `select
+  p.product_id,
+  p.product_name,
+  sum(f.revenue) as sales,
+  sum(f.units) as units,
+  avg(f.growth_pct) as growth_percentage
+from {{ ref('dim_product') }} p
+join {{ ref('fct_product_revenue') }} f
+  on p.product_id = f.product_id
+group by 1,2
+order by sales desc;`,
+  },
+  categoryData: {
+    name: "Category Mix Model",
+    path: "models/marts/finance/category_mix.sql",
+    description: "Provides revenue share and growth metrics across product categories.",
+    sql: `select
+  c.category_name,
+  sum(f.revenue) as revenue,
+  sum(f.revenue) / sum(sum(f.revenue)) over () as revenue_share,
+  avg(f.growth_pct) as growth_percentage
+from {{ ref('dim_category') }} c
+join {{ ref('fct_category_revenue') }} f
+  on c.category_id = f.category_id
+group by 1
+order by revenue desc;`,
+  },
+  regionalData: {
+    name: "Regional Sales Model",
+    path: "models/marts/finance/regional_sales.sql",
+    description: "Summarizes sales and market share by region for geographic comparisons.",
+    sql: `select
+  r.region_name,
+  sum(f.revenue) as revenue,
+  sum(f.revenue) / sum(sum(f.revenue)) over () as market_share
+from {{ ref('dim_region') }} r
+join {{ ref('fct_regional_revenue') }} f
+  on r.region_id = f.region_id
+group by 1
+order by revenue desc;`,
+  },
+  demographicsData: {
+    name: "Customer Demographics Model",
+    path: "models/marts/finance/customer_demographics.sql",
+    description: "Tracks spend distribution by age cohort for demographic analysis.",
+    sql: `select
+  d.age_group,
+  sum(f.spend) as total_spend,
+  sum(f.customers) as customers
+from {{ ref('dim_demographic') }} d
+join {{ ref('fct_customer_spend') }} f
+  on d.demographic_id = f.demographic_id
+group by 1
+order by total_spend desc;`,
+  },
+};
+
 export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+
+  const normalizedSelectedInsights = useMemo(() => {
+    if (!selectedViz) return [];
+    const raw = selectedViz.insights;
+    if (Array.isArray(raw)) {
+      return raw as string[];
+    }
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      return [raw];
+    }
+    return [];
+  }, [selectedViz]);
 
   const sortedVisualizations = useMemo(() => {
     return [...visualizations].sort((a, b) =>
@@ -100,6 +201,14 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
   };
 
   const renderVisualizationCard = (viz: GeneratedVisualization) => {
+    const insightsRaw = viz.insights;
+    let insights: string[] = [];
+    if (Array.isArray(insightsRaw)) {
+      insights = insightsRaw as string[];
+    } else if (typeof insightsRaw === "string" && insightsRaw.trim().length > 0) {
+      insights = [insightsRaw];
+    }
+
     const IconComponent = getChartIcon(viz.chart_type);
 
     return (
@@ -161,20 +270,20 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
           )}
 
           {/* Insights */}
-          {viz.insights && viz.insights.length > 0 && (
+          {insights.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs font-medium">Key Insights:</p>
               <ul className="text-xs text-muted-foreground space-y-1">
-                {viz.insights.slice(0, 2).map((insight, index) => (
+                {insights.slice(0, 2).map((insight, index) => (
                   <li key={index} className="flex items-start space-x-1">
                     <span className="w-1 h-1 bg-muted-foreground rounded-full mt-1.5 flex-shrink-0"></span>
                     <span className="line-clamp-1">{insight}</span>
                   </li>
                 ))}
               </ul>
-              {viz.insights.length > 2 && (
+              {insights.length > 2 && (
                 <p className="text-xs text-muted-foreground">
-                  +{viz.insights.length - 2} more insights
+                  +{insights.length - 2} more insights
                 </p>
               )}
             </div>
@@ -185,6 +294,14 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
   };
 
   const renderVisualizationList = (viz: GeneratedVisualization) => {
+    const insightsRaw = viz.insights;
+    let insights: string[] = [];
+    if (Array.isArray(insightsRaw)) {
+      insights = insightsRaw as string[];
+    } else if (typeof insightsRaw === "string" && insightsRaw.trim().length > 0) {
+      insights = [insightsRaw];
+    }
+
     const IconComponent = getChartIcon(viz.chart_type);
 
     return (
@@ -241,15 +358,15 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 </p>
               )}
 
-              {viz.insights && viz.insights.length > 0 && (
+              {insights.length > 0 && (
                 <div className="flex items-center space-x-2">
                   <span className="text-xs font-medium">Insights:</span>
                   <span className="text-xs text-muted-foreground truncate">
-                    {viz.insights[0]}
+                    {insights[0]}
                   </span>
-                  {viz.insights.length > 1 && (
+                  {insights.length > 1 && (
                     <span className="text-xs text-muted-foreground">
-                      +{viz.insights.length - 1} more
+                      +{insights.length - 1} more
                     </span>
                   )}
                 </div>
@@ -335,7 +452,7 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
       {selectedViz && (
         <Card className="border-primary">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center space-x-2">
                   <Eye className="h-5 w-5" />
@@ -343,22 +460,53 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 </CardTitle>
                 <CardDescription>{selectedViz.title}</CardDescription>
               </div>
-              <button
-                onClick={() => {
-                  console.log('Button clicked, selectedViz:', selectedViz?.title);
-                  if (selectedViz) {
-                    handleAddToDashboard(selectedViz);
-                  } else {
-                    console.error('No selectedViz available');
-                  }
-                }}
-                className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                title="Add to Dashboard"
-                disabled={!selectedViz}
-              >
-                <Plus className="h-4 w-4" />
-                <span>Add to Dashboard</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const modelKey =
+                    selectedViz.chart_config?.dbtModel ||
+                    selectedViz.chart_config?.dbt_model ||
+                    selectedViz.dataset_name ||
+                    selectedViz.chart_config?.datasetName ||
+                    selectedViz.chart_config?.dataset_name ||
+                    selectedViz.chart_config?.dataSource ||
+                    selectedViz.chart_config?.data_source;
+                  const dbtModel =
+                    typeof modelKey === "string" ? DBT_MODEL_MAP[modelKey] : undefined;
+                  if (!dbtModel) return null;
+                  return (
+                    <Dialog>
+                      <DialogContent className="max-w-3xl">
+                        <DialogHeader>
+                          <DialogTitle>{dbtModel.name}</DialogTitle>
+                          <DialogDescription className="space-y-1">
+                            <p>{dbtModel.description}</p>
+                            <p className="text-xs text-muted-foreground">Path: {dbtModel.path}</p>
+                          </DialogDescription>
+                        </DialogHeader>
+                        <pre className="max-h-[360px] overflow-auto rounded-md bg-muted p-4 text-xs">
+                          <code>{dbtModel.sql}</code>
+                        </pre>
+                      </DialogContent>
+                    </Dialog>
+                  );
+                })()}
+                <button
+                  onClick={() => {
+                    console.log('Button clicked, selectedViz:', selectedViz?.title);
+                    if (selectedViz) {
+                      handleAddToDashboard(selectedViz);
+                    } else {
+                      console.error('No selectedViz available');
+                    }
+                  }}
+                  className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                  title="Add to Dashboard"
+                  disabled={!selectedViz}
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add to Dashboard</span>
+                </button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -366,14 +514,28 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
               <TabsList>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
                 <TabsTrigger value="insights">
-                  Insights {selectedViz.insights && selectedViz.insights.length > 0 && (
+                  Insights {normalizedSelectedInsights.length > 0 && (
                     <span className="ml-1 text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">
-                      {selectedViz.insights.length}
+                      {normalizedSelectedInsights.length}
                     </span>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="code">Code</TabsTrigger>
                 <TabsTrigger value="config">Config</TabsTrigger>
+                {(() => {
+                  const modelKey =
+                    selectedViz.chart_config?.dbtModel ||
+                    selectedViz.chart_config?.dbt_model ||
+                    selectedViz.dataset_name ||
+                    selectedViz.chart_config?.datasetName ||
+                    selectedViz.chart_config?.dataset_name ||
+                    selectedViz.chart_config?.dataSource ||
+                    selectedViz.chart_config?.data_source;
+                  if (!modelKey) return null;
+                  return (
+                    <TabsTrigger value="dbt">dbt Model</TabsTrigger>
+                  );
+                })()}
               </TabsList>
 
               <TabsContent value="preview" className="space-y-4">
@@ -401,13 +563,13 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
               </TabsContent>
 
               <TabsContent value="insights" className="space-y-3">
-                {selectedViz.insights && selectedViz.insights.length > 0 ? (
+                {normalizedSelectedInsights.length > 0 ? (
                   <div className="space-y-4">
                     <div className="text-sm text-muted-foreground">
-                      {selectedViz.insights.length} AI-generated insights about your data:
+                      {normalizedSelectedInsights.length} AI-generated insights about your data:
                     </div>
                     <ul className="space-y-3">
-                      {selectedViz.insights.map((insight, index) => (
+                      {normalizedSelectedInsights.map((insight, index) => (
                         <li key={index} className="flex items-start space-x-3">
                           <span className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></span>
                           <div className="text-sm leading-relaxed">
@@ -442,6 +604,38 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                   <code>{JSON.stringify(selectedViz.chart_config, null, 2)}</code>
                 </pre>
               </TabsContent>
+
+              {(() => {
+                const modelKey =
+                  selectedViz.chart_config?.dbtModel ||
+                  selectedViz.chart_config?.dbt_model ||
+                  selectedViz.dataset_name ||
+                  selectedViz.chart_config?.datasetName ||
+                  selectedViz.chart_config?.dataset_name ||
+                  selectedViz.chart_config?.dataSource ||
+                  selectedViz.chart_config?.data_source;
+                const dbtModel =
+                  typeof modelKey === "string" ? DBT_MODEL_MAP[modelKey] : undefined;
+                if (!dbtModel) return null;
+                return (
+                  <TabsContent value="dbt">
+                    <div className="space-y-3">
+                      <div>
+                        <h4 className="text-sm font-semibold">{dbtModel.name}</h4>
+                        <p className="text-xs text-muted-foreground">
+                          {dbtModel.description}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Path: {dbtModel.path}
+                        </p>
+                      </div>
+                      <pre className="bg-muted p-4 rounded-md text-xs overflow-auto max-h-[360px]">
+                        <code>{dbtModel.sql}</code>
+                      </pre>
+                    </div>
+                  </TabsContent>
+                );
+              })()}
             </Tabs>
           </CardContent>
         </Card>

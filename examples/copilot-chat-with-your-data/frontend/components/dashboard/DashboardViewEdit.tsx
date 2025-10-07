@@ -302,15 +302,19 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
 
   // Handle dashboard item clicks in edit mode
   const handleItemClick = useCallback((itemId: string, itemTitle: string, event?: React.MouseEvent) => {
+    console.log('🔍 handleItemClick called:', { itemId, itemTitle, mode, hasSendDirectUIUpdate: !!sendDirectUIUpdate });
+
     if (mode === "edit") {
       // Prevent event bubbling to dashboard wrapper
       event?.stopPropagation();
 
-      // Send direct UI update message to notify Data Assistant panel
-      // This "supersizes" the item click over dashboard clicks
+      console.log('🔵 Sending DirectUIUpdate for item properties:', itemId);
+      // Use DirectUIUpdate message over AgUI protocol for immediate UI navigation (No LLM)
       sendDirectUIUpdate(`Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`);
 
-      console.log(`Dashboard item clicked: ${itemTitle} (${itemId}) - Data Assistant showing item properties`);
+      console.log(`✅ Dashboard item clicked: ${itemTitle} (${itemId}) - Data Assistant showing item properties`);
+    } else {
+      console.log('⚠️ Item click ignored - not in edit mode. Current mode:', mode);
     }
   }, [mode, sendDirectUIUpdate]);
 

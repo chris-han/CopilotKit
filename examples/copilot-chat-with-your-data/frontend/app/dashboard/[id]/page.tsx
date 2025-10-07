@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Edit, Eye, ArrowLeft } from "lucide-react";
 import { Dashboard } from "@/types/dashboard";
 import { useDashboardContext } from "@/contexts/DashboardContext";
+import { useAgUiAgent } from "@/components/ag-ui/AgUiProvider";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -23,6 +24,7 @@ export default function DashboardPage() {
 
   // Use dashboard context
   const { setDashboard: setContextDashboard, setMode: setContextMode, setOnDashboardChange, setActiveSection } = useDashboardContext();
+  const { sendDirectUIUpdate } = useAgUiAgent();
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -161,8 +163,8 @@ export default function DashboardPage() {
             <h1
               className={`text-2xl font-bold ${mode === "edit" ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
               onClick={mode === "edit" ? () => {
-                // Direct context update - no LLM involved
-                setActiveSection("dashboard-title");
+                // Use DirectUIUpdate message over AgUI protocol for immediate UI navigation (No LLM)
+                sendDirectUIUpdate("Show dashboard title editor in Data Assistant");
               } : undefined}
               title={mode === "edit" ? "Click to edit dashboard properties in Data Assistant" : undefined}
             >

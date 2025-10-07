@@ -34,6 +34,48 @@ This ensures teams can continue using existing functionality while gradually ado
 - **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `frontend/data/dashboard-data.ts` and `backend/dashboard_data.py`.
 - **External Services**: Azure OpenAI streams completions and powers the agent; Tavily Search augments answers when the runtime triggers `searchInternet`.
 
+## Data Assistant Communication Protocol
+
+**CRITICAL PRINCIPLE**: Separate UI navigation from AI interactions to avoid unnecessary LLM invocations and ensure immediate UI responsiveness.
+
+### UI Navigation (DirectUIUpdate Messages - No LLM)
+Use **DirectUIUpdate messages** over AgUI protocol for immediate UI state changes without LLM processing:
+
+- **Dashboard item clicks**: Show/hide Data Assistant panel sections
+- **Dashboard title clicks**: Switch between Dashboard Properties view
+- **Dashboard preview clicks**: Show Add Items and Dashboard Settings
+- **Mode changes**: Enter/exit edit mode
+- **Panel navigation**: Switch between different assistant panel views
+
+```typescript
+// ✅ CORRECT - DirectUIUpdate messages for UI navigation (No LLM)
+onClick={() => sendDirectUIUpdate("Show dashboard title editor in Data Assistant")}
+onClick={() => sendDirectUIUpdate(`Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`)}
+```
+
+**Note**: DirectUIUpdate messages are processed by `handleDirectUIUpdate` in AgUiProvider, which updates the DashboardContext directly without invoking the LLM. This maintains the protocol-based architecture while ensuring immediate UI responsiveness.
+
+### AI Interactions (AI Messages - With LLM)
+Use **AI messages via AgUI protocol** only for actions requiring AI processing:
+
+- **Save/Reset operations**: Actual data persistence and validation
+- **Content editing**: Dashboard name, description, item properties changes
+- **Item creation**: Adding new dashboard components
+- **Settings changes**: Grid layout, dashboard configuration
+- **Conversational queries**: User asking questions about data
+
+```typescript
+// ✅ CORRECT - AI messages for AI-powered actions
+onClick={() => sendAIMessage("Save all dashboard changes")}
+onClick={() => sendAIMessage("Add a new Chart item to the dashboard")}
+```
+
+### Benefits of This Architecture
+- **Immediate UI feedback** for navigation actions (0ms delay)
+- **Proper AI integration** for content and data operations
+- **Optimal performance** by avoiding unnecessary API calls
+- **Clear architectural boundaries** between UI state and AI logic
+
 ## Frontend Responsibilities
 - Maintain layout and styling in Tailwind (`frontend/app/globals.css`) with highlight animations consumed by `AssistantMessage` and AG-UI custom events.
 - Keep `AgUiSidebar` fixed on wide viewports, labelled "Data Assistant", and wired to markdown rendering + highlight dispatch through `frontend/lib/chart-highlighting.ts`.

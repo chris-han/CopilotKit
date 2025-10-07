@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { AssistantMessage } from "../AssistantMessage";
 import { DataStorySuggestion } from "../data-story/DataStorySuggestion";
@@ -22,6 +22,12 @@ type AgUiSidebarProps = {
 export function AgUiSidebar({ open, docked, onClose }: AgUiSidebarProps) {
   const { messages, sendAIMessage, isRunning, error } = useAgUiAgent();
   const dashboardContext = useDashboardContext();
+
+  // Debug: Log activeSection and selectedItemId changes
+  useEffect(() => {
+    console.log('🎯 AgUiSidebar - activeSection changed:', dashboardContext.activeSection);
+    console.log('🎯 AgUiSidebar - selectedItemId:', dashboardContext.selectedItemId);
+  }, [dashboardContext.activeSection, dashboardContext.selectedItemId]);
   const {
     state: dataStoryState,
     startStory,

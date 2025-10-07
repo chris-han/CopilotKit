@@ -51,7 +51,7 @@ Instead of replacing the existing system, we will:
 
 ### Frontend Communication Enhancements (COMPLETED)
 - **AgUI Protocol Integration**: All dashboard editing operations properly integrated with AgUI protocol
-- **Direct Context Updates**: Immediate UI state management for navigation actions
+- **DirectUIUpdate Messages**: Immediate UI state management for navigation actions via protocol
 - **Hybrid Architecture**: Balanced approach using both direct updates and AgUI protocol where appropriate
 
 ## Sequential Implementation Tasks
@@ -404,8 +404,8 @@ Instead of replacing the existing system, we will:
 
 A critical architectural principle was discovered during implementation: **Separation of UI navigation from AI interactions** to ensure optimal user experience and performance.
 
-#### **UI Navigation (Direct Context Updates - No LLM)**
-Use **direct context updates** for immediate UI state changes that require no AI processing:
+#### **UI Navigation (DirectUIUpdate Messages - No LLM)**
+Use **DirectUIUpdate messages** over AgUI protocol for immediate UI state changes without LLM processing:
 
 - **Dashboard item clicks**: Show/hide Data Assistant panel sections
 - **Dashboard title clicks**: Switch between Dashboard Properties view
@@ -416,25 +416,23 @@ Use **direct context updates** for immediate UI state changes that require no AI
 - **Tab switching**: Navigate between dashboard sections
 
 ```typescript
-// ✅ CORRECT - Direct context updates for UI navigation (No LLM)
-const handleItemClick = (itemId: string) => {
-  setSelectedItemId(itemId);
-  setActiveSection("item-properties");
+// ✅ CORRECT - DirectUIUpdate messages for UI navigation (No LLM)
+const handleItemClick = (itemId: string, itemTitle: string) => {
+  sendDirectUIUpdate(`Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`);
 };
 
 const handleModeChange = (mode: "edit" | "view") => {
-  setMode(mode);
-  if (mode === "edit") {
-    setActiveSection("dashboard-preview");
-  } else {
-    setActiveSection(null);
-    setSelectedItemId(null);
-  }
+  sendDirectUIUpdate(`Switch to ${mode} mode`, {
+    action_type: 'state_change',
+    ui_context: { mode }
+  });
 };
 ```
 
-#### **AI Interactions (AgUI Protocol - With LLM)**
-Use **AgUI protocol** only for actions requiring AI processing or content generation:
+**Note**: DirectUIUpdate messages are processed by `handleDirectUIUpdate` in AgUiProvider, which updates the DashboardContext directly without invoking the LLM. This maintains the protocol-based architecture while ensuring immediate UI responsiveness.
+
+#### **AI Interactions (AI Messages - With LLM)**
+Use **AI messages via AgUI protocol** only for actions requiring AI processing or content generation:
 
 - **Save/Reset operations**: Data persistence and validation
 - **Content editing**: Dashboard name, description, item properties changes
@@ -445,17 +443,17 @@ Use **AgUI protocol** only for actions requiring AI processing or content genera
 - **Data analysis**: Interpreting metrics and generating insights
 
 ```typescript
-// ✅ CORRECT - AgUI protocol for AI-powered actions
+// ✅ CORRECT - AI messages for AI-powered actions
 const handleSave = () => {
-  sendMessage("Save all dashboard changes");
+  sendAIMessage("Save all dashboard changes");
 };
 
 const handleAddItem = (itemType: string) => {
-  sendMessage(`Add a new ${itemType} item to the dashboard`);
+  sendAIMessage(`Add a new ${itemType} item to the dashboard`);
 };
 
 const handlePropertyChange = (property: string, value: string) => {
-  sendMessage(`Update ${property} to "${value}"`);
+  sendAIMessage(`Update ${property} to "${value}"`);
 };
 ```
 

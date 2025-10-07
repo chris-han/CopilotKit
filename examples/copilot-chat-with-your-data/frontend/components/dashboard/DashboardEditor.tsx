@@ -671,7 +671,7 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
               {(dragState.isDragging || resizeState.isResizing) && (
                 <div className="absolute inset-0 pointer-events-none z-0">
                   <div
-                    className="grid gap-4 opacity-20"
+                    className="grid gap-4 opacity-30"
                     style={{
                       gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
                       gridAutoRows: `${gridSize}px`,
@@ -689,27 +689,6 @@ export function DashboardEditor({ config, onChange }: DashboardEditorProps) {
                 </div>
               )}
 
-              {/* Grid overlay for visual feedback */}
-              {(dragState.isDragging || resizeState.isResizing) && (
-                <div className="absolute inset-0 pointer-events-none z-0">
-                  <div
-                    className="grid gap-4 opacity-20"
-                    style={{
-                      gridTemplateColumns: `repeat(${config.grid.cols}, 1fr)`,
-                      gridAutoRows: `${gridSize}px`,
-                      width: '100%',
-                      height: '100%',
-                    }}
-                  >
-                    {Array.from({ length: config.grid.cols * 10 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="border border-primary/30 rounded"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
               </div>
             </div>
 

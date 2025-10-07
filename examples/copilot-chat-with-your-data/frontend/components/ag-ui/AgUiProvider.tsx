@@ -28,6 +28,7 @@ import {
   type DataStoryEvent,
   type DataStoryStep,
 } from "../../hooks/useDataStory";
+import { useDashboardContext } from "../../contexts/DashboardContext";
 
 const audioEnv = process.env.NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED;
 const AUDIO_NARRATION_ENABLED =
@@ -106,6 +107,7 @@ type ProviderProps = PropsWithChildren<{
 }>;
 
 export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderProps) {
+  const dashboardContext = useDashboardContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -905,25 +907,46 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
 
   const handleDirectUIUpdate = useCallback((message: DirectUIUpdateMessage) => {
     // Handle immediate UI updates without LLM processing
-    console.log('Direct UI Update:', message.content, {
+    console.log('🔵 Direct UI Update received:', message.content, {
       target: message.target_component,
       action: message.action_type,
       context: message.ui_context
     });
 
-    // Process based on action type and target component
-    if (message.action_type === 'navigation') {
-      if (message.content.includes("Show item properties")) {
-        console.log('→ Navigation: Show item properties panel');
-      } else if (message.content.includes("Switch to") && message.content.includes("mode")) {
-        console.log('→ Navigation: Change dashboard mode');
+    // Process based on content patterns (default to navigation if action_type not specified)
+    if (message.content.includes("Show item properties")) {
+      console.log('→ Navigation: Show item properties panel');
+      // Extract itemId from the message content (format: "Show item properties for "Title" (itemId) in Data Assistant panel")
+      const itemIdMatch = message.content.match(/\(([^)]+)\)/);
+      console.log('🔍 Regex match result:', { itemIdMatch, dashboardContext: !!dashboardContext });
+
+      if (itemIdMatch && itemIdMatch[1]) {
+        const itemId = itemIdMatch[1];
+        console.log('✅ Setting selectedItemId:', itemId);
+        dashboardContext.setSelectedItemId(itemId);
+        console.log('✅ Setting activeSection to "item-properties"');
+        dashboardContext.setActiveSection("item-properties");
+        console.log('✅ Item properties panel should now be visible');
+      } else {
+        console.error('❌ Failed to extract itemId from message:', message.content);
       }
-    } else if (message.action_type === 'form_update') {
-      if (message.content.includes("Add new") && message.content.includes("item to dashboard")) {
-        console.log('→ Form Update: Add item to dashboard canvas');
-      }
-    } else if (message.action_type === 'state_change') {
-      console.log('→ State Change: Update UI state');
+    } else if (message.content.includes("Show dashboard title editor")) {
+      console.log('→ Navigation: Show dashboard title editor');
+      dashboardContext.setActiveSection("dashboard-title");
+    } else if (message.content.includes("Show dashboard preview")) {
+      console.log('→ Navigation: Show dashboard preview and settings');
+      dashboardContext.setActiveSection("dashboard-preview");
+    } else if (message.content.includes("Close Data Assistant")) {
+      console.log('→ Navigation: Close Data Assistant panel');
+      dashboardContext.setActiveSection(null);
+      dashboardContext.setSelectedItemId(null);
+    } else if (message.content.includes("Switch to") && message.content.includes("mode")) {
+      console.log('→ State Change: Change dashboard mode');
+      // Could extract mode from message if needed
+    } else if (message.content.includes("Add new") && message.content.includes("item to dashboard")) {
+      console.log('→ Form Update: Add item to dashboard canvas');
+    } else {
+      console.log('→ Unhandled DirectUIUpdate:', message.content);
     }
 
     // Add the message to chat history for reference
@@ -933,7 +956,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
       role: "user",
       content: `[Direct UI Update] ${message.content}`
     }]);
-  }, []);
+  }, [dashboardContext]);
 
   const processMessage = useCallback(
     (message: AgUIMessage) => {

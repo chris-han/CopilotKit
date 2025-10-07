@@ -34,7 +34,7 @@ This ensures teams can continue using existing functionality while gradually ado
    - Whether similar functionality is already planned or completed
 
 2. **Design First, Code Second**: Create a clear design that follows the established patterns:
-   - Identify if your feature requires UI navigation (direct context updates) or AI interactions (AgUI protocol)
+   - Identify if your feature requires UI navigation (DirectUIUpdate messages) or AI interactions (AI messages via AgUI protocol)
    - Determine integration points with existing AG-UI, ECharts, and Data Assistant systems
    - Plan for LIDA intelligence enhancement where applicable
    - Consider persona-aware visualization selection if creating analytics features
@@ -62,8 +62,8 @@ The LIDA-ECharts Implementation Plan serves as the architectural blueprint for t
 
 **CRITICAL PRINCIPLE**: Separate UI navigation from AI interactions to avoid unnecessary LLM invocations and ensure immediate UI responsiveness.
 
-#### UI Navigation (Direct Context Updates - No LLM)
-Use **direct context updates** for immediate UI state changes:
+#### UI Navigation (DirectUIUpdate Messages - No LLM)
+Use **DirectUIUpdate messages** over AgUI protocol for immediate UI state changes without LLM processing:
 
 - **Dashboard item clicks**: Show/hide Data Assistant panel sections
 - **Dashboard title clicks**: Switch between Dashboard Properties view
@@ -72,15 +72,17 @@ Use **direct context updates** for immediate UI state changes:
 - **Panel navigation**: Switch between different assistant panel views
 
 ```typescript
-// ✅ CORRECT - Direct context updates for UI navigation (No LLM)
-onClick={() => setActiveSection("dashboard-title")}
-onClick={() => setActiveSection("dashboard-preview")}
-onClick={() => { setSelectedItemId(itemId); setActiveSection("item-properties"); }}
-onClick={() => { setActiveSection(null); setSelectedItemId(null); }}
+// ✅ CORRECT - DirectUIUpdate messages for UI navigation (No LLM)
+onClick={() => sendDirectUIUpdate("Show dashboard title editor in Data Assistant")}
+onClick={() => sendDirectUIUpdate("Show dashboard preview and settings in Data Assistant")}
+onClick={() => sendDirectUIUpdate(`Show item properties for "${itemTitle}" (${itemId}) in Data Assistant panel`)}
+onClick={() => sendDirectUIUpdate("Close Data Assistant panel")}
 ```
 
-#### AI Interactions (AgUI Protocol - With LLM)
-Use **AgUI protocol** only for actions requiring AI processing:
+**Note**: DirectUIUpdate messages are processed by `handleDirectUIUpdate` in AgUiProvider, which updates the DashboardContext directly without invoking the LLM. This maintains the protocol-based architecture while ensuring immediate UI responsiveness.
+
+#### AI Interactions (AI Messages - With LLM)
+Use **AI messages via AgUI protocol** only for actions requiring AI processing:
 
 - **Save/Reset operations**: Actual data persistence and validation
 - **Content editing**: Dashboard name, description, item properties changes
@@ -89,23 +91,27 @@ Use **AgUI protocol** only for actions requiring AI processing:
 - **Conversational queries**: User asking questions about data
 
 ```typescript
-// ✅ CORRECT - AgUI protocol for AI-powered actions
-onClick={() => sendMessage("Save all dashboard changes")}
-onClick={() => sendMessage("Reset all changes to the dashboard")}
-onClick={() => sendMessage("Add a new Chart item to the dashboard")}
-onValueChange={(value) => sendMessage(`Change dashboard grid to ${value} columns`)}
-onChange={(e) => sendMessage(`Update item title to "${e.target.value}"`)}
+// ✅ CORRECT - AI messages for AI-powered actions
+onClick={() => sendAIMessage("Save all dashboard changes")}
+onClick={() => sendAIMessage("Reset all changes to the dashboard")}
+onClick(() => sendAIMessage("Add a new Chart item to the dashboard")}
+onValueChange={(value) => sendAIMessage(`Change dashboard grid to ${value} columns`)}
+onChange={(e) => sendAIMessage(`Update item title to "${e.target.value}"`)}
 ```
 
 #### Anti-Patterns to Avoid
 ```typescript
-// ❌ WRONG - Using AgUI protocol for simple UI navigation (causes LLM delay)
-onClick={() => sendMessage("Show dashboard properties editor in Data Assistant")}
-onClick={() => sendMessage("DIRECT_UI_UPDATE:Show item properties")}
+// ❌ WRONG - Using AI messages for simple UI navigation (causes unnecessary LLM delay)
+onClick={() => sendAIMessage("Show dashboard properties editor in Data Assistant")}
+onClick={() => sendAIMessage("Show item properties"))
+
+// ❌ WRONG - Direct context calls (bypasses protocol-based architecture)
+onClick(() => setActiveSection("item-properties")}
+onClick(() => dashboardContext.setSelectedItemId(itemId)}
 
 // ❌ WRONG - Direct function calls for AI-powered actions (bypasses protocol)
-onClick={() => dashboardContext.onSave?.()}
-onChange={(config) => onChange({...config, items: [...config.items, newItem]})}
+onClick(() => dashboardContext.onSave?.()}
+onChange((config) => onChange({...config, items: [...config.items, newItem]})}
 ```
 
 This separation ensures:

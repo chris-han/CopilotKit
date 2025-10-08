@@ -102,19 +102,21 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
     const allPositionedNodes = [...entityNodes, ...metricNodes];
 
     return (
+      
       <div className="relative">
         <svg
           ref={svgRef}
           width="100%"
           height={height}
-          className="border rounded-lg bg-muted/10"
+          className=" rounded-lg bg-muted/10"
         >
           {/* Background grid */}
-          <defs>
+          {/* <defs>
             <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
               <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e5e7eb" strokeWidth="1" opacity="0.3"/>
             </pattern>
-          </defs>
+          </defs> */}
+
           <rect width="100%" height="100%" fill="url(#grid)" />
 
           {/* Render connections */}
@@ -435,21 +437,20 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
             </div>
           </div>
         </CardHeader>
-      </Card>
+        <CardContent className="space-y-4">
+          {/* Content */}
+           {viewMode === "graph" && (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+           
+        <Card className="lg:col-span-3 space-y-4">
+          
 
-      {/* Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Main view */}
-        <div className="lg:col-span-3 space-y-4">
-          {viewMode === "graph" && (
-            <Card>
-              <CardHeader className="pb-3">
-               <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center space-x-2">
-                    
-                    <span className="text-sm">Legend</span>
+                
+              <CardHeader>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-2">                          
+                    <span className="text-xs text-muted-foreground">Legend</span>
                   </div>
-
                   <div className="flex items-center space-x-2">
                     <div className="w-4 h-4 rounded bg-blue-100 border border-blue-300"></div>
                     <span className="text-xs text-muted-foreground">Entity</span>
@@ -464,107 +465,110 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="p-4">
-              {viewMode === "graph" ? renderGraphView() : renderTableView()}
-            </CardContent>
-            </Card>
-          )}
-          
-        </div>
+              <CardContent className="space-y-4">
+                {viewMode === "graph" ? renderGraphView() : renderTableView()}
+              </CardContent>
 
-        {/* Details panel */}
-        
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {selectedNode ? "Node Details" : "Select a Node"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedNode ? (
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center space-x-2 mb-2">
-                      {getNodeIcon(selectedNode.type)}
-                      <span className="font-medium">{selectedNode.name}</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {selectedNode.type}
-                    </Badge>
-                  </div>
+        </Card>
+            
 
-                  {selectedNode.description && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-1">Description</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedNode.description}
-                      </p>
-                    </div>
-                  )}
-
-                  {selectedNode.base_field && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-1">Base Field</h4>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        {selectedNode.base_field}
-                      </code>
-                    </div>
-                  )}
-
-                  {selectedNode.attributes && selectedNode.attributes.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Attributes</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedNode.attributes.map((attr, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">
-                            {attr}
-                          </Badge>
-                        ))}
+            
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {selectedNode ? "Node Details" : "Select a Node"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {selectedNode ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex items-center space-x-2 mb-2">
+                          {getNodeIcon(selectedNode.type)}
+                          <span className="font-medium">{selectedNode.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {selectedNode.type}
+                        </Badge>
                       </div>
-                    </div>
-                  )}
 
-                  {selectedNode.upstream_dependencies.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2 flex items-center">
-                        <ArrowUp className="h-4 w-4 mr-1" />
-                        Upstream
-                      </h4>
-                      <div className="space-y-1">
-                        {selectedNode.upstream_dependencies.map((dep, i) => (
-                          <div key={i} className="text-sm text-muted-foreground">
-                            {dep.name}
+                      {selectedNode.description && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-1">Description</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedNode.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {selectedNode.base_field && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-1">Base Field</h4>
+                          <code className="text-xs bg-muted px-2 py-1 rounded">
+                            {selectedNode.base_field}
+                          </code>
+                        </div>
+                      )}
+
+                      {selectedNode.attributes && selectedNode.attributes.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Attributes</h4>
+                          <div className="flex flex-wrap gap-1">
+                            {selectedNode.attributes.map((attr, i) => (
+                              <Badge key={i} variant="secondary" className="text-xs">
+                                {attr}
+                              </Badge>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        </div>
+                      )}
 
-                  {selectedNode.downstream_dependencies.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2 flex items-center">
-                        <ArrowDown className="h-4 w-4 mr-1" />
-                        Downstream
-                      </h4>
-                      <div className="space-y-1">
-                        {selectedNode.downstream_dependencies.map((dep, i) => (
-                          <div key={i} className="text-sm text-muted-foreground">
-                            {dep.name}
+                      {selectedNode.upstream_dependencies.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2 flex items-center">
+                            <ArrowUp className="h-4 w-4 mr-1" />
+                            Upstream
+                          </h4>
+                          <div className="space-y-1">
+                            {selectedNode.upstream_dependencies.map((dep, i) => (
+                              <div key={i} className="text-sm text-muted-foreground">
+                                {dep.name}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
+
+                      {selectedNode.downstream_dependencies.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2 flex items-center">
+                            <ArrowDown className="h-4 w-4 mr-1" />
+                            Downstream
+                          </h4>
+                          <div className="space-y-1">
+                            {selectedNode.downstream_dependencies.map((dep, i) => (
+                              <div key={i} className="text-sm text-muted-foreground">
+                                {dep.name}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Click on a node in the lineage graph to view its details
+                    </p>
                   )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Click on a node in the lineage graph to view its details
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        
-      </div>
+                </CardContent>
+              </Card>
+           
+          </div>        
+        )}
+        </CardContent>
+      </Card>
+
+
     </div>
   );
 }

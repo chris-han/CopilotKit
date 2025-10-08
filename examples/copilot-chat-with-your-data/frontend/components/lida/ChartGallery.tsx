@@ -13,9 +13,10 @@ import { Textarea } from "../ui/textarea";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Dashboard } from "@/types/dashboard";
+import type { UUID } from "@/types/primitives";
 
 interface DbtModelMetadata {
-  id?: string;
+  id?: UUID;
   name?: string;
   description?: string;
   path?: string;
@@ -60,7 +61,7 @@ const CHART_TYPE_ICONS = {
 };
 
 type DbtModelMetadata = {
-  id?: string;
+  id?: UUID;
   name?: string;
   description?: string;
   path?: string;

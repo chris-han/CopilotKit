@@ -2740,7 +2740,7 @@ To guarantee every generated visualization exposes verifiable SQL lineage, the r
 
 | Table | Columns |
 |-------|---------|
-| `dashboards.lida_dbt_models` | `id` (PK), `name`, `description`, `path`, `sql`, `aliases` (`text[]`), `created_at`, `updated_at` |
+| `dashboards.lida_dbt_models` | `id` (UUID PK), `name`, `description`, `path`, `sql`, `aliases` (`text[]`), `created_at`, `updated_at` |
 | `dashboards.lida_visualizations` | `id`, `title`, `description`, `chart_type`, `chart_config`, `code`, `insights`, `dataset_name`, `dbt_metadata` (`jsonb`), `created_at`, `updated_at` |
 
 - `lida_dbt_models` is seeded on startup (for bundled demo datasets) and can be extended via migrations or tooling.
@@ -2782,7 +2782,7 @@ erDiagram
     }
 
     lida_dbt_models {
-      text id PK
+      uuid id PK
       text name
       text path
       text sql

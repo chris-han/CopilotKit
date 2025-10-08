@@ -258,227 +258,231 @@ export function SemanticModelEditor({
             Define business entities, metrics, and relationships for your data model
           </CardDescription>
         </CardHeader>
+        <CardContent className="space-y-4">  
+
+            {/* Model Content */}
+            <Tabs defaultValue="entities" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="entities">
+                  Entities ({modelDef.entities.length})
+                </TabsTrigger>
+                <TabsTrigger value="metrics">
+                  Metrics ({modelDef.metrics.length})
+                </TabsTrigger>
+                <TabsTrigger value="relationships">
+                  Relationships ({modelDef.relationships.length})
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Entities Tab */}
+              <TabsContent value="entities" className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Business Entities</h3>
+                  {!readOnly && (
+                    <Button onClick={handleAddEntity} size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Entity
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {modelDef.entities.map((entity, index) => (
+                    <Card key={index}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <CardTitle className="text-base">{entity.name}</CardTitle>
+                            <CardDescription className="text-sm">
+                              {entity.description}
+                            </CardDescription>
+                          </div>
+                          {!readOnly && (
+                            <div className="flex space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditEntity(entity)}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteEntity(entity)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs font-medium">Primary Key</Label>
+                            <p className="text-xs text-muted-foreground">{entity.primary_key}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium">Attributes ({entity.attributes?.length || 0})</Label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(entity.attributes || []).slice(0, 3).map((attr, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {attr}
+                                </Badge>
+                              ))}
+                              {(entity.attributes?.length || 0) > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{(entity.attributes?.length || 0) - 3} more
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+
+              {/* Metrics Tab */}
+              <TabsContent value="metrics" className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Business Metrics</h3>
+                  {!readOnly && (
+                    <Button onClick={handleAddMetric} size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Metric
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {modelDef.metrics.map((metric, index) => (
+                    <Card key={index}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <CardTitle className="text-base flex items-center">
+                              <TrendingUp className="h-4 w-4 mr-2" />
+                              {metric.name}
+                            </CardTitle>
+                            <CardDescription className="text-sm">
+                              {metric.description}
+                            </CardDescription>
+                          </div>
+                          {!readOnly && (
+                            <div className="flex space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditMetric(metric)}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteMetric(metric)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs font-medium">Type</Label>
+                            <Badge variant="outline" className="text-xs ml-2">
+                              {metric.type}
+                            </Badge>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium">Base Field</Label>
+                            <p className="text-xs text-muted-foreground">{metric.base_field}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium">Dimensions ({metric.dimensions?.length || 0})</Label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(metric.dimensions || []).slice(0, 2).map((dim, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {dim}
+                                </Badge>
+                              ))}
+                              {(metric.dimensions?.length || 0) > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{(metric.dimensions?.length || 0) - 2} more
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+
+              {/* Relationships Tab */}
+              <TabsContent value="relationships" className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Entity Relationships</h3>
+                  {!readOnly && (
+                    <Button size="sm">
+                      <Link className="h-4 w-4 mr-2" />
+                      Add Relationship
+                    </Button>
+                  )}
+                </div>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-center text-muted-foreground">
+                      <GitBranch className="h-8 w-8 mr-2" />
+                      <span>Relationship visualization will be shown here</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+
+            {/* Entity Dialog */}
+            <Dialog open={isEntityDialogOpen} onOpenChange={setIsEntityDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingEntity && modelDef.entities.includes(editingEntity) ? 'Edit' : 'Add'} Entity
+                  </DialogTitle>
+                </DialogHeader>
+                <EntityForm
+                  entity={editingEntity}
+                  onSave={handleSaveEntity}
+                  onCancel={() => setIsEntityDialogOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
+
+            {/* Metric Dialog */}
+            <Dialog open={isMetricDialogOpen} onOpenChange={setIsMetricDialogOpen}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingMetric && modelDef.metrics.includes(editingMetric) ? 'Edit' : 'Add'} Metric
+                  </DialogTitle>
+                </DialogHeader>
+                <MetricForm
+                  metric={editingMetric}
+                  onSave={handleSaveMetric}
+                  onCancel={() => setIsMetricDialogOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
+          
+        </CardContent>
       </Card>
 
-      {/* Model Content */}
-      <Tabs defaultValue="entities" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="entities">
-            Entities ({modelDef.entities.length})
-          </TabsTrigger>
-          <TabsTrigger value="metrics">
-            Metrics ({modelDef.metrics.length})
-          </TabsTrigger>
-          <TabsTrigger value="relationships">
-            Relationships ({modelDef.relationships.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Entities Tab */}
-        <TabsContent value="entities" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Business Entities</h3>
-            {!readOnly && (
-              <Button onClick={handleAddEntity} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Entity
-              </Button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {modelDef.entities.map((entity, index) => (
-              <Card key={index}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base">{entity.name}</CardTitle>
-                      <CardDescription className="text-sm">
-                        {entity.description}
-                      </CardDescription>
-                    </div>
-                    {!readOnly && (
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditEntity(entity)}
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteEntity(entity)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    <div>
-                      <Label className="text-xs font-medium">Primary Key</Label>
-                      <p className="text-xs text-muted-foreground">{entity.primary_key}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium">Attributes ({entity.attributes?.length || 0})</Label>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(entity.attributes || []).slice(0, 3).map((attr, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">
-                            {attr}
-                          </Badge>
-                        ))}
-                        {(entity.attributes?.length || 0) > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{(entity.attributes?.length || 0) - 3} more
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* Metrics Tab */}
-        <TabsContent value="metrics" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Business Metrics</h3>
-            {!readOnly && (
-              <Button onClick={handleAddMetric} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Metric
-              </Button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {modelDef.metrics.map((metric, index) => (
-              <Card key={index}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base flex items-center">
-                        <TrendingUp className="h-4 w-4 mr-2" />
-                        {metric.name}
-                      </CardTitle>
-                      <CardDescription className="text-sm">
-                        {metric.description}
-                      </CardDescription>
-                    </div>
-                    {!readOnly && (
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditMetric(metric)}
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteMetric(metric)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    <div>
-                      <Label className="text-xs font-medium">Type</Label>
-                      <Badge variant="outline" className="text-xs ml-2">
-                        {metric.type}
-                      </Badge>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium">Base Field</Label>
-                      <p className="text-xs text-muted-foreground">{metric.base_field}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium">Dimensions ({metric.dimensions?.length || 0})</Label>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(metric.dimensions || []).slice(0, 2).map((dim, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">
-                            {dim}
-                          </Badge>
-                        ))}
-                        {(metric.dimensions?.length || 0) > 2 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{(metric.dimensions?.length || 0) - 2} more
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* Relationships Tab */}
-        <TabsContent value="relationships" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Entity Relationships</h3>
-            {!readOnly && (
-              <Button size="sm">
-                <Link className="h-4 w-4 mr-2" />
-                Add Relationship
-              </Button>
-            )}
-          </div>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-center text-muted-foreground">
-                <GitBranch className="h-8 w-8 mr-2" />
-                <span>Relationship visualization will be shown here</span>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Entity Dialog */}
-      <Dialog open={isEntityDialogOpen} onOpenChange={setIsEntityDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingEntity && modelDef.entities.includes(editingEntity) ? 'Edit' : 'Add'} Entity
-            </DialogTitle>
-          </DialogHeader>
-          <EntityForm
-            entity={editingEntity}
-            onSave={handleSaveEntity}
-            onCancel={() => setIsEntityDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Metric Dialog */}
-      <Dialog open={isMetricDialogOpen} onOpenChange={setIsMetricDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingMetric && modelDef.metrics.includes(editingMetric) ? 'Edit' : 'Add'} Metric
-            </DialogTitle>
-          </DialogHeader>
-          <MetricForm
-            metric={editingMetric}
-            onSave={handleSaveMetric}
-            onCancel={() => setIsMetricDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

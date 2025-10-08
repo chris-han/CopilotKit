@@ -15,6 +15,7 @@ import { SemanticModelEditor, SemanticModel as SemanticModelDefinition } from ".
 import { DataLineageView } from "./DataLineageView";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 import { Dashboard } from "@/types/dashboard";
+import type { UUID } from "@/types/primitives";
 import { Plus, Sparkles, CheckCircle, AlertCircle } from "lucide-react";
 import { useAgUiAgent } from "@/components/ag-ui/AgUiProvider";
 
@@ -54,7 +55,7 @@ interface GeneratedVisualization {
 }
 
 interface DbtModelMetadata {
-  id?: string;
+  id?: UUID;
   name?: string;
   description?: string;
   path?: string;

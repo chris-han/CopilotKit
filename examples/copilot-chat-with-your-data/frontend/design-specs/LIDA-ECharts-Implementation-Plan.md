@@ -1367,7 +1367,7 @@ sequenceDiagram
 
 ### Task 13b: Persist dbt Model Catalogue & Visualization Lineage (NEW)
 - [ ] **Create Postgres catalogue**
-  - Table `dashboards.lida_dbt_models` with columns `id`, `name`, `description`, `path`, `sql`, `aliases[]`, timestamps.
+  - Table `dashboards.lida_dbt_models` with columns `id UUID`, `name`, `description`, `path`, `sql`, `aliases[]`, timestamps.
   - Seed with bundled demo datasets during backend startup (salesData, productData, enterprise_multi_cloud, etc.).
 - [ ] **Extend visualization storage**
   - Add `dbt_metadata jsonb` column to `dashboards.lida_visualizations`.

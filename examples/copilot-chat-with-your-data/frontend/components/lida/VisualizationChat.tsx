@@ -52,10 +52,10 @@ const CHART_TYPES = [
 ];
 
 const PERSONAS = [
-  { value: "default", label: "General Analyst" },
+  { value: "finops", label: "FinOps Analyst" },
   { value: "executive", label: "Executive" },
   { value: "data-scientist", label: "Data Scientist" },
-  { value: "finops", label: "FinOps Analyst" },
+  { value: "default", label: "General Analyst" },
 ];
 
 const SUGGESTED_GOALS = [

@@ -791,6 +791,27 @@ export function LidaInterface() {
       targetDashboard = dashboards.find(d => d.id === dashboardId) || null;
     }
 
+    if (!targetDashboard && dashboardId) {
+      try {
+        const fetchResponse = await fetch(`/api/dashboards/${dashboardId}`);
+        if (fetchResponse.ok) {
+          const fetchedDashboard = await fetchResponse.json();
+          targetDashboard = fetchedDashboard;
+          setDashboards(prev => {
+            const idx = prev.findIndex((d) => d.id === fetchedDashboard.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...prev[idx], ...fetchedDashboard };
+              return next;
+            }
+            return [fetchedDashboard, ...prev];
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch dashboard by id:", error);
+      }
+    }
+
     if (!targetDashboard) {
       console.error('No target dashboard available');
       setDialogType('error');
@@ -851,11 +872,23 @@ export function LidaInterface() {
     try {
       // Get current dashboard layout_config from database or create new one
       console.log('Fetching current dashboard from database');
-      const dashboardResponse = await fetch(`/api/dashboards/${targetDashboard.id}`);
-      if (!dashboardResponse.ok) {
-        throw new Error('Failed to fetch current dashboard');
+      let currentDashboard = targetDashboard;
+      if (!currentDashboard || !currentDashboard.layout_config) {
+        const dashboardResponse = await fetch(`/api/dashboards/${targetDashboard.id}`);
+        if (!dashboardResponse.ok) {
+          throw new Error('Failed to fetch current dashboard');
+        }
+        currentDashboard = await dashboardResponse.json();
+        setDashboards(prev => {
+          const existingIndex = prev.findIndex((d) => d.id === currentDashboard.id);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = { ...prev[existingIndex], ...currentDashboard };
+            return updated;
+          }
+          return [currentDashboard, ...prev];
+        });
       }
-      const currentDashboard = await dashboardResponse.json();
 
       // Update the layout_config with new item
       const updatedLayoutConfig = {
@@ -921,6 +954,14 @@ export function LidaInterface() {
       setDialogOpen(true);
     }
   }, [selectedDashboard, dashboards, handleCreateDashboard]);
+
+  const handleUpdateVisualization = useCallback(
+    async (visualization: GeneratedVisualization) => {
+      const updated = await persistVisualization(visualization);
+      return updated;
+    },
+    [persistVisualization],
+  );
 
   // Wrapper function for button onClick handler
   const handleCreateNewDashboard = async () => {
@@ -1171,6 +1212,7 @@ export function LidaInterface() {
             onAddToDashboard={handleAddToDashboard}
             onCreateDashboard={handleCreateDashboard}
             onDeleteVisualization={handleDeleteVisualization}
+            onUpdateVisualization={handleUpdateVisualization}
           />
         </TabsContent>
 

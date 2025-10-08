@@ -55,7 +55,7 @@ const PERSONAS = [
   { value: "finops", label: "FinOps Analyst" },
   { value: "executive", label: "Executive" },
   { value: "data-scientist", label: "Data Scientist" },
-  { value: "default", label: "General Analyst" },
+  { value: "general", label: "General Analyst" },
 ];
 
 const SUGGESTED_GOALS = [

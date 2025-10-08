@@ -298,7 +298,27 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
   const handleConfigChange = useCallback((newConfig: any) => {
     setCurrentConfig(newConfig);
     checkForChanges(currentName, currentDescription, newConfig);
-  }, [currentName, currentDescription, checkForChanges]);
+
+    if (mode === "edit") {
+      setSaving(true);
+      (async () => {
+        try {
+          await onSave({
+            name: currentName,
+            description: currentDescription,
+            layout_config: newConfig,
+            metadata: dashboard.metadata,
+          });
+          setHasChanges(false);
+        } catch (error) {
+          console.error("Auto-save layout failed:", error);
+          setHasChanges(true);
+        } finally {
+          setSaving(false);
+        }
+      })();
+    }
+  }, [currentName, currentDescription, checkForChanges, mode, onSave, dashboard.metadata]);
 
   // Handle dashboard item clicks in edit mode
   const handleItemClick = useCallback((itemId: string, itemTitle: string, event?: React.MouseEvent) => {
@@ -639,6 +659,10 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
         if (item.type === "chart") {
           // LIDA chart with embedded ECharts config
           if (item.config?.echarts_config) {
+            const echartsOption = parseEchartsOption(
+              item.config.echarts_config,
+              (item.config as Record<string, unknown>)?.["echar_code"],
+            );
             return (
               <Card
                 key={item.id}
@@ -657,7 +681,7 @@ export function DashboardViewEdit({ dashboard, mode, onSave }: DashboardViewEdit
                   <div className="h-60">
                     <ReactEChartsCore
                       echarts={echarts}
-                      option={item.config.echarts_config}
+                      option={echartsOption ?? {}}
                       style={{ width: '100%', height: '100%' }}
                       notMerge={true}
                       lazyUpdate={true}
@@ -1032,3 +1056,22 @@ function inferChartBlueprint(key: string, records: Array<Record<string, unknown>
     showLegend: sortedNumeric.length > 1,
   };
 }
+const parseEchartsOption = (rawOption: unknown, fallback?: unknown): Record<string, unknown> | undefined => {
+  const tryParse = (source: unknown): Record<string, unknown> | undefined => {
+    if (!source) return undefined;
+    if (typeof source === "string") {
+      try {
+        const parsed = JSON.parse(source);
+        return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    if (typeof source === "object") {
+      return source as Record<string, unknown>;
+    }
+    return undefined;
+  };
+
+  return tryParse(rawOption) ?? tryParse(fallback);
+};

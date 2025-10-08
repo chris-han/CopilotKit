@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import type { EChartsOption } from "echarts";
 import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye, Lightbulb, Plus, CheckCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
@@ -10,6 +11,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Label } from "../ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Dashboard } from "@/types/dashboard";
 
 interface DbtModelMetadata {
@@ -26,7 +28,7 @@ interface GeneratedVisualization {
   title: string;
   description: string;
   chart_type: string;
-  chart_config: any;
+  chart_config: unknown;
   code: string;
   insights: string[];
   created_at: string;
@@ -44,6 +46,7 @@ interface ChartGalleryProps {
   onAddToDashboard?: (visualization: GeneratedVisualization, dashboardId?: string) => void | Promise<void>;
   onCreateDashboard?: (name: string, description?: string) => Promise<Dashboard>;
   onDeleteVisualization?: (visualization: GeneratedVisualization) => Promise<void> | void;
+  onUpdateVisualization?: (visualization: GeneratedVisualization) => Promise<GeneratedVisualization | void> | GeneratedVisualization | void;
 }
 
 const CHART_TYPE_ICONS = {
@@ -65,6 +68,193 @@ type DbtModelMetadata = {
   aliases?: string[];
 };
 
+type DetailTab = "preview" | "insights" | "code" | "config" | "dbt" | "edit";
+
+const CHART_TYPE_OPTIONS = Object.keys(CHART_TYPE_ICONS);
+
+type ChartTypeOption = "area" | "bar" | "donut";
+
+type ChartTypePreset = {
+  defaultDataset: string;
+  buildConfig: (
+    title: string,
+    datasetKey: string,
+    sampleData: Array<Record<string, unknown>>
+  ) => EChartsOption;
+  buildCode: (
+    chartType: string,
+    datasetKey: string,
+    config: EChartsOption
+  ) => string;
+};
+
+const SAMPLE_CHART_DATA: Record<string, Array<Record<string, unknown>>> = {
+  salesData: [
+    { date: "Jan 22", Sales: 2890, Profit: 2400, Expenses: 490 },
+    { date: "Feb 22", Sales: 1890, Profit: 1398, Expenses: 492 },
+    { date: "Mar 22", Sales: 3890, Profit: 2980, Expenses: 910 },
+    { date: "Apr 22", Sales: 2890, Profit: 2300, Expenses: 590 },
+    { date: "May 22", Sales: 4890, Profit: 3200, Expenses: 1690 },
+    { date: "Jun 22", Sales: 3890, Profit: 2900, Expenses: 990 },
+    { date: "Jul 22", Sales: 4200, Profit: 3100, Expenses: 1100 },
+    { date: "Aug 22", Sales: 4500, Profit: 3400, Expenses: 1100 },
+    { date: "Sep 22", Sales: 5100, Profit: 3800, Expenses: 1300 },
+    { date: "Oct 22", Sales: 4800, Profit: 3600, Expenses: 1200 },
+    { date: "Nov 22", Sales: 5500, Profit: 4100, Expenses: 1400 },
+    { date: "Dec 22", Sales: 6800, Profit: 5200, Expenses: 1600 },
+  ],
+  productData: [
+    { name: "Smartphone", sales: 9800, growth: 12.5 },
+    { name: "Graphic Tee", sales: 4567, growth: 8.2 },
+    { name: "Dishwasher", sales: 3908, growth: -2.4 },
+    { name: "Blender", sales: 2400, growth: 5.6 },
+    { name: "Smartwatch", sales: 1908, growth: -1.8 },
+  ],
+  categoryData: [
+    { name: "Electronics", value: 35, growth: 8.2 },
+    { name: "Clothing", value: 25, growth: 4.5 },
+    { name: "Home & Kitchen", value: 20, growth: 12.1 },
+    { name: "Other", value: 15, growth: -2.3 },
+    { name: "Books", value: 5, growth: 1.5 },
+  ],
+};
+
+const createCodeSnippet = (
+  chartType: string,
+  datasetKey: string,
+  config: EChartsOption
+) => {
+  return [
+    `// Auto-generated ${chartType} chart bound to ${datasetKey || "sample data"}`,
+    `export const chartConfig = ${JSON.stringify(config, null, 2)};`,
+  ].join("\n");
+};
+
+const attachDatasetMetadata = (
+  config: EChartsOption,
+  datasetKey: string
+): EChartsOption => ({
+  ...config,
+  datasetName: datasetKey,
+  dataset_name: datasetKey,
+  dataSource: datasetKey,
+  data_source: datasetKey,
+  dbtModel: datasetKey,
+  dbt_model: datasetKey,
+});
+
+const CHART_TYPE_PRESETS: Record<ChartTypeOption, ChartTypePreset> = {
+  area: {
+    defaultDataset: "salesData",
+    buildConfig: (title, datasetKey, sampleData) => {
+      const config: EChartsOption = {
+        title: { text: title || "Sales Overview" },
+        tooltip: { trigger: "axis" },
+        legend: { show: true },
+        dataset: { source: sampleData },
+        xAxis: { type: "category", boundaryGap: false, name: "Period" },
+        yAxis: { type: "value", name: "Amount" },
+        grid: { left: "8%", right: "5%", bottom: "10%", containLabel: true },
+        series: [
+          {
+            name: "Sales",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.2 },
+            encode: { x: "date", y: "Sales" },
+          },
+          {
+            name: "Profit",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.12 },
+            encode: { x: "date", y: "Profit" },
+          },
+          {
+            name: "Expenses",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.12 },
+            encode: { x: "date", y: "Expenses" },
+          },
+        ],
+        color: ["#4f46e5", "#14b8a6", "#f97316"],
+      };
+      return attachDatasetMetadata(config, datasetKey);
+    },
+    buildCode: (chartType, datasetKey, config) =>
+      createCodeSnippet(chartType, datasetKey, config),
+  },
+  bar: {
+    defaultDataset: "productData",
+    buildConfig: (title, datasetKey, sampleData) => {
+      const config: EChartsOption = {
+        title: { text: title || "Product Performance" },
+        tooltip: { trigger: "axis" },
+        dataset: { source: sampleData },
+        grid: { left: 120, right: 40, bottom: 40, top: 60, containLabel: true },
+        xAxis: { type: "value", name: "Sales" },
+        yAxis: { type: "category", name: "Product", inverse: true },
+        series: [
+          {
+            type: "bar",
+            encode: { x: "sales", y: "name" },
+            itemStyle: { borderRadius: [4, 4, 4, 4] },
+            label: { show: true, position: "right", formatter: "{c}" },
+          },
+        ],
+        color: ["#2563eb"],
+      };
+      return attachDatasetMetadata(config, datasetKey);
+    },
+    buildCode: (chartType, datasetKey, config) =>
+      createCodeSnippet(chartType, datasetKey, config),
+  },
+  donut: {
+    defaultDataset: "categoryData",
+    buildConfig: (title, datasetKey, sampleData) => {
+      const config: EChartsOption = {
+        title: { text: title || "Sales by Category" },
+        tooltip: { trigger: "item" },
+        legend: { orient: "vertical", left: "left" },
+        dataset: { source: sampleData },
+        series: [
+          {
+            name: "Category Share",
+            type: "pie",
+            radius: ["45%", "70%"],
+            center: ["55%", "55%"],
+            avoidLabelOverlap: false,
+            encode: { value: "value", itemName: "name" },
+            label: { formatter: "{b}: {d}%" },
+            emphasis: { scale: true, scaleSize: 8 },
+          },
+        ],
+        color: ["#0ea5e9", "#f97316", "#22c55e", "#6366f1", "#a855f7"],
+      };
+      return attachDatasetMetadata(config, datasetKey);
+    },
+    buildCode: (chartType, datasetKey, config) =>
+      createCodeSnippet(chartType, datasetKey, config),
+  },
+};
+
+const NORMALIZE_CHART_TYPE: Record<string, ChartTypeOption> = {
+  area: "area",
+  line: "area",
+  bar: "bar",
+  column: "bar",
+  auto: "bar",
+  histogram: "bar",
+  donut: "donut",
+  pie: "donut",
+  ring: "donut",
+  scatter: "bar",
+};
+
+const getPresetType = (value: string): ChartTypeOption =>
+  NORMALIZE_CHART_TYPE[value] ?? "bar";
+
 export function ChartGallery({
   visualizations,
   dashboards,
@@ -72,9 +262,19 @@ export function ChartGallery({
   onAddToDashboard,
   onCreateDashboard,
   onDeleteVisualization,
+  onUpdateVisualization,
 }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [detailsTab, setDetailsTab] = useState<DetailTab>("preview");
+  const [editDraft, setEditDraft] = useState<GeneratedVisualization | null>(null);
+  const [chartConfigText, setChartConfigText] = useState<string>("");
+  const [chartConfigError, setChartConfigError] = useState<string | null>(null);
+  const [codeText, setCodeText] = useState<string>("");
+  const [datasetInput, setDatasetInput] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -84,6 +284,19 @@ export function ChartGallery({
   const [newDashboardDescription, setNewDashboardDescription] = useState<string>("");
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
+
+  const resetSaveState = useCallback(() => {
+    setSaveSuccess(false);
+    setSaveError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedViz) return;
+    const updated = visualizations.find((viz) => viz.id === selectedViz.id);
+    if (updated && updated !== selectedViz) {
+      setSelectedViz(updated);
+    }
+  }, [visualizations, selectedViz]);
 
   const normalizedSelectedInsights = useMemo(() => {
     if (!selectedViz) return [];
@@ -158,6 +371,92 @@ export function ChartGallery({
     return null;
   }, [selectedViz]);
 
+  const originalConfigObject = useMemo<EChartsOption>(() => {
+    if (!selectedViz) {
+      return {};
+    }
+    if (selectedChartConfig && typeof selectedChartConfig === "object") {
+      try {
+        return JSON.parse(JSON.stringify(selectedChartConfig)) as EChartsOption;
+      } catch {
+        return selectedChartConfig as EChartsOption;
+      }
+    }
+    if (selectedViz.chart_config) {
+      if (typeof selectedViz.chart_config === "string") {
+        try {
+          const parsed = JSON.parse(selectedViz.chart_config);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as EChartsOption;
+          }
+        } catch {
+          return {};
+        }
+      } else if (typeof selectedViz.chart_config === "object") {
+        try {
+          return JSON.parse(JSON.stringify(selectedViz.chart_config)) as EChartsOption;
+        } catch {
+          return selectedViz.chart_config as EChartsOption;
+        }
+      }
+    }
+    return {};
+  }, [selectedViz, selectedChartConfig]);
+
+  useEffect(() => {
+    if (!selectedViz) {
+      setEditDraft(null);
+      setChartConfigText("");
+      setCodeText("");
+      setDatasetInput("");
+      setChartConfigError(null);
+      setSaveError(null);
+      setSaveSuccess(false);
+      setDetailsTab("preview");
+      return;
+    }
+
+    const normalizedConfig = JSON.parse(JSON.stringify(originalConfigObject ?? {})) as EChartsOption;
+
+    let baselineConfigText = JSON.stringify(normalizedConfig, null, 2);
+    if (typeof selectedViz.chart_config === "string") {
+      const raw = selectedViz.chart_config;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          baselineConfigText = JSON.stringify(parsed, null, 2);
+        } else {
+          baselineConfigText = raw;
+        }
+      } catch {
+        baselineConfigText = raw;
+      }
+    }
+
+    setEditDraft({
+      ...selectedViz,
+      chart_config: normalizedConfig,
+    });
+    setChartConfigText(baselineConfigText);
+    setCodeText(selectedViz.code ?? "");
+    setDatasetInput(selectedViz.dataset_name ?? "");
+    setChartConfigError(null);
+    setSaveError(null);
+    setSaveSuccess(false);
+    setDetailsTab("preview");
+  }, [selectedViz, originalConfigObject]);
+
+  const liveChartConfig = useMemo<EChartsOption>(() => {
+    if (editDraft?.chart_config && typeof editDraft.chart_config === "object") {
+      return editDraft.chart_config as EChartsOption;
+    }
+    return originalConfigObject;
+  }, [editDraft, originalConfigObject]);
+
+  const hasLiveConfig = useMemo(() => {
+    return liveChartConfig && Object.keys(liveChartConfig).length > 0;
+  }, [liveChartConfig]);
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       month: "short",
@@ -174,6 +473,7 @@ export function ChartGallery({
 
   const handleVisualizationClick = (viz: GeneratedVisualization) => {
     setSelectedViz(viz);
+    setDetailsTab("preview");
     onVisualizationSelect(viz);
   };
 
@@ -197,8 +497,13 @@ export function ChartGallery({
     setSelectedViz(viz);
     setAddError(null);
     const hasDashboards = dashboards.length > 0;
-    setAddMode(hasDashboards ? "existing" : "new");
-    setSelectedDashboardId(hasDashboards ? dashboards[0].id : "");
+    if (hasDashboards) {
+      setAddMode("existing");
+      setSelectedDashboardId(dashboards[0].id);
+    } else {
+      setAddMode("new");
+      setSelectedDashboardId("");
+    }
     setNewDashboardName(viz.title ? `${viz.title} Dashboard` : "New Dashboard");
     setNewDashboardDescription("");
     if (!hasDashboards && !onCreateDashboard) {
@@ -237,7 +542,6 @@ export function ChartGallery({
         }
         dashboardId = created.id;
         dashboardName = created.name;
-        setSelectedDashboardId(created.id);
       } else {
         if (!dashboardId) {
           throw new Error("Please select a dashboard.");
@@ -272,6 +576,221 @@ export function ChartGallery({
       console.log("ChartGallery: No onDeleteVisualization handler provided");
     }
   };
+
+  const handleTitleChange = useCallback((value: string) => {
+    resetSaveState();
+    setEditDraft((current) => (current ? { ...current, title: value } : current));
+  }, [resetSaveState]);
+
+  const handleDescriptionChange = useCallback((value: string) => {
+    resetSaveState();
+    setEditDraft((current) => (current ? { ...current, description: value } : current));
+  }, [resetSaveState]);
+
+  const handleChartTypeChange = useCallback((value: string) => {
+    resetSaveState();
+    const normalized = getPresetType(value);
+    const preset = CHART_TYPE_PRESETS[normalized];
+    const currentTitle = editDraft?.title ?? selectedViz?.title ?? value;
+
+    const existingDataset =
+      datasetInput.trim() ||
+      (editDraft?.chart_config &&
+        typeof editDraft.chart_config === "object" &&
+        (editDraft.chart_config as Record<string, unknown>).datasetName &&
+        typeof (editDraft.chart_config as Record<string, unknown>).datasetName === "string"
+        ? String((editDraft.chart_config as Record<string, unknown>).datasetName)
+        : "") ||
+      selectedViz?.dataset_name ||
+      "";
+
+    const datasetKey =
+      existingDataset.trim().length > 0 ? existingDataset.trim() : preset.defaultDataset;
+    const sampleKey = SAMPLE_CHART_DATA[datasetKey] ? datasetKey : preset.defaultDataset;
+    const sampleData = SAMPLE_CHART_DATA[sampleKey] ?? SAMPLE_CHART_DATA[preset.defaultDataset];
+    const config = preset.buildConfig(currentTitle, datasetKey, sampleData);
+    const code = preset.buildCode(value, datasetKey, config);
+
+    setDatasetInput(datasetKey);
+    setChartConfigText(JSON.stringify(config, null, 2));
+    setCodeText(code);
+    setChartConfigError(null);
+
+    setEditDraft((current) => {
+      const base = current ?? selectedViz;
+      if (!base) return current;
+      return {
+        ...base,
+        chart_type: value,
+        dataset_name: datasetKey || null,
+        chart_config: config,
+      };
+    });
+  }, [datasetInput, editDraft, resetSaveState, selectedViz]);
+
+  const handleDatasetChange = useCallback((value: string) => {
+    resetSaveState();
+    const trimmed = value.trim();
+    setDatasetInput(value);
+    const nextConfig: Record<string, unknown> =
+      editDraft?.chart_config && typeof editDraft.chart_config === "object"
+        ? { ...(editDraft.chart_config as Record<string, unknown>) }
+        : {};
+
+    if (trimmed) {
+      nextConfig.datasetName = trimmed;
+      nextConfig.dataset_name = trimmed;
+      nextConfig.dataSource = trimmed;
+      nextConfig.data_source = trimmed;
+      nextConfig.dbtModel = nextConfig.dbtModel ?? trimmed;
+      nextConfig.dbt_model = nextConfig.dbt_model ?? trimmed;
+    } else {
+      delete nextConfig.datasetName;
+      delete nextConfig.dataset_name;
+      delete nextConfig.dataSource;
+      delete nextConfig.data_source;
+    }
+
+    setChartConfigText(JSON.stringify(nextConfig, null, 2));
+    setChartConfigError(null);
+
+    setEditDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        dataset_name: trimmed || null,
+        chart_config: nextConfig as EChartsOption,
+      };
+    });
+  }, [editDraft, resetSaveState]);
+
+  const handleChartConfigChange = useCallback((value: string) => {
+    resetSaveState();
+    setChartConfigText(value);
+    if (!value.trim()) {
+      setChartConfigError("Provide a valid JSON object to configure the chart.");
+      return;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setChartConfigError("Chart configuration must be a JSON object.");
+        return;
+      }
+      const normalized = parsed as EChartsOption;
+      setEditDraft((current) => (current ? { ...current, chart_config: normalized } : current));
+      setChartConfigError(null);
+    } catch (error) {
+      setChartConfigError(error instanceof Error ? error.message : "Invalid JSON configuration.");
+    }
+  }, [resetSaveState]);
+
+  const handleCodeChange = useCallback((value: string) => {
+    resetSaveState();
+    setCodeText(value);
+    setEditDraft((current) => (current ? { ...current, code: value } : current));
+  }, [resetSaveState]);
+
+  const handleResetEdits = useCallback(() => {
+    if (!selectedViz) return;
+    resetSaveState();
+    const baselineConfig = JSON.parse(JSON.stringify(originalConfigObject ?? {})) as EChartsOption;
+    let baselineText = JSON.stringify(baselineConfig, null, 2);
+    if (typeof selectedViz.chart_config === "string") {
+      const raw = selectedViz.chart_config;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          baselineText = JSON.stringify(parsed, null, 2);
+        } else {
+          baselineText = raw;
+        }
+      } catch {
+        baselineText = raw;
+      }
+    }
+    setEditDraft({
+      ...selectedViz,
+      chart_config: baselineConfig,
+    });
+    setChartConfigText(baselineText);
+    setCodeText(selectedViz.code ?? "");
+    setDatasetInput(selectedViz.dataset_name ?? "");
+    setChartConfigError(null);
+  }, [selectedViz, originalConfigObject, resetSaveState]);
+
+  const handleSaveEdits = useCallback(async () => {
+    if (!selectedViz || !editDraft) return;
+    resetSaveState();
+
+    let parsedConfig: Record<string, unknown>;
+    try {
+      parsedConfig = JSON.parse(chartConfigText || "{}");
+      if (!parsedConfig || typeof parsedConfig !== "object" || Array.isArray(parsedConfig)) {
+        throw new Error("Chart configuration must be a JSON object.");
+      }
+      setChartConfigError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid chart configuration.";
+      setChartConfigError(message);
+      setDetailsTab("edit");
+      return;
+    }
+
+    const trimmedDataset = datasetInput.trim();
+    const augmentedConfig: Record<string, unknown> = { ...(parsedConfig as Record<string, unknown>) };
+    if (trimmedDataset) {
+      augmentedConfig.datasetName = trimmedDataset;
+      augmentedConfig.dataset_name = trimmedDataset;
+      augmentedConfig.dataSource = trimmedDataset;
+      augmentedConfig.data_source = trimmedDataset;
+      if (augmentedConfig.dbtModel == null) {
+        augmentedConfig.dbtModel = trimmedDataset;
+      }
+      if (augmentedConfig.dbt_model == null) {
+        augmentedConfig.dbt_model = trimmedDataset;
+      }
+    } else {
+      delete augmentedConfig.datasetName;
+      delete augmentedConfig.dataset_name;
+      delete augmentedConfig.dataSource;
+      delete augmentedConfig.data_source;
+    }
+
+    const updatedVisualization: GeneratedVisualization = {
+      ...selectedViz,
+      ...editDraft,
+      title: editDraft.title,
+      description: editDraft.description,
+      chart_type: editDraft.chart_type,
+      chart_config: augmentedConfig as EChartsOption,
+      code: codeText,
+      dataset_name: trimmedDataset ? trimmedDataset : null,
+    };
+
+    setIsSaving(true);
+    try {
+      const result = onUpdateVisualization
+        ? await onUpdateVisualization(updatedVisualization)
+        : updatedVisualization;
+      const resolved = result ?? updatedVisualization;
+      setSelectedViz(resolved);
+      setSaveSuccess(true);
+      setDetailsTab("preview");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to save visualization.");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    chartConfigText,
+    codeText,
+    datasetInput,
+    editDraft,
+    onUpdateVisualization,
+    resetSaveState,
+    selectedViz,
+  ]);
 
   const renderVisualizationCard = (viz: GeneratedVisualization) => {
     const insightsRaw = viz.insights;
@@ -585,7 +1104,6 @@ export function ChartGallery({
                   }}
                   className="flex items-center space-x-2 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md text-sm font-medium transition-colors"
                   title="Add to Dashboard"
-                  disabled={!selectedViz}
                 >
                   <Plus className="h-4 w-4" />
                   <span>Add to Dashboard</span>
@@ -594,7 +1112,11 @@ export function ChartGallery({
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="preview" className="w-full">
+            <Tabs
+              value={detailsTab}
+              onValueChange={(value) => setDetailsTab(value as DetailTab)}
+              className="w-full"
+            >
               <TabsList>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
                 <TabsTrigger value="insights">
@@ -618,13 +1140,14 @@ export function ChartGallery({
                 >
                   dbt Model
                 </TabsTrigger>
+                <TabsTrigger value="edit">Edit</TabsTrigger>
               </TabsList>
 
               <TabsContent value="preview" className="space-y-4">
                 <div className="aspect-video bg-muted rounded-md overflow-hidden">
-                  {selectedChartConfig ? (
+                  {hasLiveConfig ? (
                     <DynamicChart
-                      config={selectedChartConfig as any}
+                      config={liveChartConfig}
                       style={{ width: "100%", height: "100%" }}
                     />
                   ) : (
@@ -677,19 +1200,19 @@ export function ChartGallery({
 
               <TabsContent value="code">
                 <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                  <code>{selectedViz.code || "# Code not available"}</code>
+                  <code>
+                    {codeText && codeText.trim().length > 0
+                      ? codeText
+                      : selectedViz?.code ?? "# Code not available"}
+                  </code>
                 </pre>
               </TabsContent>
 
               <TabsContent value="config">
                 <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
                   <code>
-                    {selectedChartConfig
-                      ? JSON.stringify(selectedChartConfig, null, 2)
-                      : selectedViz?.chart_config
-                      ? (typeof selectedViz.chart_config === "string"
-                          ? selectedViz.chart_config
-                          : JSON.stringify(selectedViz.chart_config, null, 2))
+                    {chartConfigText && chartConfigText.trim().length > 0
+                      ? chartConfigText
                       : "# Chart configuration not available"}
                   </code>
                 </pre>
@@ -739,6 +1262,119 @@ export function ChartGallery({
                   <div className="text-center py-8 text-sm text-muted-foreground">
                     Connect this visualization to a dbt model by including a `dbtModel` or `dataset_name` property in the chart configuration.
                   </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="edit">
+                {editDraft ? (
+                  <div className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="viz-title">Title</Label>
+                        <Input
+                          id="viz-title"
+                          value={editDraft.title}
+                          onChange={(event) => handleTitleChange(event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="viz-type">Chart Type</Label>
+                        <Select
+                          value={editDraft.chart_type || "auto"}
+                          onValueChange={handleChartTypeChange}
+                        >
+                          <SelectTrigger id="viz-type">
+                            <SelectValue placeholder="Select chart type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CHART_TYPE_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="viz-description">Description</Label>
+                      <Textarea
+                        id="viz-description"
+                        value={editDraft.description ?? ""}
+                        onChange={(event) => handleDescriptionChange(event.target.value)}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="viz-dataset">Dataset / dbt Model</Label>
+                      <Input
+                        id="viz-dataset"
+                        placeholder="e.g. salesData"
+                        value={datasetInput}
+                        onChange={(event) => handleDatasetChange(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Used for dataset selection, dbt model linking, and dashboard integration.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="viz-config">Chart Configuration (JSON)</Label>
+                        {chartConfigError ? (
+                          <span className="text-xs text-destructive">{chartConfigError}</span>
+                        ) : null}
+                      </div>
+                      <Textarea
+                        id="viz-config"
+                        value={chartConfigText}
+                        onChange={(event) => handleChartConfigChange(event.target.value)}
+                        rows={14}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="viz-code">Generated Code</Label>
+                      <Textarea
+                        id="viz-code"
+                        value={codeText}
+                        onChange={(event) => handleCodeChange(event.target.value)}
+                        rows={10}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleResetEdits}
+                        disabled={isSaving}
+                      >
+                        Reset
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleSaveEdits}
+                        disabled={isSaving || Boolean(chartConfigError)}
+                      >
+                        {isSaving ? "Saving..." : "Save Changes"}
+                      </Button>
+                      {saveSuccess && (
+                        <span className="text-xs text-green-600">Visualization updated.</span>
+                      )}
+                      {saveError && (
+                        <span className="text-xs text-destructive">{saveError}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select a visualization to edit its configuration.
+                  </p>
                 )}
               </TabsContent>
             </Tabs>

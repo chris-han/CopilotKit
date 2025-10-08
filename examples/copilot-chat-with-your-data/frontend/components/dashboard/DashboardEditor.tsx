@@ -35,6 +35,59 @@ interface DashboardItem {
   config?: Record<string, unknown>;
 }
 
+type ChartTypeOption = "area" | "bar" | "donut";
+
+type ChartTypePreset = {
+  dataSource: string;
+  metricField: string;
+  dimensionField: string;
+  dbtModel: string;
+  buildEchartsConfig: (item: DashboardItem) => Record<string, unknown>;
+  buildCode: (item: DashboardItem, echartsConfig: Record<string, unknown>) => string;
+};
+
+const SAMPLE_CHART_DATA: Record<string, Array<Record<string, unknown>>> = {
+  salesData: [
+    { date: "Jan 22", Sales: 2890, Profit: 2400, Expenses: 490 },
+    { date: "Feb 22", Sales: 1890, Profit: 1398, Expenses: 492 },
+    { date: "Mar 22", Sales: 3890, Profit: 2980, Expenses: 910 },
+    { date: "Apr 22", Sales: 2890, Profit: 2300, Expenses: 590 },
+    { date: "May 22", Sales: 4890, Profit: 3200, Expenses: 1690 },
+    { date: "Jun 22", Sales: 3890, Profit: 2900, Expenses: 990 },
+    { date: "Jul 22", Sales: 4200, Profit: 3100, Expenses: 1100 },
+    { date: "Aug 22", Sales: 4500, Profit: 3400, Expenses: 1100 },
+    { date: "Sep 22", Sales: 5100, Profit: 3800, Expenses: 1300 },
+    { date: "Oct 22", Sales: 4800, Profit: 3600, Expenses: 1200 },
+    { date: "Nov 22", Sales: 5500, Profit: 4100, Expenses: 1400 },
+    { date: "Dec 22", Sales: 6800, Profit: 5200, Expenses: 1600 },
+  ],
+  productData: [
+    { name: "Smartphone", sales: 9800, growth: 12.5 },
+    { name: "Graphic Tee", sales: 4567, growth: 8.2 },
+    { name: "Dishwasher", sales: 3908, growth: -2.4 },
+    { name: "Blender", sales: 2400, growth: 5.6 },
+    { name: "Smartwatch", sales: 1908, growth: -1.8 },
+  ],
+  categoryData: [
+    { name: "Electronics", value: 35, growth: 8.2 },
+    { name: "Clothing", value: 25, growth: 4.5 },
+    { name: "Home & Kitchen", value: 20, growth: 12.1 },
+    { name: "Other", value: 15, growth: -2.3 },
+    { name: "Books", value: 5, growth: 1.5 },
+  ],
+};
+
+const createCodeSnippet = (
+  chartType: ChartTypeOption,
+  datasetKey: string,
+  echartsConfig: Record<string, unknown>,
+) => {
+  return [
+    `// Auto-generated ${chartType} chart bound to ${datasetKey}`,
+    `export default ${JSON.stringify(echartsConfig, null, 2)};`,
+  ].join("\n");
+};
+
 interface GridPosition {
   x: number;
   y: number;
@@ -134,7 +187,7 @@ select
   sum(s.revenue) as revenue,
   sum(s.profit) as profit,
   sum(s.expense) as expense,
-  sum(s.customer_count) as customers
+      sum(s.customer_count) as customers
 from source s
 left join calendar c
   on s.date_id = c.date_id
@@ -199,6 +252,117 @@ join {{ ref('fct_customer_spend') }} f
   on d.demographic_id = f.demographic_id
 group by 1
 order by total_spend desc;`,
+  },
+};
+
+const CHART_TYPE_PRESETS: Record<ChartTypeOption, ChartTypePreset> = {
+  area: {
+    dataSource: "salesData",
+    metricField: "Sales",
+    dimensionField: "date",
+    dbtModel: "salesData",
+    buildEchartsConfig: (item) => {
+      const dataset = SAMPLE_CHART_DATA.salesData;
+      return {
+        title: { text: item.title || "Sales Overview" },
+        legend: { show: true },
+        tooltip: { trigger: "axis" },
+        dataset: { source: dataset },
+        xAxis: { type: "category", boundaryGap: false, name: "Date" },
+        yAxis: { type: "value", name: "Amount" },
+        series: [
+          {
+            name: "Sales",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.2 },
+            encode: { x: "date", y: "Sales" },
+          },
+          {
+            name: "Profit",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.12 },
+            encode: { x: "date", y: "Profit" },
+          },
+          {
+            name: "Expenses",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.12 },
+            encode: { x: "date", y: "Expenses" },
+          },
+        ],
+        color: ["#4f46e5", "#14b8a6", "#f97316"],
+        grid: { left: "8%", right: "5%", bottom: "10%", containLabel: true },
+      };
+    },
+    buildCode: (item, echartsConfig) => createCodeSnippet("area", "salesData", {
+      ...echartsConfig,
+      title: { text: item.title || "Sales Overview" },
+    }),
+  },
+  bar: {
+    dataSource: "productData",
+    metricField: "sales",
+    dimensionField: "name",
+    dbtModel: "productData",
+    buildEchartsConfig: (item) => {
+      const dataset = SAMPLE_CHART_DATA.productData;
+      return {
+        title: { text: item.title || "Product Performance" },
+        tooltip: { trigger: "axis" },
+        dataset: { source: dataset },
+        grid: { left: 120, right: 40, bottom: 40, top: 60, containLabel: true },
+        xAxis: { type: "value", name: "Sales" },
+        yAxis: { type: "category", name: "Product", inverse: true },
+        series: [
+          {
+            type: "bar",
+            encode: { x: "sales", y: "name" },
+            itemStyle: { borderRadius: [4, 4, 4, 4] },
+            label: { show: true, position: "right", formatter: "{c}" },
+          },
+        ],
+        color: ["#2563eb"],
+      };
+    },
+    buildCode: (item, echartsConfig) => createCodeSnippet("bar", "productData", {
+      ...echartsConfig,
+      title: { text: item.title || "Product Performance" },
+    }),
+  },
+  donut: {
+    dataSource: "categoryData",
+    metricField: "value",
+    dimensionField: "name",
+    dbtModel: "categoryData",
+    buildEchartsConfig: (item) => {
+      const dataset = SAMPLE_CHART_DATA.categoryData;
+      return {
+        title: { text: item.title || "Sales by Category" },
+        tooltip: { trigger: "item" },
+        legend: { orient: "vertical", left: "left" },
+        dataset: { source: dataset },
+        series: [
+          {
+            name: "Category Share",
+            type: "pie",
+            radius: ["45%", "70%"],
+            center: ["55%", "55%"],
+            avoidLabelOverlap: false,
+            encode: { value: "value", itemName: "name" },
+            label: { formatter: "{b}: {d}%" },
+            emphasis: { scale: true, scaleSize: 8 },
+          },
+        ],
+        color: ["#0ea5e9", "#f97316", "#22c55e", "#6366f1", "#a855f7"],
+      };
+    },
+    buildCode: (item, echartsConfig) => createCodeSnippet("donut", "categoryData", {
+      ...echartsConfig,
+      title: { text: item.title || "Sales by Category" },
+    }),
   },
 };
 
@@ -1044,6 +1208,53 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
     updateItem(itemId, { config: mergedConfig });
   };
 
+  const handleChartTypeChange = (value: string) => {
+    if (!selectedItemData) return;
+    const chartType = value as ChartTypeOption;
+    const preset = CHART_TYPE_PRESETS[chartType];
+
+    if (!preset) {
+      updateItem(selectedItemData.id, { chartType });
+      return;
+    }
+
+    const echartsConfig = preset.buildEchartsConfig(selectedItemData);
+    const chartCode = preset.buildCode(selectedItemData, echartsConfig);
+    const normalizedDataConfig = normalizeDataConfigUpdates({
+      dataSource: preset.dataSource,
+      metricField: preset.metricField,
+      dimensionField: preset.dimensionField,
+      dbtModel: preset.dbtModel,
+    });
+
+    const existingConfig: Record<string, unknown> = { ...(selectedItemData.config ?? {}) };
+    delete existingConfig["lida_visualization_id"];
+    delete existingConfig["chart_config"];
+    delete existingConfig["echarts_config"];
+    delete existingConfig["code"];
+    delete existingConfig["chartType"];
+    delete existingConfig["chart_type"];
+    delete existingConfig["datasetName"];
+    delete existingConfig["dataset_name"];
+
+    const nextConfig: Record<string, unknown> = {
+      ...existingConfig,
+      ...normalizedDataConfig,
+      datasetName: preset.dataSource,
+      dataset_name: preset.dataSource,
+      echarts_config: echartsConfig,
+      chart_config: echartsConfig,
+      code: chartCode,
+      chartType,
+      chart_type: chartType,
+    };
+
+    updateItem(selectedItemData.id, {
+      chartType,
+      config: nextConfig,
+    });
+  };
+
   const removeItem = (itemId: string) => {
     const newConfig = {
       ...config,
@@ -1095,7 +1306,8 @@ export function ItemPropertiesCard({ config, onChange, selectedItemId }: DataAss
                 <Label htmlFor="chart-type">Chart Type</Label>
                 <Select
                   value={selectedItemData.chartType}
-                  onValueChange={(value) => updateItem(selectedItemData.id, { chartType: value as "area" | "bar" | "donut" })}
+                  onValueChange={(value) => handleChartTypeChange(value)}
+                  disabled={isRunning}
                 >
                   <SelectTrigger>
                     <SelectValue />

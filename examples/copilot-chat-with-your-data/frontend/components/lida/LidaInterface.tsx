@@ -1163,11 +1163,13 @@ export function LidaInterface() {
         <TabsContent value="gallery" className="space-y-6">
           <ChartGallery
             visualizations={visualizations}
+            dashboards={dashboards}
             onVisualizationSelect={(viz) => {
               // Handle visualization selection for editing or viewing
               console.log("Selected visualization:", viz);
             }}
             onAddToDashboard={handleAddToDashboard}
+            onCreateDashboard={handleCreateDashboard}
             onDeleteVisualization={handleDeleteVisualization}
           />
         </TabsContent>

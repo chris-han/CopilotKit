@@ -159,3 +159,6 @@ sendAiDatabaseCrud({
 - Update `AgUiSidebar` prompt + UI when adding new interaction patterns or visual directives.
 
 Use this guide as the canonical reference for agents modifying or recreating the project end-to-end.
+
+## Documents
+- Always maintain up to date design at /home/chris/repo/CopilotKit/examples/copilot-chat-with-your-data/frontend/design-specs/architecture-design-v2.md and /home/chris/repo/CopilotKit/examples/copilot-chat-with-your-data/frontend/design-specs/LIDA-ECharts-Implementation-Plan.md when there is a design changes.

@@ -7,6 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
+import { Label } from "../ui/label";
+import { Dashboard } from "@/types/dashboard";
 
 interface DbtModelMetadata {
   id?: string;
@@ -35,8 +39,10 @@ interface GeneratedVisualization {
 
 interface ChartGalleryProps {
   visualizations: GeneratedVisualization[];
+  dashboards: Dashboard[];
   onVisualizationSelect: (visualization: GeneratedVisualization) => void;
-  onAddToDashboard?: (visualization: GeneratedVisualization) => void;
+  onAddToDashboard?: (visualization: GeneratedVisualization, dashboardId?: string) => void | Promise<void>;
+  onCreateDashboard?: (name: string, description?: string) => Promise<Dashboard>;
   onDeleteVisualization?: (visualization: GeneratedVisualization) => Promise<void> | void;
 }
 
@@ -59,11 +65,25 @@ type DbtModelMetadata = {
   aliases?: string[];
 };
 
-export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard, onDeleteVisualization }: ChartGalleryProps) {
+export function ChartGallery({
+  visualizations,
+  dashboards,
+  onVisualizationSelect,
+  onAddToDashboard,
+  onCreateDashboard,
+  onDeleteVisualization,
+}: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addMode, setAddMode] = useState<"existing" | "new">("existing");
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string>("");
+  const [newDashboardName, setNewDashboardName] = useState<string>("");
+  const [newDashboardDescription, setNewDashboardDescription] = useState<string>("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addLoading, setAddLoading] = useState(false);
 
   const normalizedSelectedInsights = useMemo(() => {
     if (!selectedViz) return [];
@@ -167,26 +187,74 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
     console.log("Viewing code for:", viz.title);
   };
 
-  const handleAddToDashboard = async (viz: GeneratedVisualization) => {
+  const handleAddToDashboardClick = (viz: GeneratedVisualization) => {
     console.log("ChartGallery: Add to Dashboard button clicked for:", viz.title);
-    console.log("ChartGallery: onAddToDashboard handler available:", !!onAddToDashboard);
-
-    if (onAddToDashboard) {
-      try {
-        console.log("ChartGallery: Calling onAddToDashboard handler");
-        await onAddToDashboard(viz);
-        console.log("ChartGallery: onAddToDashboard completed successfully");
-        // Don't show success message here since parent will handle it
-      } catch (error) {
-        console.error("ChartGallery: Failed to add to dashboard:", error);
-        setSuccessMessage(`Failed to add "${viz.title}" to dashboard. Error: ${error.message || 'Unknown error'}`);
-        setSuccessDialogOpen(true);
-      }
-    } else {
-      // Default behavior if no handler provided
-      console.log("ChartGallery: No onAddToDashboard handler provided");
+    if (!onAddToDashboard) {
       setSuccessMessage("Dashboard functionality not connected. Please check the component setup.");
       setSuccessDialogOpen(true);
+      return;
+    }
+    setSelectedViz(viz);
+    setAddError(null);
+    const hasDashboards = dashboards.length > 0;
+    setAddMode(hasDashboards ? "existing" : "new");
+    setSelectedDashboardId(hasDashboards ? dashboards[0].id : "");
+    setNewDashboardName(viz.title ? `${viz.title} Dashboard` : "New Dashboard");
+    setNewDashboardDescription("");
+    if (!hasDashboards && !onCreateDashboard) {
+      setSuccessMessage("No dashboards available and dashboard creation is not configured.");
+      setSuccessDialogOpen(true);
+      return;
+    }
+    setAddDialogOpen(true);
+  };
+
+  const confirmAddToDashboard = async () => {
+    if (!selectedViz) {
+      setAddError("Select a visualization first.");
+      return;
+    }
+    if (!onAddToDashboard) {
+      setAddError("Dashboard functionality not connected.");
+      return;
+    }
+    try {
+      setAddLoading(true);
+      setAddError(null);
+
+      let dashboardId = selectedDashboardId;
+      let dashboardName = "";
+
+      if (addMode === "new") {
+        if (!onCreateDashboard) {
+          throw new Error("Creating dashboards is not supported in this environment.");
+        }
+        const name = (newDashboardName || `${selectedViz.title} Dashboard`).trim();
+        const description = newDashboardDescription.trim() || undefined;
+        const created = await onCreateDashboard(name, description);
+        if (!created || !created.id) {
+          throw new Error("Failed to create dashboard.");
+        }
+        dashboardId = created.id;
+        dashboardName = created.name;
+        setSelectedDashboardId(created.id);
+      } else {
+        if (!dashboardId) {
+          throw new Error("Please select a dashboard.");
+        }
+        const existing = dashboards.find((d) => d.id === dashboardId);
+        dashboardName = existing?.name ?? "Dashboard";
+      }
+
+      await onAddToDashboard(selectedViz, dashboardId);
+      setSuccessMessage(`Added "${selectedViz.title}" to "${dashboardName}".`);
+      setSuccessDialogOpen(true);
+      setAddDialogOpen(false);
+    } catch (error) {
+      console.error("ChartGallery: Failed to add visualization to dashboard:", error);
+      setAddError(error instanceof Error ? error.message : "Failed to add visualization to dashboard.");
+    } finally {
+      setAddLoading(false);
     }
   };
 
@@ -510,7 +578,7 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                   onClick={() => {
                     console.log('Button clicked, selectedViz:', selectedViz?.title);
                     if (selectedViz) {
-                      handleAddToDashboard(selectedViz);
+                      handleAddToDashboardClick(selectedViz);
                     } else {
                       console.error('No selectedViz available');
                     }
@@ -677,6 +745,110 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
           </CardContent>
         </Card>
       )}
+
+      {/* Add to Dashboard Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={(open) => {
+        setAddDialogOpen(open);
+        if (!open) {
+          setAddLoading(false);
+          setAddError(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add to Dashboard</DialogTitle>
+            <DialogDescription>
+              Choose a dashboard to add <strong>{selectedViz?.title}</strong> or create a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Destination</Label>
+              <div className="mt-2 flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="dashboard-mode"
+                    value="existing"
+                    checked={addMode === "existing"}
+                    onChange={() => setAddMode("existing")}
+                    disabled={!dashboards.length}
+                  />
+                  <span>Existing dashboard</span>
+                  {!dashboards.length && <span className="text-xs text-muted-foreground">(none available)</span>}
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="dashboard-mode"
+                    value="new"
+                    checked={addMode === "new"}
+                    onChange={() => setAddMode("new")}
+                    disabled={!onCreateDashboard}
+                  />
+                  <span>Create new dashboard</span>
+                  {!onCreateDashboard && <span className="text-xs text-muted-foreground">(disabled)</span>}
+                </label>
+              </div>
+            </div>
+
+            {addMode === "existing" ? (
+              <div className="space-y-2">
+                <Label htmlFor="dashboard-select">Select dashboard</Label>
+                <select
+                  id="dashboard-select"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={selectedDashboardId}
+                  onChange={(event) => setSelectedDashboardId(event.target.value)}
+                  disabled={!dashboards.length}
+                >
+                  {dashboards.map((dashboard) => (
+                    <option key={dashboard.id} value={dashboard.id}>
+                      {dashboard.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="new-dashboard-name">Dashboard name</Label>
+                  <Input
+                    id="new-dashboard-name"
+                    value={newDashboardName}
+                    onChange={(event) => setNewDashboardName(event.target.value)}
+                    placeholder="FinOps Executive Dashboard"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="new-dashboard-description">Description (optional)</Label>
+                  <Textarea
+                    id="new-dashboard-description"
+                    value={newDashboardDescription}
+                    onChange={(event) => setNewDashboardDescription(event.target.value)}
+                    placeholder="Explain the purpose of this dashboard"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+
+            {addError ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {addError}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmAddToDashboard} disabled={addLoading || (addMode === "existing" && !selectedDashboardId && dashboards.length > 0)}>
+              {addLoading ? "Adding..." : "Add to dashboard"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Success Dialog */}
       <Dialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>

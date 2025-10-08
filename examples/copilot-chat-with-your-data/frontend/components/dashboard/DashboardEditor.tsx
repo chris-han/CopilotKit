@@ -81,15 +81,6 @@ const ITEM_TYPES = [
   { value: "commentary", label: "Commentary", icon: FileText, description: "AI-generated insights" },
 ];
 
-const SPAN_OPTIONS = [
-  { value: "col-span-1", label: "1 Column" },
-  { value: "col-span-2", label: "2 Columns" },
-  { value: "col-span-3", label: "3 Columns" },
-  { value: "col-span-4", label: "4 Columns" },
-  { value: "col-span-1 md:col-span-2", label: "1-2 Columns (Responsive)" },
-  { value: "col-span-1 md:col-span-2 lg:col-span-4", label: "1-2-4 Columns (Responsive)" },
-];
-
 const DATA_CONFIG_MAP = {
   dataSource: ["dataSource", "data_source"],
   metricField: ["metricField", "metric_field"],

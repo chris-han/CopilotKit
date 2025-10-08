@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
       FROM dashboards.dashboard_templates
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: Array<string | number | boolean> = [];
     let paramIndex = 1;
 
     if (category) {

@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const [mode, setMode] = useState<"view" | "edit">(initialMode);
 
   // Use dashboard context
-  const { setDashboard: setContextDashboard, setMode: setContextMode, setOnDashboardChange, setActiveSection } = useDashboardContext();
+  const { setDashboard: setContextDashboard, setMode: setContextMode, setOnDashboardChange } = useDashboardContext();
   const { sendDirectUIUpdate } = useAgUiAgent();
 
   useEffect(() => {
@@ -61,7 +61,12 @@ export default function DashboardPage() {
     }
   }, [dashboard, setContextDashboard]);
 
-  const handleSave = useCallback(async (updatedConfig: any) => {
+  const handleSave = useCallback(async (updatedConfig: {
+    name?: string;
+    description?: string | null;
+    layout_config: Dashboard["layout_config"];
+    metadata: Dashboard["metadata"];
+  }) => {
     if (!dashboard) return;
 
     try {

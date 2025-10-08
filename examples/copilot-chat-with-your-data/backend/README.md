@@ -1,14 +1,14 @@
-# CopilotKit FastAPI Backend
+# AG-UI FastAPI Backend
 
-This is a FastAPI backend with native CopilotKit integration that replaces the Next.js API route for containerized deployment.
+This FastAPI service powers the AG-UI runtime used by the Next.js frontend. It replaces the legacy CopilotKit API route and centralises LLM orchestration, data story generation, and LIDA visualisation persistence.
 
 ## Features
 
-- **CopilotKit Integration**: Native FastAPI support with streaming responses
-- **Azure OpenAI**: Configured for Azure OpenAI deployments
-- **Internet Search**: Tavily API integration for current information
-- **Health Checks**: Container-ready with health endpoints
-- **CORS Support**: Configured for frontend communication
+- **AG-UI Protocol Runtime**: Streams events to the HttpAgent used in the frontend.
+- **Azure OpenAI**: Handles analysis prompts plus optional text-to-speech narration.
+- **Internet Search**: Tavily API integration for current information.
+- **LIDA Persistence**: Optional Postgres-backed store for generated visualisations.
+- **Health Checks & CORS**: Production-ready defaults for containerised deployments.
 
 ## Quick Start
 
@@ -28,10 +28,16 @@ cp .env.example .env
 ```
 
 Required variables:
-- `AZURE_OPENAI_API_KEY`: Your Azure OpenAI API key
-- `AZURE_OPENAI_ENDPOINT`: Your Azure OpenAI endpoint URL
-- `AZURE_OPENAI_DEPLOYMENT`: Your deployment name
-- `TAVILY_API_KEY`: Optional, for internet search functionality
+
+- `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`
+
+Recommended/optional variables:
+
+- `AZURE_OPENAI_TTS_DEPLOYMENT`, `AZURE_OPENAI_TTS_API_VERSION` – enable narrated data stories.
+- `DATA_STORY_AUDIO_ENABLED` – toggle audio generation without changing code.
+- `TAVILY_API_KEY` – configure server-side search augmentation.
+- `FRONTEND_ORIGINS` – comma-separated list of allowed browser origins.
+- `POSTGRES_*` – point at a Postgres instance to persist LIDA visualisations (otherwise falls back to in-memory storage).
 
 ### 3. Run the Server
 
@@ -77,11 +83,14 @@ services:
 
 ## API Endpoints
 
-- `GET /health` - Health check endpoint
-- `POST /copilotkit` - CopilotKit runtime endpoint (used by frontend)
-- `GET /docs` - FastAPI automatic documentation
+- `GET /health` – Health check endpoint.
+- `POST /ag-ui/run` – Primary AG-UI streaming endpoint consumed by the frontend HttpAgent.
+- `POST /ag-ui/database` – Direct database CRUD bridge for AG-UI `DirectDatabaseCRUD` messages.
+- `GET /ag-ui/dashboard-data` – Streams the static dashboard context.
+- `GET|POST|DELETE /lida/visualizations` – REST helpers for working with the LIDA store.
+- `GET /docs` – FastAPI automatic documentation.
 
-## CopilotKit Actions
+## Runtime Actions
 
 ### searchInternet
 
@@ -94,4 +103,4 @@ Searches the internet for current information using Tavily API.
 
 ## Configuration
 
-The backend validates all required environment variables on startup and will fail fast if any are missing. This ensures container health checks work correctly in production deployments.
+The backend validates critical Azure OpenAI configuration on startup and will fail fast if any required value is missing. Optional subsystems (Tavily, Postgres, audio narration) log informative warnings rather than crashing so local development continues to work.

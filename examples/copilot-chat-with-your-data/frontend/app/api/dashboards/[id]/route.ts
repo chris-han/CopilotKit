@@ -104,7 +104,7 @@ export async function PATCH(
 
     // Build dynamic update query
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | boolean> = [];
     let paramIndex = 1;
 
     if (name !== undefined) {

@@ -50,6 +50,45 @@ interface GeneratedVisualization {
   dataset_name?: string | null;
 }
 
+function pickDatasetKey(...candidates: Array<string | null | undefined>): string | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") {
+      continue;
+    }
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
+function normaliseChartConfigForDataset(chartConfig: any, datasetKey?: string | null) {
+  const normalized = { ...(chartConfig ?? {}) };
+  if (typeof datasetKey === "string" && datasetKey.trim().length > 0) {
+    const trimmed = datasetKey.trim();
+    if (typeof normalized.dbtModel !== "string" || normalized.dbtModel.trim().length === 0) {
+      normalized.dbtModel = trimmed;
+    }
+    if (typeof normalized.dbt_model !== "string" || normalized.dbt_model.trim().length === 0) {
+      normalized.dbt_model = trimmed;
+    }
+    if (typeof normalized.datasetName !== "string" || normalized.datasetName.trim().length === 0) {
+      normalized.datasetName = trimmed;
+    }
+    if (typeof normalized.dataset_name !== "string" || normalized.dataset_name.trim().length === 0) {
+      normalized.dataset_name = trimmed;
+    }
+    if (typeof normalized.dataSource !== "string" || normalized.dataSource.trim().length === 0) {
+      normalized.dataSource = trimmed;
+    }
+    if (typeof normalized.data_source !== "string" || normalized.data_source.trim().length === 0) {
+      normalized.data_source = trimmed;
+    }
+  }
+  return normalized;
+}
+
 
 export function LidaInterface() {
   const router = useRouter();
@@ -122,7 +161,23 @@ export function LidaInterface() {
           content: 'Load persisted visualizations',
         });
         if (Array.isArray(data)) {
-          setVisualizations(data);
+          const normalized = (data as GeneratedVisualization[]).map((viz) => {
+            const datasetKey = pickDatasetKey(
+              viz.dataset_name,
+              viz.chart_config?.dbtModel,
+              viz.chart_config?.dbt_model,
+              viz.chart_config?.datasetName,
+              viz.chart_config?.dataset_name,
+              viz.chart_config?.dataSource,
+              viz.chart_config?.data_source,
+            );
+            return {
+              ...viz,
+              chart_config: normaliseChartConfigForDataset(viz.chart_config, datasetKey),
+              dataset_name: datasetKey ?? viz.dataset_name ?? null,
+            };
+          });
+          setVisualizations(normalized);
         }
       } catch (error) {
         console.error("Error loading persisted visualizations:", error);
@@ -194,23 +249,56 @@ export function LidaInterface() {
       visualization.chart_config?.data_source ??
       null;
 
-    const fallbackVisualization = { ...visualization, dataset_name: resolvedDataset };
+    const datasetKey = pickDatasetKey(
+      resolvedDataset,
+      visualization.dataset_name,
+      visualization.chart_config?.dbtModel,
+      visualization.chart_config?.dbt_model,
+      visualization.chart_config?.datasetName,
+      visualization.chart_config?.dataset_name,
+      visualization.chart_config?.dataSource,
+      visualization.chart_config?.data_source,
+    );
+    const normalizedConfig = normaliseChartConfigForDataset(visualization.chart_config, datasetKey);
+
+    const fallbackVisualization: GeneratedVisualization = {
+      ...visualization,
+      chart_config: normalizedConfig,
+      dataset_name: datasetKey ?? visualization.dataset_name ?? null,
+    };
     setVisualizations((prev) => [fallbackVisualization, ...prev.filter((viz) => viz.id !== visualization.id)]);
 
     try {
+      const payload = {
+        ...visualization,
+        chart_config: normalizedConfig,
+        dataset_name: datasetKey ?? visualization.dataset_name ?? null,
+      };
       const saved = await sendDirectDatabaseCrud({
         operation: 'create',
         resource: 'lida_visualizations',
-        payload: {
-          ...visualization,
-          dataset_name: resolvedDataset,
-        },
+        payload,
         content: `Persist visualization "${visualization.title}"`,
       });
       if (saved && typeof saved === 'object' && 'id' in saved) {
-        const normalized = saved as GeneratedVisualization;
-        setVisualizations((prev) => [normalized, ...prev.filter((viz) => viz.id !== normalized.id)]);
-        return normalized;
+        const savedVisualization = saved as GeneratedVisualization;
+        const savedDatasetKey = pickDatasetKey(
+          savedVisualization.dataset_name,
+          savedVisualization.chart_config?.dbtModel,
+          savedVisualization.chart_config?.dbt_model,
+          savedVisualization.chart_config?.datasetName,
+          savedVisualization.chart_config?.dataset_name,
+          savedVisualization.chart_config?.dataSource,
+          savedVisualization.chart_config?.data_source,
+          datasetKey,
+        );
+        const normalizedSaved: GeneratedVisualization = {
+          ...savedVisualization,
+          chart_config: normaliseChartConfigForDataset(savedVisualization.chart_config, savedDatasetKey),
+          dataset_name: savedDatasetKey ?? savedVisualization.dataset_name ?? null,
+        };
+        setVisualizations((prev) => [normalizedSaved, ...prev.filter((viz) => viz.id !== normalizedSaved.id)]);
+        return normalizedSaved;
       }
     } catch (error) {
       console.error("Error persisting visualization:", error);
@@ -352,15 +440,30 @@ export function LidaInterface() {
 
       // Fallback: if no suggestions, handle as direct visualization
       if (result.visualizations && result.visualizations.length > 0) {
+        const initialConfig = result.visualizations[0]?.chart_config;
+        const datasetKey = pickDatasetKey(
+          result.visualizations[0]?.dataset_name,
+          initialConfig?.dbtModel,
+          initialConfig?.dbt_model,
+          initialConfig?.datasetName,
+          initialConfig?.dataset_name,
+          initialConfig?.dataSource,
+          initialConfig?.data_source,
+          currentDataset,
+          dataSummary?.file_name,
+          dataSummary?.name,
+        );
+        const normalizedConfig = normaliseChartConfigForDataset(initialConfig, datasetKey);
         const newViz: GeneratedVisualization = {
           id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           title: request.goal,
           description: result.visualizations[0].explanation || "",
           chart_type: request.chart_type || "auto",
-          chart_config: result.visualizations[0].chart_config,
+          chart_config: normalizedConfig,
           code: result.visualizations[0].code || "",
           insights: result.insights || [],
           created_at: new Date().toISOString(),
+          dataset_name: datasetKey ?? null,
         };
 
         const saved = await persistVisualization(newViz);
@@ -378,24 +481,38 @@ export function LidaInterface() {
 
   const handleChartSelected = useCallback((suggestion: any, config: any) => {
     // Generate final visualization from selected chart
+    const datasetKey = pickDatasetKey(
+      suggestion?.dataset_name,
+      config?.dbtModel,
+      config?.dbt_model,
+      config?.datasetName,
+      config?.dataset_name,
+      config?.dataSource,
+      config?.data_source,
+      currentDataset,
+      dataSummary?.file_name,
+      dataSummary?.name,
+    );
+    const normalizedConfig = normaliseChartConfigForDataset(config, datasetKey);
     const newViz: GeneratedVisualization = {
       id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       title: suggestion.title || "Generated Visualization",
       description: suggestion.reasoning || "",
       chart_type: suggestion.chart_type,
-      chart_config: config,
+      chart_config: normalizedConfig,
       code: `// ECharts configuration\nconst chartConfig = ${JSON.stringify(config, null, 2)};`,
       insights: currentBackendInsights.length > 0
         ? currentBackendInsights
         : [`Selected ${suggestion.chart_type} chart`, suggestion.best_for],
       created_at: new Date().toISOString(),
+      dataset_name: datasetKey ?? null,
     };
 
     persistVisualization(newViz).catch((error) => {
       console.error("Failed to persist visualization from suggestion:", error);
     });
     setActiveTab("gallery"); // Switch to gallery to show the generated chart
-  }, [persistVisualization, currentBackendInsights]);
+  }, [persistVisualization, currentBackendInsights, currentDataset, dataSummary]);
 
   // Dashboard management handlers
   const handleCreateDashboard = useCallback(async (name: string, description?: string) => {

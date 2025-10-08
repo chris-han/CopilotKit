@@ -38,10 +38,14 @@ const CHART_TYPE_ICONS = {
   auto: Sparkles,
 };
 
-const DBT_MODEL_MAP: Record<
-  string,
-  { name: string; path: string; description: string; sql: string }
-> = {
+type DbtModelMetadata = {
+  name: string;
+  path: string;
+  description: string;
+  sql: string;
+};
+
+const DBT_MODEL_MAP: Record<string, DbtModelMetadata> = {
   salesData: {
     name: "Sales Performance Model",
     path: "models/marts/finance/sales_performance.sql",
@@ -123,7 +127,107 @@ join {{ ref('fct_customer_spend') }} f
 group by 1
 order by total_spend desc;`,
   },
+  enterprise_multi_cloud: {
+    name: "Enterprise Multi-Cloud Spend",
+    path: "models/marts/finops/enterprise_multi_cloud.sql",
+    description: "Normalised cloud cost data across AWS, Azure, and GCP with provider, service, and environment dimensions.",
+    sql: `with source as (
+  select * from {{ ref('fct_enterprise_cloud_costs') }}
+),
+aggregated as (
+  select
+    billing_period_start,
+    provider,
+    service,
+    environment,
+    sum(cost) as total_cost,
+    sum(usage_quantity) as usage_quantity,
+    sum(credits) as credits,
+    sum(reserved_savings) as reserved_savings,
+    sum(spot_savings) as spot_savings
+  from source
+  group by 1, 2, 3, 4
+)
+select *
+from aggregated
+order by billing_period_start desc, provider asc, service asc;`,
+  },
 };
+
+function resolveDbtModelInfo(
+  visualization: GeneratedVisualization | null,
+): { key?: string; metadata?: DbtModelMetadata } {
+  if (!visualization) {
+    return {};
+  }
+
+  const chartConfig = (visualization.chart_config ?? {}) as Record<string, unknown>;
+  const datasetNameRaw = visualization.dataset_name;
+  const datasetName =
+    typeof datasetNameRaw === "string" && datasetNameRaw.trim().length > 0
+      ? datasetNameRaw.trim()
+      : undefined;
+
+  const candidateValues: unknown[] = [
+    chartConfig["dbtModel"],
+    chartConfig["dbt_model"],
+    datasetName,
+    chartConfig["datasetName"],
+    chartConfig["dataset_name"],
+    chartConfig["dataSource"],
+    chartConfig["data_source"],
+  ];
+
+  let resolvedKey: string | undefined;
+  for (const candidate of candidateValues) {
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) {
+        resolvedKey = trimmed;
+        break;
+      }
+    }
+  }
+
+  if (!resolvedKey && datasetName) {
+    resolvedKey = datasetName;
+  }
+
+  if (!resolvedKey) {
+    return {};
+  }
+
+  const lookupCandidates = new Set<string>();
+  lookupCandidates.add(resolvedKey);
+  lookupCandidates.add(resolvedKey.toLowerCase());
+  lookupCandidates.add(resolvedKey.replace(/[\s-]+/g, "_"));
+  lookupCandidates.add(resolvedKey.toLowerCase().replace(/[\s-]+/g, "_"));
+  lookupCandidates.add(resolvedKey.replace(/\.[^.]+$/, ""));
+  lookupCandidates.add(resolvedKey.toLowerCase().replace(/\.[^.]+$/, "").replace(/[\s-]+/g, "_"));
+
+  for (const candidate of Array.from(lookupCandidates)) {
+    if (candidate && candidate !== resolvedKey) {
+      lookupCandidates.add(candidate.toLowerCase());
+    }
+  }
+
+  let resolvedMetadata: DbtModelMetadata | undefined;
+  let resolvedLookupKey: string | undefined;
+  for (const candidate of lookupCandidates) {
+    if (!candidate) continue;
+    const metadata = DBT_MODEL_MAP[candidate];
+    if (metadata) {
+      resolvedMetadata = metadata;
+      resolvedLookupKey = candidate;
+      break;
+    }
+  }
+
+  return {
+    key: resolvedLookupKey ?? resolvedKey,
+    metadata: resolvedMetadata,
+  };
+}
 
 export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard, onDeleteVisualization }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
@@ -148,6 +252,11 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }, [visualizations]);
+
+  const { key: selectedDbtKey, metadata: selectedDbtModel } = useMemo(
+    () => resolveDbtModelInfo(selectedViz),
+    [selectedViz],
+  );
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -233,13 +342,19 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
         className="cursor-pointer hover:shadow-md transition-shadow"
         onClick={() => handleVisualizationClick(viz)}
       >
-        <CardHeader className="pb-2">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-2">
-              <IconComponent className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm font-medium truncate">{viz.title}</CardTitle>
+        <CardHeader className="pb-2 space-y-2">
+          <div className="flex min-w-0 items-start gap-2">
+            <IconComponent className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium leading-tight line-clamp-2">{viz.title}</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2">
+              <Calendar className="h-3 w-3" />
+              <span>{formatDate(viz.created_at)}</span>
+              <span>•</span>
+              <span className="capitalize">{viz.chart_type}</span>
             </div>
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center gap-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -273,12 +388,6 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
               </button>
             </div>
           </div>
-          <CardDescription className="text-xs flex items-center space-x-2">
-            <Calendar className="h-3 w-3" />
-            <span>{formatDate(viz.created_at)}</span>
-            <span>•</span>
-            <span className="capitalize">{viz.chart_type}</span>
-          </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
           {/* Chart Preview */}
@@ -338,17 +447,24 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
         onClick={() => handleVisualizationClick(viz)}
       >
         <CardContent className="p-4">
-          <div className="flex items-start space-x-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:space-x-4">
             {/* Chart Preview */}
             <div className="w-20 h-16 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
               <IconComponent className="h-6 w-6 text-muted-foreground" />
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between mb-2">
-                <h3 className="text-sm font-medium truncate pr-2">{viz.title}</h3>
-                <div className="flex items-center space-x-1 flex-shrink-0">
+            <div className="flex-1 min-w-0 flex flex-col gap-2">
+              <h3 className="text-sm font-medium leading-tight line-clamp-2 pr-2">{viz.title}</h3>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Calendar className="h-3 w-3" />
+                  <span>{formatDate(viz.created_at)}</span>
+                  <span>•</span>
+                  <span className="capitalize">{viz.chart_type}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1 sm:flex-shrink-0">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -381,13 +497,6 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                     <Download className="h-3 w-3" />
                   </button>
                 </div>
-              </div>
-
-              <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-2">
-                <Calendar className="h-3 w-3" />
-                <span>{formatDate(viz.created_at)}</span>
-                <span>•</span>
-                <span className="capitalize">{viz.chart_type}</span>
               </div>
 
               {viz.description && (
@@ -499,35 +608,22 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 <CardDescription>{selectedViz.title}</CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {(() => {
-                  const modelKey =
-                    selectedViz.chart_config?.dbtModel ||
-                    selectedViz.chart_config?.dbt_model ||
-                    selectedViz.dataset_name ||
-                    selectedViz.chart_config?.datasetName ||
-                    selectedViz.chart_config?.dataset_name ||
-                    selectedViz.chart_config?.dataSource ||
-                    selectedViz.chart_config?.data_source;
-                  const dbtModel =
-                    typeof modelKey === "string" ? DBT_MODEL_MAP[modelKey] : undefined;
-                  if (!dbtModel) return null;
-                  return (
-                    <Dialog>
-                      <DialogContent className="max-w-3xl">
-                        <DialogHeader>
-                          <DialogTitle>{dbtModel.name}</DialogTitle>
-                          <DialogDescription className="space-y-1">
-                            <p>{dbtModel.description}</p>
-                            <p className="text-xs text-muted-foreground">Path: {dbtModel.path}</p>
-                          </DialogDescription>
-                        </DialogHeader>
-                        <pre className="max-h-[360px] overflow-auto rounded-md bg-muted p-4 text-xs">
-                          <code>{dbtModel.sql}</code>
-                        </pre>
-                      </DialogContent>
-                    </Dialog>
-                  );
-                })()}
+                {selectedDbtModel ? (
+                  <Dialog>
+                    <DialogContent className="max-w-3xl">
+                      <DialogHeader>
+                        <DialogTitle>{selectedDbtModel.name}</DialogTitle>
+                        <DialogDescription className="space-y-1">
+                          <p>{selectedDbtModel.description}</p>
+                          <p className="text-xs text-muted-foreground">Path: {selectedDbtModel.path}</p>
+                        </DialogDescription>
+                      </DialogHeader>
+                      <pre className="max-h-[360px] overflow-auto rounded-md bg-muted p-4 text-xs">
+                        <code>{selectedDbtModel.sql}</code>
+                      </pre>
+                    </DialogContent>
+                  </Dialog>
+                ) : null}
                 <button
                   onClick={() => {
                     console.log('Button clicked, selectedViz:', selectedViz?.title);
@@ -560,20 +656,18 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 </TabsTrigger>
                 <TabsTrigger value="code">Code</TabsTrigger>
                 <TabsTrigger value="config">Config</TabsTrigger>
-                {(() => {
-                  const modelKey =
-                    selectedViz.chart_config?.dbtModel ||
-                    selectedViz.chart_config?.dbt_model ||
-                    selectedViz.dataset_name ||
-                    selectedViz.chart_config?.datasetName ||
-                    selectedViz.chart_config?.dataset_name ||
-                    selectedViz.chart_config?.dataSource ||
-                    selectedViz.chart_config?.data_source;
-                  if (!modelKey) return null;
-                  return (
-                    <TabsTrigger value="dbt">dbt Model</TabsTrigger>
-                  );
-                })()}
+                <TabsTrigger
+                  value="dbt"
+                  title={
+                    selectedDbtModel
+                      ? `View dbt model details for ${selectedDbtModel.name}`
+                      : selectedDbtKey
+                      ? `No dbt metadata registered for ${selectedDbtKey}`
+                      : "Link a dbt model to this visualization to view details"
+                  }
+                >
+                  dbt Model
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="preview" className="space-y-4">
@@ -643,37 +737,46 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 </pre>
               </TabsContent>
 
-              {(() => {
-                const modelKey =
-                  selectedViz.chart_config?.dbtModel ||
-                  selectedViz.chart_config?.dbt_model ||
-                  selectedViz.dataset_name ||
-                  selectedViz.chart_config?.datasetName ||
-                  selectedViz.chart_config?.dataset_name ||
-                  selectedViz.chart_config?.dataSource ||
-                  selectedViz.chart_config?.data_source;
-                const dbtModel =
-                  typeof modelKey === "string" ? DBT_MODEL_MAP[modelKey] : undefined;
-                if (!dbtModel) return null;
-                return (
-                  <TabsContent value="dbt">
-                    <div className="space-y-3">
-                      <div>
-                        <h4 className="text-sm font-semibold">{dbtModel.name}</h4>
-                        <p className="text-xs text-muted-foreground">
-                          {dbtModel.description}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Path: {dbtModel.path}
-                        </p>
-                      </div>
-                      <pre className="bg-muted p-4 rounded-md text-xs overflow-auto max-h-[360px]">
-                        <code>{dbtModel.sql}</code>
-                      </pre>
+              <TabsContent value="dbt">
+                {selectedDbtModel ? (
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-semibold">{selectedDbtModel.name}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedDbtModel.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Path: {selectedDbtModel.path}
+                      </p>
                     </div>
-                  </TabsContent>
-                );
-              })()}
+                    <pre className="bg-muted p-4 rounded-md text-xs overflow-auto max-h-[360px]">
+                      <code>{selectedDbtModel.sql}</code>
+                    </pre>
+                  </div>
+                ) : selectedDbtKey ? (
+                  <div className="space-y-4">
+                    <div className="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-4">
+                      <p className="text-sm font-medium text-foreground">
+                        No dbt metadata registered for{" "}
+                        <code className="font-mono text-xs">{selectedDbtKey}</code>.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Add this model to the gallery&#39;s dbt catalogue or persist metadata with the visualization to surface SQL lineage here.
+                      </p>
+                    </div>
+                    {selectedViz?.dataset_name ? (
+                      <p className="text-xs text-muted-foreground">
+                        Linked dataset:{" "}
+                        <code className="font-mono text-xs">{selectedViz.dataset_name}</code>
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-sm text-muted-foreground">
+                    Connect this visualization to a dbt model by including a `dbtModel` or `dataset_name` property in the chart configuration.
+                  </div>
+                )}
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>

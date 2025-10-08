@@ -47,7 +47,7 @@ export interface BaseMessage {
   timestamp: number;
   user_id?: string;
   thread_id?: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 // AI-powered message requiring LLM processing
@@ -68,7 +68,7 @@ export interface DirectUIUpdateMessage extends BaseMessage {
   type: 'direct_ui_update';
   target_component?: 'dashboard-editor' | 'data-assistant' | 'sidebar';
   action_type?: 'navigation' | 'state_change' | 'form_update' | 'modal_toggle';
-  ui_context?: Record<string, any>;
+  ui_context?: Record<string, unknown>;
   animation?: 'slide' | 'fade' | 'none';
   priority?: 'high' | 'normal' | 'low';
 }
@@ -77,20 +77,20 @@ export interface DirectDatabaseCrudMessage extends BaseMessage {
   type: 'direct_database_crud';
   operation: 'create' | 'read' | 'update' | 'delete';
   resource: string;
-  payload?: Record<string, any> | null;
+  payload?: Record<string, unknown> | null;
   record_id?: string | null;
-  query?: Record<string, any> | null;
-  metadata?: Record<string, any>;
+  query?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AiDatabaseCrudMessage extends BaseMessage {
   type: 'ai_database_crud';
   operation: 'create' | 'read' | 'update' | 'delete';
   resource: string;
-  payload?: Record<string, any> | null;
+  payload?: Record<string, unknown> | null;
   record_id?: string | null;
-  query?: Record<string, any> | null;
-  metadata?: Record<string, any>;
+  query?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
 }
 
 // Discriminated union of all message types
@@ -115,7 +115,7 @@ export type AgUiContextValue = {
   ) => void;
   sendDirectDatabaseCrud: (
     params: Omit<DirectDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
-  ) => Promise<any>;
+  ) => Promise<unknown>;
   sendAiDatabaseCrud: (
     params: Omit<AiDatabaseCrudMessage, 'type' | 'timestamp' | 'thread_id' | 'content'> & { content?: string }
   ) => void;
@@ -1021,7 +1021,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         throw new Error(errorBody || `Failed to ${message.operation} ${message.resource}`);
       }
 
-      let payload: any = null;
+      let payload: unknown = null;
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
         payload = await response.json();
@@ -1037,7 +1037,10 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
         },
       ]);
 
-      return payload?.data ?? payload;
+      if (payload && typeof payload === "object" && "data" in payload) {
+        return (payload as { data: unknown }).data;
+      }
+      return payload;
     } catch (error) {
       const errorId = generateId("database-crud-error");
       setMessages((prev) => [
@@ -1241,15 +1244,19 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           return;
         }
 
-        case 'ai':
-          runAiMessage(message);
-          return;
+    case 'ai':
+      runAiMessage(message);
+      return;
 
-        default: {
-          const _exhaustive: never = message;
-          throw new Error(`Unknown message type: ${(_exhaustive as any).type}`);
-        }
-      }
+    default: {
+      const unexpected: never = message;
+      const detail =
+        typeof unexpected === "object" && unexpected && "type" in unexpected
+          ? String((unexpected as { type?: unknown }).type)
+          : "unknown";
+      throw new Error(`Unknown message type: ${detail}`);
+    }
+  }
     },
     [handleDirectUIUpdate, handleDirectDatabaseCrud, runAiMessage],
   );

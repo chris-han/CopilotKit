@@ -379,6 +379,7 @@ export default function DynamicDashboardPage() {
       try {
         source = new EventSource(dashboardEndpoint, { withCredentials: true });
       } catch (error) {
+        console.error("Failed to initialise dashboard data stream:", error);
         if (!cancelled) {
           setDataError("Unable to initialise dashboard data stream.");
           setDataLoading(false);
@@ -399,6 +400,7 @@ export default function DynamicDashboardPage() {
             throw new Error("Invalid payload");
           }
         } catch (error) {
+          console.error("Failed to parse dashboard payload:", error);
           setDataError("Received malformed dashboard payload.");
         } finally {
           setDataLoading(false);
@@ -443,6 +445,7 @@ export default function DynamicDashboardPage() {
           setCommentary(body.commentary?.trim() ?? "");
         }
       } catch (error) {
+        console.error("Failed to fetch strategic commentary:", error);
         if (!cancelled) {
           setCommentaryError("Unable to load strategic commentary.");
         }

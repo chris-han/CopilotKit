@@ -2,13 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardTemplateGallery } from "@/components/dashboard/DashboardTemplateGallery";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 import { Dashboard } from "@/types/dashboard";
-import { Plus } from "lucide-react";
 
 interface DashboardTemplate {
   id: string;
@@ -16,8 +14,8 @@ interface DashboardTemplate {
   description: string;
   category: string;
   thumbnail_url?: string;
-  layout_config: any;
-  default_data: any;
+  layout_config: Record<string, unknown>;
+  default_data: Record<string, unknown>;
   is_featured: boolean;
   created_at: string;
   updated_at: string;

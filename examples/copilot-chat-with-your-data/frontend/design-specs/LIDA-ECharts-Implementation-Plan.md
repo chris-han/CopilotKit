@@ -1384,6 +1384,24 @@ sequenceDiagram
   - Migration test covering catalogue seeding and visualization upsert.
   - Gallery UI regression verifying dbt tab renders for each dataset.
 
+### Task 13c: Semantic Model Generation & Persistence (NEW)
+- [ ] **Create semantic model store**
+  - Table `dashboards.lida_semantic_models` with `id UUID`, `dataset_name`, `name`, `description`, `definition JSONB`, timestamps.
+  - Auto-seed when a dataset is selected (fallback definition derived from dataset summary).
+- [ ] **Expose APIs**
+  - `GET /lida/semantic-models/{dataset}` → fetch or lazily create semantic model for dataset.
+  - `POST /lida/semantic-models` → allow manual overrides (definition updates).
+- [ ] **Update visualization schema**
+  - Add `semantic_model_id` FK to `dashboards.lida_visualizations`.
+  - Ensure visualization CRUD paths populate the FK based on the active dataset.
+- [ ] **Frontend integration**
+  - Fetch semantic model during dataset selection in the LIDA interface.
+  - Persist `semantic_model_id` with every visualization save.
+  - Surface semantic model metadata in the Explore tab instead of static `sales_analytics`.
+- [ ] **Testing**
+  - Unit tests for semantic model creation + binding.
+  - UI regression confirming dataset switches update the semantic model panel.
+
 ### Task 14: Migration Validation and Testing
 - [ ] **Implement comprehensive migration validation**
   ```python

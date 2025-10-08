@@ -39,81 +39,94 @@ interface SemanticMetric {
   filters: string[];
 }
 
-interface SemanticModel {
+interface SemanticModelDefinition {
   name: string;
   entities: SemanticEntity[];
   metrics: SemanticMetric[];
   relationships: any[];
 }
 
+export interface SemanticModel {
+  id?: string;
+  dataset_name?: string;
+  name: string;
+  description?: string;
+  definition: Record<string, unknown>;
+}
+
 interface SemanticModelEditorProps {
-  modelName: string;
+  semanticModel: SemanticModel | null;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onModelChange?: (model: SemanticModel) => void;
   readOnly?: boolean;
 }
 
 export function SemanticModelEditor({
-  modelName,
+  semanticModel,
+  loading = false,
+  error = null,
+  onRetry,
   onModelChange,
   readOnly = false
 }: SemanticModelEditorProps) {
-  const [model, setModel] = useState<SemanticModel | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [modelDef, setModelDef] = useState<SemanticModelDefinition | null>(null);
   const [editingEntity, setEditingEntity] = useState<SemanticEntity | null>(null);
   const [editingMetric, setEditingMetric] = useState<SemanticMetric | null>(null);
   const [isEntityDialogOpen, setIsEntityDialogOpen] = useState(false);
   const [isMetricDialogOpen, setIsMetricDialogOpen] = useState(false);
 
-  // Load semantic model
-  const loadModel = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`http://localhost:8004/semantic-model/${modelName}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Create new model structure if not found
-          const newModel: SemanticModel = {
-            name: modelName,
-            entities: [],
-            metrics: [],
-            relationships: []
-          };
-          setModel(newModel);
-          return;
-        }
-        throw new Error(`Failed to load model: ${response.statusText}`);
-      }
-
-      const modelData = await response.json();
-      setModel(modelData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load semantic model');
-    } finally {
-      setLoading(false);
-    }
-  }, [modelName]);
-
   useEffect(() => {
-    loadModel();
-  }, [loadModel]);
+    if (!semanticModel) {
+      setModelDef(null);
+      return;
+    }
+    const definitionRaw = semanticModel.definition ?? {};
+    let definition: Record<string, unknown>;
+    if (typeof definitionRaw === "string") {
+      try {
+        definition = JSON.parse(definitionRaw);
+      } catch {
+        definition = {};
+      }
+    } else if (typeof definitionRaw === "object" && definitionRaw !== null) {
+      definition = definitionRaw as Record<string, unknown>;
+    } else {
+      definition = {};
+    }
+    setModelDef({
+      name: semanticModel.name ?? semanticModel.dataset_name ?? "Semantic Model",
+      entities: Array.isArray(definition.entities) ? definition.entities : [],
+      metrics: Array.isArray(definition.metrics) ? definition.metrics : [],
+      relationships: Array.isArray(definition.relationships) ? definition.relationships : [],
+    });
+  }, [semanticModel]);
 
-  // Handle model changes
-  const handleModelUpdate = useCallback((updatedModel: SemanticModel) => {
-    setModel(updatedModel);
-    onModelChange?.(updatedModel);
-  }, [onModelChange]);
+  const handleModelUpdate = useCallback(
+    (updated: SemanticModelDefinition) => {
+      setModelDef(updated);
+      if (!semanticModel) return;
+      onModelChange?.({
+        ...semanticModel,
+        name: updated.name,
+        definition: {
+          entities: updated.entities,
+          metrics: updated.metrics,
+          relationships: updated.relationships,
+        },
+      });
+    },
+    [semanticModel, onModelChange],
+  );
 
-  // Entity management
   const handleAddEntity = useCallback(() => {
     setEditingEntity({
-      name: '',
-      description: '',
-      primary_key: '',
+      name: "",
+      description: "",
+      primary_key: "",
       attributes: [],
-      relationships: []
+      relationships: [],
     });
     setIsEntityDialogOpen(true);
   }, []);
@@ -123,37 +136,38 @@ export function SemanticModelEditor({
     setIsEntityDialogOpen(true);
   }, []);
 
-  const handleSaveEntity = useCallback((entity: SemanticEntity) => {
-    if (!model) return;
+  const handleSaveEntity = useCallback(
+    (entity: SemanticEntity) => {
+      if (!modelDef) return;
+      const updatedEntities =
+        editingEntity && modelDef.entities.includes(editingEntity)
+          ? modelDef.entities.map((e) => (e === editingEntity ? entity : e))
+          : [...modelDef.entities, entity];
+      handleModelUpdate({ ...modelDef, entities: updatedEntities });
+      setIsEntityDialogOpen(false);
+      setEditingEntity(null);
+    },
+    [modelDef, editingEntity, handleModelUpdate],
+  );
 
-    const updatedEntities = editingEntity && model.entities.includes(editingEntity)
-      ? model.entities.map(e => e === editingEntity ? entity : e)
-      : [...model.entities, entity];
+  const handleDeleteEntity = useCallback(
+    (entity: SemanticEntity) => {
+      if (!modelDef) return;
+      const updatedEntities = modelDef.entities.filter((e) => e !== entity);
+      handleModelUpdate({ ...modelDef, entities: updatedEntities });
+    },
+    [modelDef, handleModelUpdate],
+  );
 
-    const updatedModel = { ...model, entities: updatedEntities };
-    handleModelUpdate(updatedModel);
-    setIsEntityDialogOpen(false);
-    setEditingEntity(null);
-  }, [model, editingEntity, handleModelUpdate]);
-
-  const handleDeleteEntity = useCallback((entity: SemanticEntity) => {
-    if (!model) return;
-
-    const updatedEntities = model.entities.filter(e => e !== entity);
-    const updatedModel = { ...model, entities: updatedEntities };
-    handleModelUpdate(updatedModel);
-  }, [model, handleModelUpdate]);
-
-  // Metric management
   const handleAddMetric = useCallback(() => {
     setEditingMetric({
-      name: '',
-      description: '',
-      type: 'sum',
-      base_field: '',
-      sql: '',
+      name: "",
+      description: "",
+      type: "sum",
+      base_field: "",
+      sql: "",
       dimensions: [],
-      filters: []
+      filters: [],
     });
     setIsMetricDialogOpen(true);
   }, []);
@@ -163,26 +177,28 @@ export function SemanticModelEditor({
     setIsMetricDialogOpen(true);
   }, []);
 
-  const handleSaveMetric = useCallback((metric: SemanticMetric) => {
-    if (!model) return;
+  const handleSaveMetric = useCallback(
+    (metric: SemanticMetric) => {
+      if (!modelDef) return;
+      const updatedMetrics =
+        editingMetric && modelDef.metrics.includes(editingMetric)
+          ? modelDef.metrics.map((m) => (m === editingMetric ? metric : m))
+          : [...modelDef.metrics, metric];
+      handleModelUpdate({ ...modelDef, metrics: updatedMetrics });
+      setIsMetricDialogOpen(false);
+      setEditingMetric(null);
+    },
+    [modelDef, editingMetric, handleModelUpdate],
+  );
 
-    const updatedMetrics = editingMetric && model.metrics.includes(editingMetric)
-      ? model.metrics.map(m => m === editingMetric ? metric : m)
-      : [...model.metrics, metric];
-
-    const updatedModel = { ...model, metrics: updatedMetrics };
-    handleModelUpdate(updatedModel);
-    setIsMetricDialogOpen(false);
-    setEditingMetric(null);
-  }, [model, editingMetric, handleModelUpdate]);
-
-  const handleDeleteMetric = useCallback((metric: SemanticMetric) => {
-    if (!model) return;
-
-    const updatedMetrics = model.metrics.filter(m => m !== metric);
-    const updatedModel = { ...model, metrics: updatedMetrics };
-    handleModelUpdate(updatedModel);
-  }, [model, handleModelUpdate]);
+  const handleDeleteMetric = useCallback(
+    (metric: SemanticMetric) => {
+      if (!modelDef) return;
+      const updatedMetrics = modelDef.metrics.filter((m) => m !== metric);
+      handleModelUpdate({ ...modelDef, metrics: updatedMetrics });
+    },
+    [modelDef, handleModelUpdate],
+  );
 
   if (loading) {
     return (
@@ -201,16 +217,23 @@ export function SemanticModelEditor({
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center text-red-600">
-            <AlertCircle className="h-5 w-5 mr-2" />
-            <span>{error}</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center text-red-600">
+              <AlertCircle className="h-5 w-5 mr-2" />
+              <span>{error}</span>
+            </div>
+            {onRetry && (
+              <Button onClick={onRetry} size="sm">
+                Retry
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (!model) {
+  if (!semanticModel || !modelDef) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -229,7 +252,7 @@ export function SemanticModelEditor({
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Database className="h-5 w-5" />
-            <span>Semantic Model: {model.name}</span>
+            <span>Semantic Model: {semanticModel?.name ?? semanticModel?.dataset_name ?? "Model"}</span>
           </CardTitle>
           <CardDescription>
             Define business entities, metrics, and relationships for your data model
@@ -241,13 +264,13 @@ export function SemanticModelEditor({
       <Tabs defaultValue="entities" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="entities">
-            Entities ({model?.entities?.length || 0})
+            Entities ({modelDef.entities.length})
           </TabsTrigger>
           <TabsTrigger value="metrics">
-            Metrics ({model?.metrics?.length || 0})
+            Metrics ({modelDef.metrics.length})
           </TabsTrigger>
           <TabsTrigger value="relationships">
-            Relationships ({model?.relationships?.length || 0})
+            Relationships ({modelDef.relationships.length})
           </TabsTrigger>
         </TabsList>
 
@@ -264,7 +287,7 @@ export function SemanticModelEditor({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(model?.entities || []).map((entity, index) => (
+            {modelDef.entities.map((entity, index) => (
               <Card key={index}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -335,7 +358,7 @@ export function SemanticModelEditor({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(model?.metrics || []).map((metric, index) => (
+            {modelDef.metrics.map((metric, index) => (
               <Card key={index}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -430,7 +453,7 @@ export function SemanticModelEditor({
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingEntity && model?.entities?.includes(editingEntity) ? 'Edit' : 'Add'} Entity
+              {editingEntity && modelDef.entities.includes(editingEntity) ? 'Edit' : 'Add'} Entity
             </DialogTitle>
           </DialogHeader>
           <EntityForm
@@ -446,7 +469,7 @@ export function SemanticModelEditor({
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingMetric && model?.metrics?.includes(editingMetric) ? 'Edit' : 'Add'} Metric
+              {editingMetric && modelDef.metrics.includes(editingMetric) ? 'Edit' : 'Add'} Metric
             </DialogTitle>
           </DialogHeader>
           <MetricForm

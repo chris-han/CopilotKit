@@ -2761,6 +2761,79 @@ To guarantee every generated visualization exposes verifiable SQL lineage, the r
 
 This shift guarantees dbt lineage remains in sync across environments, enables future admin tooling, and eliminates the risk of stale hardcoded SQL definitions in the UI.
 
+### Entity Relationship Overview
+
+```mermaid
+erDiagram
+    datasets ||--o{ lida_visualizations : provides
+    lida_dbt_models ||--o{ lida_visualizations : informs
+    lida_semantic_models ||--o{ lida_visualizations : maps
+    lida_semantic_models ||--|| datasets : derived_from
+    lida_visualizations ||--o{ dashboards_dashboard_items : renders
+    dashboards ||--o{ dashboards_dashboard_items : contains
+    dashboards_dashboard_items }o--|| dashboards : part_of
+    dashboards_dashboard_items }o--|| lida_visualizations : references
+    dashboard_templates ||--o{ dashboards : instantiates
+
+    datasets {
+      text id PK
+      text name
+      jsonb metadata
+    }
+
+    lida_dbt_models {
+      text id PK
+      text name
+      text path
+      text sql
+      text[] aliases
+    }
+
+    lida_semantic_models {
+      uuid id PK
+      text dataset_id FK
+      text name
+      text description
+      jsonb definition
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    lida_visualizations {
+      text id PK
+      text dataset_name FK
+      uuid semantic_model_id FK
+      text chart_type
+      jsonb chart_config
+      text echar_code
+      jsonb dbt_metadata
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    dashboards {
+      uuid id PK
+      text name
+      jsonb layout_config
+      jsonb metadata
+    }
+
+    dashboards_dashboard_items {
+      uuid id PK
+      uuid dashboard_id FK
+      text visualization_id FK
+      jsonb grid_position
+      jsonb config
+    }
+
+    dashboard_templates {
+      uuid id PK
+      text name
+      jsonb layout_config
+      jsonb default_data
+    }
+```
+
 ---
 
 ## 📋 Conclusion

@@ -135,6 +135,70 @@ order by billing_period_start desc, provider asc, service asc;""",
             "enterprise_multi_cloud_dataset",
         ],
     },
+    {
+        "id": "small_company_finops",
+        "name": "Small Company FinOps Spend Model",
+        "description": "Aggregates cost, usage, and savings metrics for small company FinOps datasets across providers.",
+        "path": "models/marts/finops/small_company_finops.sql",
+        "sql": """with source as (
+    select * from {{ ref('fct_small_company_finops_costs') }}
+),
+normalized as (
+    select
+        billing_period_start,
+        cloud_provider,
+        service_name,
+        environment,
+        product_family,
+        sum(cost) as total_cost,
+        sum(usage_quantity) as usage_quantity,
+        sum(reserved_savings) as reserved_savings,
+        sum(spot_savings) as spot_savings,
+        sum(credits) as credits
+    from source
+    group by 1,2,3,4,5
+)
+select *
+from normalized
+order by billing_period_start desc, cloud_provider asc, service_name asc;""",
+        "aliases": [
+            "small-company-finops",
+            "small_company_finops",
+            "small_company_finops.csv",
+            "small_company_finops_dataset",
+        ],
+    },
+    {
+        "id": "startup_aws_only",
+        "name": "Startup AWS Only Spend Model",
+        "description": "Aggregates AWS cost and usage metrics for startup-focused dashboards.",
+        "path": "models/marts/finops/startup_aws_only.sql",
+        "sql": """with source as (
+    select * from {{ ref('fct_startup_aws_costs') }}
+),
+summarised as (
+    select
+        billing_period_start,
+        service_name,
+        usage_type,
+        environment,
+        sum(cost) as total_cost,
+        sum(usage_quantity) as usage_quantity,
+        sum(savings_plan_savings) as savings_plan_savings,
+        sum(reserved_instance_savings) as reserved_instance_savings
+    from source
+    group by 1,2,3,4
+)
+select *
+from summarised
+order by billing_period_start desc, service_name asc;""",
+        "aliases": [
+            "startup-aws-only",
+            "startup_aws_only",
+            "startup_aws_only.csv",
+            "startup_aws_only_dataset",
+        ],
+    },
 ]
 
 

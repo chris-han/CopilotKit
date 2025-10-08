@@ -53,9 +53,14 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`http://localhost:8004/semantic-model/${modelName}/lineage`);
+      const base =
+        process.env.NEXT_PUBLIC_API_URL?.split(",").map((url) => url.trim()).filter(Boolean)[0] ??
+        "http://localhost:8004";
+      const response = await fetch(`${base}/lida/semantic-models/${modelName}/lineage`);
       if (!response.ok) {
-        throw new Error(`Failed to load lineage: ${response.statusText}`);
+        throw new Error(
+          `Failed to load lineage: ${response.status} ${response.statusText}`,
+        );
       }
 
       const lineageData = await response.json();

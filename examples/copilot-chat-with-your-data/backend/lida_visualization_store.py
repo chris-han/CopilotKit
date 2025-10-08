@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import os
 
 import asyncpg
+from asyncpg import UndefinedColumnError
 
 
 def _parse_bool(value: Optional[str]) -> Optional[bool]:
@@ -58,36 +59,66 @@ class LidaVisualizationStore:
             return
         async with self._pool.acquire() as conn:
             await conn.execute("CREATE SCHEMA IF NOT EXISTS dashboards")
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS dashboards.lida_visualizations (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    chart_type TEXT NOT NULL,
-                    chart_config JSONB NOT NULL,
-                    code TEXT,
-                    insights JSONB,
-                    dataset_name TEXT,
-                    dbt_metadata JSONB,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS dashboards.lida_visualizations (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        chart_type TEXT NOT NULL,
+                        chart_config JSONB NOT NULL,
+                        code TEXT,
+                        echar_code TEXT,
+                        insights JSONB,
+                        dataset_name TEXT,
+                        semantic_model_id UUID,
+                        dbt_metadata JSONB,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
                 )
-                """
-            )
+                await conn.execute(
+                    "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS dbt_metadata JSONB"
+                )
+                await conn.execute(
+                    "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS echar_code TEXT"
+                )
+                await conn.execute(
+                    "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS semantic_model_id UUID"
+                )
         self._table_initialized = True
 
     async def fetch_all(self) -> List[Dict[str, Any]]:
         if self._pool:
             await self._ensure_table()
             async with self._pool.acquire() as conn:
-                rows = await conn.fetch(
-                    """
-                    SELECT id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at
-                    FROM dashboards.lida_visualizations
-                    ORDER BY created_at DESC
-                    """
-                )
+                try:
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at
+                        FROM dashboards.lida_visualizations
+                        ORDER BY created_at DESC
+                        """
+                    )
+                except UndefinedColumnError:
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS dbt_metadata JSONB"
+                    )
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS echar_code TEXT"
+                    )
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS semantic_model_id UUID"
+                    )
+                    rows = await conn.fetch(
+                        """
+                        SELECT id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at
+                        FROM dashboards.lida_visualizations
+                        ORDER BY created_at DESC
+                        """
+                    )
             return [self._row_to_dict(row) for row in rows]
 
         async with self._memory_lock:
@@ -111,52 +142,124 @@ class LidaVisualizationStore:
         else:
             created_at_dt = created_at if isinstance(created_at, datetime) else now_dt
 
+        chart_config_raw = visualization.get("chart_config", {}) or {}
+        chart_config_obj: Any
+        if isinstance(chart_config_raw, str):
+            try:
+                chart_config_obj = json.loads(chart_config_raw)
+            except json.JSONDecodeError:
+                chart_config_obj = {}
+        else:
+            chart_config_obj = chart_config_raw
+
+        echar_code = visualization.get("echar_code")
+        if echar_code is None:
+            if isinstance(chart_config_raw, str):
+                echar_code = chart_config_raw
+            else:
+                try:
+                    echar_code = json.dumps(chart_config_obj)
+                except (TypeError, ValueError):
+                    echar_code = None
+
         payload = {
             "id": viz_id,
             "title": visualization["title"],
             "description": visualization.get("description", ""),
             "chart_type": visualization["chart_type"],
-            "chart_config": visualization.get("chart_config", {}),
+            "chart_config": chart_config_obj or {},
             "code": visualization.get("code", ""),
+            "echar_code": echar_code,
             "insights": visualization.get("insights", []) or [],
             "dataset_name": visualization.get("dataset_name"),
-             "dbt_metadata": visualization.get("dbt_metadata"),
+            "semantic_model_id": visualization.get("semantic_model_id"),
+            "dbt_metadata": visualization.get("dbt_metadata"),
             "created_at": created_at_dt,
             "updated_at": now_dt,
         }
 
         if self._pool:
+            row: Optional[asyncpg.Record] = None
             await self._ensure_table()
             async with self._pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO dashboards.lida_visualizations
-                        (id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                    ON CONFLICT (id) DO UPDATE
-                      SET title = EXCLUDED.title,
-                          description = EXCLUDED.description,
-                          chart_type = EXCLUDED.chart_type,
-                          chart_config = EXCLUDED.chart_config,
-                          code = EXCLUDED.code,
-                          insights = EXCLUDED.insights,
-                          dataset_name = EXCLUDED.dataset_name,
-                          dbt_metadata = EXCLUDED.dbt_metadata,
-                          updated_at = EXCLUDED.updated_at
-                    RETURNING id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at
-                    """,
-                    payload["id"],
-                    payload["title"],
-                    payload["description"],
-                    payload["chart_type"],
-                    json.dumps(payload["chart_config"]),
-                    payload["code"],
-                    json.dumps(payload["insights"]),
-                    payload["dataset_name"],
-                    json.dumps(payload["dbt_metadata"]) if payload["dbt_metadata"] is not None else None,
-                    payload["created_at"],
-                    payload["updated_at"],
-                )
+                try:
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO dashboards.lida_visualizations
+                            (id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                        ON CONFLICT (id) DO UPDATE
+                          SET title = EXCLUDED.title,
+                              description = EXCLUDED.description,
+                              chart_type = EXCLUDED.chart_type,
+                              chart_config = EXCLUDED.chart_config,
+                              code = EXCLUDED.code,
+                              echar_code = EXCLUDED.echar_code,
+                              insights = EXCLUDED.insights,
+                              dataset_name = EXCLUDED.dataset_name,
+                              semantic_model_id = EXCLUDED.semantic_model_id,
+                              dbt_metadata = EXCLUDED.dbt_metadata,
+                              updated_at = EXCLUDED.updated_at
+                        RETURNING id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at
+                        """,
+                        payload["id"],
+                        payload["title"],
+                        payload["description"],
+                        payload["chart_type"],
+                        json.dumps(payload["chart_config"]),
+                        payload["code"],
+                        payload["echar_code"],
+                        json.dumps(payload["insights"]),
+                        payload["dataset_name"],
+                        payload["semantic_model_id"],
+                        json.dumps(payload["dbt_metadata"]) if payload["dbt_metadata"] is not None else None,
+                        payload["created_at"],
+                        payload["updated_at"],
+                    )
+                except UndefinedColumnError:
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS dbt_metadata JSONB"
+                    )
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS echar_code TEXT"
+                    )
+                    await conn.execute(
+                        "ALTER TABLE dashboards.lida_visualizations ADD COLUMN IF NOT EXISTS semantic_model_id UUID"
+                    )
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO dashboards.lida_visualizations
+                            (id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                        ON CONFLICT (id) DO UPDATE
+                          SET title = EXCLUDED.title,
+                              description = EXCLUDED.description,
+                              chart_type = EXCLUDED.chart_type,
+                              chart_config = EXCLUDED.chart_config,
+                              code = EXCLUDED.code,
+                              echar_code = EXCLUDED.echar_code,
+                              insights = EXCLUDED.insights,
+                              dataset_name = EXCLUDED.dataset_name,
+                              semantic_model_id = EXCLUDED.semantic_model_id,
+                              dbt_metadata = EXCLUDED.dbt_metadata,
+                              updated_at = EXCLUDED.updated_at
+                        RETURNING id, title, description, chart_type, chart_config, code, echar_code, insights, dataset_name, semantic_model_id, dbt_metadata, created_at, updated_at
+                        """,
+                        payload["id"],
+                        payload["title"],
+                        payload["description"],
+                        payload["chart_type"],
+                        json.dumps(payload["chart_config"]),
+                        payload["code"],
+                        payload["echar_code"],
+                        json.dumps(payload["insights"]),
+                        payload["dataset_name"],
+                        payload["semantic_model_id"],
+                        json.dumps(payload["dbt_metadata"]) if payload["dbt_metadata"] is not None else None,
+                        payload["created_at"],
+                        payload["updated_at"],
+                    )
+        if row:
             return self._row_to_dict(row)
 
         async with self._memory_lock:
@@ -200,8 +303,10 @@ class LidaVisualizationStore:
             "chart_type": row["chart_type"],
             "chart_config": row["chart_config"] or {},
             "code": row["code"] or "",
+            "echar_code": row.get("echar_code"),
             "insights": row["insights"] or [],
             "dataset_name": row["dataset_name"],
+            "semantic_model_id": str(row["semantic_model_id"]) if row.get("semantic_model_id") else None,
             "dbt_metadata": row.get("dbt_metadata") or {},
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,

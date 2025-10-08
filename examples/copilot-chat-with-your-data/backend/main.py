@@ -49,6 +49,7 @@ from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_mana
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
 from pydantic import BaseModel
 from lida_visualization_store import LidaVisualizationStore
+from lida_semantic_model_store import LidaSemanticModelStore
 from lida_dbt_model_store import LidaDbtModelStore
 from semantic_layer_integration import SemanticLayerIntegration
 from fastmcp import FastMCP
@@ -150,6 +151,7 @@ _focus_integration: Optional[FocusSampleDataIntegration] = None
 # Global FastMCP ECharts server instance
 _echarts_mcp: Optional[FastMCP] = None
 lida_visualization_store = LidaVisualizationStore()
+semantic_model_store = LidaSemanticModelStore()
 dbt_model_store = LidaDbtModelStore()
 semantic_layer_integration = SemanticLayerIntegration()
 
@@ -192,9 +194,25 @@ class LidaVisualizationPayload(BaseModel):
     chart_type: str
     chart_config: Dict[str, Any]
     code: Optional[str] = ""
+    echar_code: Optional[str] = None
     insights: Optional[List[str]] = []
     dataset_name: Optional[str] = None
     dbt_metadata: Optional[Dict[str, Any]] = None
+    semantic_model_id: Optional[str] = None
+
+
+class SemanticModelGenerateRequest(BaseModel):
+    dataset_name: str
+    summary: Optional[Dict[str, Any]] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    definition: Optional[Dict[str, Any]] = None
+
+
+class SemanticModelUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    definition: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
 
 
@@ -242,6 +260,12 @@ async def _startup_event():
             logger.info("Initialized LIDA dbt model store with Postgres backend")
         except Exception as exc:  # pragma: no cover - startup path
             logger.warning("Failed to initialize LIDA dbt model store: %s", exc)
+    if semantic_model_store.configured:
+        try:
+            await semantic_model_store.init()
+            logger.info("Initialized LIDA semantic model store with Postgres backend")
+        except Exception as exc:  # pragma: no cover - startup path
+            logger.warning("Failed to initialize LIDA semantic model store: %s", exc)
 
 
 def _extract_prompt_details(messages: Sequence[Any]) -> Tuple[str, List[str], List[Tuple[str, str]]]:
@@ -381,6 +405,56 @@ async def _resolve_dbt_metadata(dataset_name: Optional[str], existing: Optional[
         "path": record.get("path"),
         "sql": record.get("sql"),
         "aliases": record.get("aliases", []),
+    }
+
+
+def _generate_semantic_definition(dataset_name: str, summary: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create a basic semantic model definition for a dataset."""
+
+    field_names = summary.get("field_names") if isinstance(summary, dict) else None
+    if not isinstance(field_names, list):
+        field_names = []
+
+    primary_key = "id"
+    attributes = []
+    for field in field_names:
+        if not isinstance(field, str):
+            continue
+        normalized = field.strip()
+        if normalized:
+            attributes.append(normalized)
+            if normalized.lower() in {"id", "record_id", "row_id"}:
+                primary_key = normalized
+
+    entity = {
+        "name": dataset_name,
+        "description": summary.get("dataset_description") if isinstance(summary, dict) else "",
+        "primary_key": primary_key,
+        "attributes": attributes,
+        "relationships": [],
+    }
+
+    metrics: List[Dict[str, Any]] = []
+    stats = summary.get("statistical_summary") if isinstance(summary, dict) else None
+    if isinstance(stats, dict):
+        for metric_name, details in stats.items():
+            if not isinstance(metric_name, str):
+                continue
+            metric = {
+                "name": metric_name,
+                "description": f"Automatically generated metric for {metric_name}",
+                "type": "aggregate",
+                "base_field": metric_name,
+                "sql": f"SUM({metric_name})",
+                "dimensions": attributes,
+                "filters": [],
+            }
+            metrics.append(metric)
+
+    return {
+        "entities": [entity],
+        "metrics": metrics,
+        "relationships": [],
     }
 
 
@@ -1036,6 +1110,15 @@ async def ag_ui_database_crud(request: DatabaseCrudRequest) -> JSONResponse:
         )
         payload["dataset_name"] = dataset_name
         payload["dbt_metadata"] = await _resolve_dbt_metadata(dataset_name, payload.get("dbt_metadata"))
+        if not payload.get("echar_code"):
+            try:
+                payload["echar_code"] = json.dumps(chart_config)
+            except (TypeError, ValueError):
+                payload["echar_code"] = None
+        if not payload.get("semantic_model_id") and dataset_name:
+            existing_semantic_model = await semantic_model_store.get_by_dataset(dataset_name)
+            if existing_semantic_model:
+                payload["semantic_model_id"] = existing_semantic_model["id"]
 
         saved = await lida_visualization_store.upsert(payload)
         status_code = 201 if request.operation == "create" else 200
@@ -1109,6 +1192,117 @@ async def get_dbt_model(model_id: str):
     return metadata
 
 
+@app.post("/lida/semantic-models")
+async def create_or_get_semantic_model(payload: SemanticModelGenerateRequest) -> Dict[str, Any]:
+    existing = await semantic_model_store.get_by_dataset(payload.dataset_name)
+    if existing:
+        return existing
+
+    definition = payload.definition or _generate_semantic_definition(payload.dataset_name, payload.summary)
+    record = await semantic_model_store.upsert(
+        {
+            "dataset_name": payload.dataset_name,
+            "name": payload.name or f"{payload.dataset_name} semantic model",
+            "description": payload.description or (payload.summary.get("dataset_description") if payload.summary else ""),
+            "definition": definition,
+        }
+    )
+    return record
+
+
+@app.get("/lida/semantic-models/{dataset_name}")
+async def get_semantic_model(dataset_name: str) -> Dict[str, Any]:
+    record = await semantic_model_store.get_by_dataset(dataset_name)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Semantic model for '{dataset_name}' not found")
+    return record
+
+
+@app.put("/lida/semantic-models/{model_id}")
+async def update_semantic_model(model_id: str, payload: SemanticModelUpdateRequest) -> Dict[str, Any]:
+    record = await semantic_model_store.update(
+        model_id,
+        {
+            "name": payload.name,
+            "description": payload.description,
+            "definition": payload.definition,
+        },
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Semantic model '{model_id}' not found")
+    return record
+
+
+@app.get("/lida/semantic-models/{dataset_name}/lineage")
+async def get_semantic_model_lineage(dataset_name: str) -> Dict[str, Any]:
+    record = await semantic_model_store.get_by_dataset(dataset_name)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Semantic model '{dataset_name}' not found")
+
+    definition = record.get("definition") or {}
+    if isinstance(definition, str):
+        try:
+            definition = json.loads(definition)
+        except json.JSONDecodeError:
+            definition = {}
+    entities_def = definition.get("entities") or []
+    metrics_def = definition.get("metrics") or []
+    relationships = definition.get("relationships") or []
+
+    entity_nodes: Dict[str, Dict[str, Any]] = {}
+    for entity in entities_def:
+        name = entity.get("name") or dataset_name
+        node = {
+            "name": name,
+            "type": "entity",
+            "description": entity.get("description") or "",
+            "attributes": entity.get("attributes") or [],
+            "upstream_dependencies": [],
+            "downstream_dependencies": [],
+        }
+        entity_nodes[name] = node
+
+    metric_nodes: List[Dict[str, Any]] = []
+
+    for metric in metrics_def:
+        name = metric.get("name") or "Metric"
+        upstream_refs = []
+        for dimension in metric.get("dimensions") or []:
+            dim_key = str(dimension)
+            if dim_key in entity_nodes:
+                upstream_refs.append({"name": dim_key, "type": "entity"})
+        if not upstream_refs and entity_nodes:
+            first_entity = next(iter(entity_nodes.values()))
+            upstream_refs.append({"name": first_entity["name"], "type": "entity"})
+
+        node = {
+            "name": name,
+            "type": "metric",
+            "description": metric.get("description") or "",
+            "base_field": metric.get("base_field"),
+            "upstream_dependencies": upstream_refs,
+            "downstream_dependencies": [],
+        }
+        metric_nodes.append(node)
+
+    # Populate downstream references for entities
+    for metric in metric_nodes:
+        for upstream in metric["upstream_dependencies"]:
+            entity = entity_nodes.get(upstream["name"])
+            if entity is not None:
+                entity.setdefault("downstream_dependencies", []).append(
+                    {"name": metric["name"], "type": "metric"}
+                )
+
+    return {
+        "model_name": record.get("name") or dataset_name,
+        "dataset_name": dataset_name,
+        "entities": list(entity_nodes.values()),
+        "relationships": relationships,
+        "data_flow": metric_nodes,
+    }
+
+
 @app.post("/lida/visualizations")
 async def create_lida_visualization(payload: LidaVisualizationPayload):
     """Persist or update a LIDA visualization."""
@@ -1124,6 +1318,17 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
         or chart_config.get("data_source")
     )
     dbt_metadata = await _resolve_dbt_metadata(dataset_name, payload.dbt_metadata)
+    echar_code = payload.echar_code
+    if not echar_code:
+        try:
+            echar_code = json.dumps(chart_config)
+        except (TypeError, ValueError):
+            echar_code = None
+    semantic_model_id = payload.semantic_model_id
+    if not semantic_model_id and dataset_name:
+        existing_semantic_model = await semantic_model_store.get_by_dataset(dataset_name)
+        if existing_semantic_model:
+            semantic_model_id = existing_semantic_model["id"]
 
     saved = await lida_visualization_store.upsert(
         {
@@ -1133,9 +1338,11 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
             "chart_type": payload.chart_type,
             "chart_config": chart_config,
             "code": payload.code,
+            "echar_code": echar_code,
             "insights": payload.insights,
             "dataset_name": dataset_name,
             "dbt_metadata": dbt_metadata,
+            "semantic_model_id": semantic_model_id,
             "created_at": payload.created_at,
         }
     )

@@ -29,6 +29,8 @@ interface GeneratedVisualization {
   updated_at?: string;
   dataset_name?: string | null;
   dbt_metadata?: DbtModelMetadata | null;
+  echar_code?: string | null;
+  semantic_model_id?: string | null;
 }
 
 interface ChartGalleryProps {
@@ -110,6 +112,31 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
     }
     return undefined;
   }, [selectedViz, selectedDbtModel]);
+
+  const selectedChartConfig = useMemo(() => {
+    if (!selectedViz) return null;
+    const candidates = [
+      selectedViz.chart_config,
+      selectedViz.echar_code,
+      (selectedViz as Record<string, unknown>)?.["echarts_config"],
+    ];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (typeof candidate === "string") {
+        try {
+          const parsed = JSON.parse(candidate);
+          if (parsed && typeof parsed === "object") {
+            return parsed as Record<string, unknown>;
+          }
+        } catch {
+          continue;
+        }
+      } else if (typeof candidate === "object") {
+        return candidate as Record<string, unknown>;
+      }
+    }
+    return null;
+  }, [selectedViz]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -527,9 +554,9 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
 
               <TabsContent value="preview" className="space-y-4">
                 <div className="aspect-video bg-muted rounded-md overflow-hidden">
-                  {selectedViz.chart_config ? (
+                  {selectedChartConfig ? (
                     <DynamicChart
-                      config={selectedViz.chart_config}
+                      config={selectedChartConfig as any}
                       style={{ width: "100%", height: "100%" }}
                     />
                   ) : (
@@ -588,7 +615,15 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
 
               <TabsContent value="config">
                 <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
-                  <code>{JSON.stringify(selectedViz.chart_config, null, 2)}</code>
+                  <code>
+                    {selectedChartConfig
+                      ? JSON.stringify(selectedChartConfig, null, 2)
+                      : selectedViz?.chart_config
+                      ? (typeof selectedViz.chart_config === "string"
+                          ? selectedViz.chart_config
+                          : JSON.stringify(selectedViz.chart_config, null, 2))
+                      : "# Chart configuration not available"}
+                  </code>
                 </pre>
               </TabsContent>
 

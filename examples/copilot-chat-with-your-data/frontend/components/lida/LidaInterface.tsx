@@ -11,7 +11,7 @@ import { DataSummary } from "./DataSummary";
 import { VisualizationChat } from "./VisualizationChat";
 import { ChartGallery } from "./ChartGallery";
 import { DatasetSelector } from "./DatasetSelector";
-import { SemanticModelEditor } from "./SemanticModelEditor";
+import { SemanticModelEditor, SemanticModel as SemanticModelDefinition } from "./SemanticModelEditor";
 import { DataLineageView } from "./DataLineageView";
 import { DashboardGrid } from "@/components/dashboard/DashboardGrid";
 import { Dashboard } from "@/types/dashboard";
@@ -49,6 +49,8 @@ interface GeneratedVisualization {
   updated_at?: string;
   dataset_name?: string | null;
   dbt_metadata?: DbtModelMetadata | null;
+  echar_code?: string | null;
+  semantic_model_id?: string | null;
 }
 
 interface DbtModelMetadata {
@@ -59,6 +61,8 @@ interface DbtModelMetadata {
   sql?: string;
   aliases?: string[];
 }
+
+type SemanticModel = SemanticModelDefinition;
 
 function pickDatasetKey(...candidates: Array<string | null | undefined>): string | undefined {
   for (const candidate of candidates) {
@@ -85,29 +89,41 @@ function normalizeDbtKey(value?: string | null): string | undefined {
 }
 
 function normaliseChartConfigForDataset(chartConfig: any, datasetKey?: string | null) {
-  const normalized = { ...(chartConfig ?? {}) };
+  const source =
+    chartConfig && typeof chartConfig === "object" && !Array.isArray(chartConfig)
+      ? chartConfig
+      : {};
+  const normalized: Record<string, unknown> = { ...source };
   if (typeof datasetKey === "string" && datasetKey.trim().length > 0) {
     const trimmed = datasetKey.trim();
-    if (typeof normalized.dbtModel !== "string" || normalized.dbtModel.trim().length === 0) {
-      normalized.dbtModel = trimmed;
-    }
-    if (typeof normalized.dbt_model !== "string" || normalized.dbt_model.trim().length === 0) {
-      normalized.dbt_model = trimmed;
-    }
-    if (typeof normalized.datasetName !== "string" || normalized.datasetName.trim().length === 0) {
-      normalized.datasetName = trimmed;
-    }
-    if (typeof normalized.dataset_name !== "string" || normalized.dataset_name.trim().length === 0) {
-      normalized.dataset_name = trimmed;
-    }
-    if (typeof normalized.dataSource !== "string" || normalized.dataSource.trim().length === 0) {
-      normalized.dataSource = trimmed;
-    }
-    if (typeof normalized.data_source !== "string" || normalized.data_source.trim().length === 0) {
-      normalized.data_source = trimmed;
-    }
+    normalized.dbt_model = trimmed;
+    delete normalized.dbtModel;
+    normalized.dataset_name = trimmed;
+    delete normalized.datasetName;
+    delete normalized.dataSource;
+    delete normalized.data_source;
   }
   return normalized;
+}
+
+function coerceChartConfig(raw: unknown): any {
+  if (!raw) {
+    return undefined;
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof raw === "object") {
+    return raw;
+  }
+  return undefined;
 }
 
 
@@ -119,6 +135,9 @@ export function LidaInterface() {
   const [dataSummary, setDataSummary] = useState<DataSummaryData | null>(null);
   const [visualizations, setVisualizations] = useState<GeneratedVisualization[]>([]);
   const [dbtModels, setDbtModels] = useState<Record<string, DbtModelMetadata>>({});
+  const [semanticModel, setSemanticModel] = useState<SemanticModel | null>(null);
+  const [semanticModelLoading, setSemanticModelLoading] = useState(false);
+  const [semanticModelError, setSemanticModelError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentBackendInsights, setCurrentBackendInsights] = useState<string[]>([]);
   const [lastCacheKey, setLastCacheKey] = useState<string | null>(null);
@@ -230,6 +249,61 @@ export function LidaInterface() {
     [dbtModels],
   );
 
+  const ensureSemanticModel = useCallback(
+    async (datasetName: string, summary?: DataSummaryData | null) => {
+      if (!datasetName) {
+        setSemanticModel(null);
+        return;
+      }
+      setSemanticModelLoading(true);
+      setSemanticModelError(null);
+      try {
+        const response = await fetchWithFallback("/lida/semantic-models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dataset_name: datasetName,
+            summary: summary ?? undefined,
+          }),
+        });
+        if (!response || !response.ok) {
+          throw new Error(response ? await response.text() : "Unable to reach semantic model service");
+        }
+        const model = await response.json();
+        setSemanticModel(model);
+      } catch (error) {
+        setSemanticModelError(error instanceof Error ? error.message : String(error));
+        setSemanticModel(null);
+      } finally {
+        setSemanticModelLoading(false);
+      }
+    },
+    [fetchWithFallback],
+  );
+
+  const handleSemanticModelChange = useCallback(
+    async (model: SemanticModel) => {
+      setSemanticModel(model);
+      if (!model.id) {
+        return;
+      }
+      try {
+        await fetchWithFallback(`/lida/semantic-models/${model.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: model.name,
+            description: model.description,
+            definition: model.definition,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to update semantic model:", error);
+      }
+    },
+    [fetchWithFallback],
+  );
+
   useEffect(() => {
     const loadPersistedVisualizations = async () => {
       try {
@@ -240,20 +314,26 @@ export function LidaInterface() {
         });
         if (Array.isArray(data)) {
           const normalized = (data as GeneratedVisualization[]).map((viz) => {
+            const parsedConfig =
+              coerceChartConfig(viz.chart_config) ??
+              coerceChartConfig(viz.echar_code) ??
+              coerceChartConfig((viz as Record<string, unknown>)?.["echarts_config"]);
             const datasetKey = pickDatasetKey(
               viz.dataset_name,
-              viz.chart_config?.dbtModel,
-              viz.chart_config?.dbt_model,
-              viz.chart_config?.datasetName,
-              viz.chart_config?.dataset_name,
-              viz.chart_config?.dataSource,
-              viz.chart_config?.data_source,
+              parsedConfig?.dbtModel,
+              parsedConfig?.dbt_model,
+              parsedConfig?.datasetName,
+              parsedConfig?.dataset_name,
+              parsedConfig?.dataSource,
+              parsedConfig?.data_source,
             );
             const metadata = resolveDbtMetadata(datasetKey, viz.dbt_metadata ?? null);
+            const normalizedConfig = normaliseChartConfigForDataset(parsedConfig, datasetKey);
             return {
               ...viz,
-              chart_config: normaliseChartConfigForDataset(viz.chart_config, datasetKey),
+              chart_config: normalizedConfig,
               dataset_name: datasetKey ?? viz.dataset_name ?? null,
+              echar_code: viz.echar_code ?? (parsedConfig ? JSON.stringify(parsedConfig) : null),
               dbt_metadata: metadata ?? null,
             };
           });
@@ -310,13 +390,15 @@ export function LidaInterface() {
     setCurrentDataset(datasetName);
     setDataSummary(summary);
     setActiveTab("explore");
-  }, []);
+    ensureSemanticModel(datasetName, summary);
+  }, [ensureSemanticModel]);
 
   const handleFileUploaded = useCallback((fileName: string, summary: DataSummaryData) => {
     setCurrentDataset(fileName);
     setDataSummary(summary);
     setActiveTab("explore");
-  }, []);
+    ensureSemanticModel(fileName, summary);
+  }, [ensureSemanticModel]);
 
   const persistVisualization = useCallback(async (visualization: GeneratedVisualization): Promise<GeneratedVisualization> => {
     const resolvedDataset =
@@ -341,12 +423,20 @@ export function LidaInterface() {
     );
     const normalizedConfig = normaliseChartConfigForDataset(visualization.chart_config, datasetKey);
     const resolvedDbtMetadata = resolveDbtMetadata(datasetKey, visualization.dbt_metadata ?? null) ?? null;
+    const echarCode =
+      visualization.echar_code ??
+      (typeof visualization.chart_config === "string"
+        ? visualization.chart_config
+        : JSON.stringify(normalizedConfig));
+    const semanticModelId = visualization.semantic_model_id ?? semanticModel?.id ?? null;
 
     const fallbackVisualization: GeneratedVisualization = {
       ...visualization,
       chart_config: normalizedConfig,
       dataset_name: datasetKey ?? visualization.dataset_name ?? null,
       dbt_metadata: resolvedDbtMetadata,
+      echar_code: echarCode,
+      semantic_model_id: semanticModelId,
     };
     setVisualizations((prev) => [fallbackVisualization, ...prev.filter((viz) => viz.id !== visualization.id)]);
 
@@ -356,6 +446,8 @@ export function LidaInterface() {
         chart_config: normalizedConfig,
         dataset_name: datasetKey ?? visualization.dataset_name ?? null,
         dbt_metadata: resolvedDbtMetadata,
+        echar_code: echarCode,
+        semantic_model_id: semanticModelId,
       };
       const saved = await sendDirectDatabaseCrud({
         operation: 'create',
@@ -374,13 +466,23 @@ export function LidaInterface() {
           savedVisualization.chart_config?.dataSource,
           savedVisualization.chart_config?.data_source,
           datasetKey,
-        );
+          );
         const savedDbtMetadata = resolveDbtMetadata(savedDatasetKey, savedVisualization.dbt_metadata ?? resolvedDbtMetadata) ?? null;
+        const savedChartConfig =
+          coerceChartConfig(savedVisualization.chart_config) ??
+          coerceChartConfig(savedVisualization.echar_code) ??
+          normalizedConfig;
         const normalizedSaved: GeneratedVisualization = {
           ...savedVisualization,
-          chart_config: normaliseChartConfigForDataset(savedVisualization.chart_config, savedDatasetKey),
+          chart_config: normaliseChartConfigForDataset(savedChartConfig, savedDatasetKey),
           dataset_name: savedDatasetKey ?? savedVisualization.dataset_name ?? null,
+          semantic_model_id: savedVisualization.semantic_model_id ?? semanticModelId,
           dbt_metadata: savedDbtMetadata,
+          echar_code:
+            savedVisualization.echar_code ??
+            (typeof savedVisualization.chart_config === "string"
+              ? savedVisualization.chart_config
+              : JSON.stringify(savedChartConfig)),
         };
         setVisualizations((prev) => [normalizedSaved, ...prev.filter((viz) => viz.id !== normalizedSaved.id)]);
         return normalizedSaved;
@@ -389,7 +491,7 @@ export function LidaInterface() {
       console.error("Error persisting visualization:", error);
     }
     return fallbackVisualization;
-  }, [resolveDbtMetadata, sendDirectDatabaseCrud]);
+  }, [resolveDbtMetadata, semanticModel, sendDirectDatabaseCrud]);
 
   const handleVisualizationGenerated = useCallback(
     async (visualization: GeneratedVisualization) => {
@@ -551,6 +653,7 @@ export function LidaInterface() {
           created_at: new Date().toISOString(),
           dataset_name: datasetKey ?? null,
           dbt_metadata: dbtMetadata,
+          echar_code: JSON.stringify(normalizedConfig),
         };
 
         const saved = await persistVisualization(newViz);
@@ -595,6 +698,7 @@ export function LidaInterface() {
       created_at: new Date().toISOString(),
       dataset_name: datasetKey ?? null,
       dbt_metadata: dbtMetadata,
+      echar_code: JSON.stringify(normalizedConfig),
     };
 
     persistVisualization(newViz).catch((error) => {
@@ -941,15 +1045,20 @@ export function LidaInterface() {
 
               <TabsContent value="semantic-model" className="space-y-4">
                 <SemanticModelEditor
-                  modelName="sales_analytics"
-                  onModelChange={(model) => {
-                    console.log("Semantic model updated:", model);
-                  }}
+                  semanticModel={semanticModel}
+                  loading={semanticModelLoading}
+                  error={semanticModelError}
+                  onRetry={
+                    currentDataset
+                      ? () => ensureSemanticModel(currentDataset, dataSummary)
+                      : undefined
+                  }
+                  onModelChange={handleSemanticModelChange}
                 />
               </TabsContent>
 
               <TabsContent value="lineage" className="space-y-4">
-                <DataLineageView modelName="sales_analytics" />
+                <DataLineageView modelName={currentDataset} />
               </TabsContent>
 
               <TabsContent value="dataset-info" className="space-y-4">

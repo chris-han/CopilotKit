@@ -69,6 +69,7 @@ class LidaVisualizationStore:
                     code TEXT,
                     insights JSONB,
                     dataset_name TEXT,
+                    dbt_metadata JSONB,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
@@ -82,7 +83,7 @@ class LidaVisualizationStore:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT id, title, description, chart_type, chart_config, code, insights, dataset_name, created_at, updated_at
+                    SELECT id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at
                     FROM dashboards.lida_visualizations
                     ORDER BY created_at DESC
                     """
@@ -119,6 +120,7 @@ class LidaVisualizationStore:
             "code": visualization.get("code", ""),
             "insights": visualization.get("insights", []) or [],
             "dataset_name": visualization.get("dataset_name"),
+             "dbt_metadata": visualization.get("dbt_metadata"),
             "created_at": created_at_dt,
             "updated_at": now_dt,
         }
@@ -129,8 +131,8 @@ class LidaVisualizationStore:
                 row = await conn.fetchrow(
                     """
                     INSERT INTO dashboards.lida_visualizations
-                        (id, title, description, chart_type, chart_config, code, insights, dataset_name, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        (id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                     ON CONFLICT (id) DO UPDATE
                       SET title = EXCLUDED.title,
                           description = EXCLUDED.description,
@@ -139,8 +141,9 @@ class LidaVisualizationStore:
                           code = EXCLUDED.code,
                           insights = EXCLUDED.insights,
                           dataset_name = EXCLUDED.dataset_name,
+                          dbt_metadata = EXCLUDED.dbt_metadata,
                           updated_at = EXCLUDED.updated_at
-                    RETURNING id, title, description, chart_type, chart_config, code, insights, dataset_name, created_at, updated_at
+                    RETURNING id, title, description, chart_type, chart_config, code, insights, dataset_name, dbt_metadata, created_at, updated_at
                     """,
                     payload["id"],
                     payload["title"],
@@ -150,6 +153,7 @@ class LidaVisualizationStore:
                     payload["code"],
                     json.dumps(payload["insights"]),
                     payload["dataset_name"],
+                    json.dumps(payload["dbt_metadata"]) if payload["dbt_metadata"] is not None else None,
                     payload["created_at"],
                     payload["updated_at"],
                 )
@@ -198,6 +202,7 @@ class LidaVisualizationStore:
             "code": row["code"] or "",
             "insights": row["insights"] or [],
             "dataset_name": row["dataset_name"],
+            "dbt_metadata": row.get("dbt_metadata") or {},
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }

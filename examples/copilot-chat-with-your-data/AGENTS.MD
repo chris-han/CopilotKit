@@ -13,7 +13,8 @@ When implementing LIDA-enhanced analytics features or any system modifications, 
 2. **Extend with LIDA Intelligence**: Add `LidaEnhancedProvider` that works alongside existing `AgUiProvider`
 3. **Add Migration Workflow**: New `/migration` route and components for Phase 3B ClickHouse integration
 4. **Enhance Chart System**: Extend existing chart highlighting with LIDA-powered recommendations
-5. **Maintain Import Patterns**: Use established `@/` alias for component imports and existing utility patterns
+5. **Centralize dbt Model Metadata**: Persist dbt lineage details in the LIDA visualization store and fetch them with each visualization
+6. **Maintain Import Patterns**: Use established `@/` alias for component imports and existing utility patterns
 
 **Key Implementation Approach:**
 - Zero disruption to existing workflows
@@ -31,12 +32,12 @@ This ensures teams can continue using existing functionality while gradually ado
 - **Chat Surface**: `frontend/app/page.tsx` renders the fixed `AgUiSidebar`, manages layout offsets, and streams assistant output through `frontend/components/AssistantMessage.tsx` while the backend injects instructions from `backend/prompts/analysis_agent_system_prompt.md`.
 - **Highlight Integration**: `frontend/lib/chart-highlighting.ts` centralises chart highlighting so both AG-UI custom events and timeline components can toggle card focus.
 - **Backend Runtime**: FastAPI app in `backend/main.py` hosts `/ag-ui/run`, handles CORS, validates configuration, and routes AI calls through Azure OpenAI using a PydanticAI agent. Optional Tavily search runs server-side.
-- **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `frontend/data/dashboard-data.ts` and `backend/dashboard_data.py`.
+- **Shared Contracts**: AG-UI protocol events (Run/Text/Custom) and highlight payloads stay in sync between frontend helpers and backend encoders. Dataset parity lives in `frontend/data/dashboard-data.ts` and `backend/dashboard_data.py`. dbt lineage metadata is stored alongside each LIDA visualization record so both runtime and gallery UI surface SQL definitions without hardcoded maps.
 - **External Services**: Azure OpenAI streams completions and powers the agent; Tavily Search augments answers when the runtime triggers `searchInternet`.
 
 ## Data Assistant Communication Protocol
 
-**CRITICAL PRINCIPLE**: Separate UI navigation from AI interactions to avoid unnecessary LLM invocations and ensure immediate UI responsiveness.
+**CRITICAL PRINCIPLE**: Separate UI navigation from AI interactions to avoid unnecessary LLM invocations and ensure immediate UI responsiveness. Persist any generated lineage data (e.g., dbt models) through the LIDA visualization store rather than embedding static maps.
 
 ### UI Navigation (DirectUIUpdate Messages - No LLM)
 Use **DirectUIUpdate messages** over AgUI protocol for immediate UI state changes without LLM processing:

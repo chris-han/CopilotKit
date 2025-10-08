@@ -5,8 +5,17 @@ import { BarChart, LineChart, PieChart, Sparkles, Calendar, Download, Code, Eye,
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { DynamicChart } from "../ui/dynamic-chart";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Button } from "../ui/button";
+
+interface DbtModelMetadata {
+  id?: string;
+  name?: string;
+  description?: string;
+  path?: string;
+  sql?: string;
+  aliases?: string[];
+}
 
 interface GeneratedVisualization {
   id: string;
@@ -19,6 +28,7 @@ interface GeneratedVisualization {
   created_at: string;
   updated_at?: string;
   dataset_name?: string | null;
+  dbt_metadata?: DbtModelMetadata | null;
 }
 
 interface ChartGalleryProps {
@@ -39,195 +49,13 @@ const CHART_TYPE_ICONS = {
 };
 
 type DbtModelMetadata = {
-  name: string;
-  path: string;
-  description: string;
-  sql: string;
+  id?: string;
+  name?: string;
+  description?: string;
+  path?: string;
+  sql?: string;
+  aliases?: string[];
 };
-
-const DBT_MODEL_MAP: Record<string, DbtModelMetadata> = {
-  salesData: {
-    name: "Sales Performance Model",
-    path: "models/marts/finance/sales_performance.sql",
-    description: "Aggregates revenue, profit, and expense metrics by month for executive dashboards.",
-    sql: `with source as (
-  select * from {{ ref('fct_sales_transactions') }}
-),
-calendar as (
-  select * from {{ ref('dim_calendar') }}
-)
-select
-  c.month_start as billing_period_start,
-  sum(s.revenue) as revenue,
-  sum(s.profit) as profit,
-  sum(s.expense) as expense,
-  sum(s.customer_count) as customers
-from source s
-left join calendar c
-  on s.date_id = c.date_id
-group by 1
-order by 1;`,
-  },
-  productData: {
-    name: "Product Performance Model",
-    path: "models/marts/finance/product_performance.sql",
-    description: "Computes sales, units, and growth percentages by product for ranking visualizations.",
-    sql: `select
-  p.product_id,
-  p.product_name,
-  sum(f.revenue) as sales,
-  sum(f.units) as units,
-  avg(f.growth_pct) as growth_percentage
-from {{ ref('dim_product') }} p
-join {{ ref('fct_product_revenue') }} f
-  on p.product_id = f.product_id
-group by 1,2
-order by sales desc;`,
-  },
-  categoryData: {
-    name: "Category Mix Model",
-    path: "models/marts/finance/category_mix.sql",
-    description: "Provides revenue share and growth metrics across product categories.",
-    sql: `select
-  c.category_name,
-  sum(f.revenue) as revenue,
-  sum(f.revenue) / sum(sum(f.revenue)) over () as revenue_share,
-  avg(f.growth_pct) as growth_percentage
-from {{ ref('dim_category') }} c
-join {{ ref('fct_category_revenue') }} f
-  on c.category_id = f.category_id
-group by 1
-order by revenue desc;`,
-  },
-  regionalData: {
-    name: "Regional Sales Model",
-    path: "models/marts/finance/regional_sales.sql",
-    description: "Summarizes sales and market share by region for geographic comparisons.",
-    sql: `select
-  r.region_name,
-  sum(f.revenue) as revenue,
-  sum(f.revenue) / sum(sum(f.revenue)) over () as market_share
-from {{ ref('dim_region') }} r
-join {{ ref('fct_regional_revenue') }} f
-  on r.region_id = f.region_id
-group by 1
-order by revenue desc;`,
-  },
-  demographicsData: {
-    name: "Customer Demographics Model",
-    path: "models/marts/finance/customer_demographics.sql",
-    description: "Tracks spend distribution by age cohort for demographic analysis.",
-    sql: `select
-  d.age_group,
-  sum(f.spend) as total_spend,
-  sum(f.customers) as customers
-from {{ ref('dim_demographic') }} d
-join {{ ref('fct_customer_spend') }} f
-  on d.demographic_id = f.demographic_id
-group by 1
-order by total_spend desc;`,
-  },
-  enterprise_multi_cloud: {
-    name: "Enterprise Multi-Cloud Spend",
-    path: "models/marts/finops/enterprise_multi_cloud.sql",
-    description: "Normalised cloud cost data across AWS, Azure, and GCP with provider, service, and environment dimensions.",
-    sql: `with source as (
-  select * from {{ ref('fct_enterprise_cloud_costs') }}
-),
-aggregated as (
-  select
-    billing_period_start,
-    provider,
-    service,
-    environment,
-    sum(cost) as total_cost,
-    sum(usage_quantity) as usage_quantity,
-    sum(credits) as credits,
-    sum(reserved_savings) as reserved_savings,
-    sum(spot_savings) as spot_savings
-  from source
-  group by 1, 2, 3, 4
-)
-select *
-from aggregated
-order by billing_period_start desc, provider asc, service asc;`,
-  },
-};
-
-function resolveDbtModelInfo(
-  visualization: GeneratedVisualization | null,
-): { key?: string; metadata?: DbtModelMetadata } {
-  if (!visualization) {
-    return {};
-  }
-
-  const chartConfig = (visualization.chart_config ?? {}) as Record<string, unknown>;
-  const datasetNameRaw = visualization.dataset_name;
-  const datasetName =
-    typeof datasetNameRaw === "string" && datasetNameRaw.trim().length > 0
-      ? datasetNameRaw.trim()
-      : undefined;
-
-  const candidateValues: unknown[] = [
-    chartConfig["dbtModel"],
-    chartConfig["dbt_model"],
-    datasetName,
-    chartConfig["datasetName"],
-    chartConfig["dataset_name"],
-    chartConfig["dataSource"],
-    chartConfig["data_source"],
-  ];
-
-  let resolvedKey: string | undefined;
-  for (const candidate of candidateValues) {
-    if (typeof candidate === "string") {
-      const trimmed = candidate.trim();
-      if (trimmed.length > 0) {
-        resolvedKey = trimmed;
-        break;
-      }
-    }
-  }
-
-  if (!resolvedKey && datasetName) {
-    resolvedKey = datasetName;
-  }
-
-  if (!resolvedKey) {
-    return {};
-  }
-
-  const lookupCandidates = new Set<string>();
-  lookupCandidates.add(resolvedKey);
-  lookupCandidates.add(resolvedKey.toLowerCase());
-  lookupCandidates.add(resolvedKey.replace(/[\s-]+/g, "_"));
-  lookupCandidates.add(resolvedKey.toLowerCase().replace(/[\s-]+/g, "_"));
-  lookupCandidates.add(resolvedKey.replace(/\.[^.]+$/, ""));
-  lookupCandidates.add(resolvedKey.toLowerCase().replace(/\.[^.]+$/, "").replace(/[\s-]+/g, "_"));
-
-  for (const candidate of Array.from(lookupCandidates)) {
-    if (candidate && candidate !== resolvedKey) {
-      lookupCandidates.add(candidate.toLowerCase());
-    }
-  }
-
-  let resolvedMetadata: DbtModelMetadata | undefined;
-  let resolvedLookupKey: string | undefined;
-  for (const candidate of lookupCandidates) {
-    if (!candidate) continue;
-    const metadata = DBT_MODEL_MAP[candidate];
-    if (metadata) {
-      resolvedMetadata = metadata;
-      resolvedLookupKey = candidate;
-      break;
-    }
-  }
-
-  return {
-    key: resolvedLookupKey ?? resolvedKey,
-    metadata: resolvedMetadata,
-  };
-}
 
 export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDashboard, onDeleteVisualization }: ChartGalleryProps) {
   const [selectedViz, setSelectedViz] = useState<GeneratedVisualization | null>(null);
@@ -253,10 +81,35 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
     );
   }, [visualizations]);
 
-  const { key: selectedDbtKey, metadata: selectedDbtModel } = useMemo(
-    () => resolveDbtModelInfo(selectedViz),
-    [selectedViz],
-  );
+  const selectedDbtModel = useMemo(() => {
+    if (!selectedViz) return null;
+    return selectedViz.dbt_metadata ?? null;
+  }, [selectedViz]);
+
+  const selectedDbtKey = useMemo(() => {
+    if (selectedDbtModel?.id) {
+      return selectedDbtModel.id;
+    }
+    if (!selectedViz) {
+      return undefined;
+    }
+    const chartConfig = (selectedViz.chart_config ?? {}) as Record<string, unknown>;
+    const candidates = [
+      selectedViz.dataset_name,
+      chartConfig["dbtModel"],
+      chartConfig["dbt_model"],
+      chartConfig["datasetName"],
+      chartConfig["dataset_name"],
+      chartConfig["dataSource"],
+      chartConfig["data_source"],
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+    return undefined;
+  }, [selectedViz, selectedDbtModel]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -612,14 +465,16 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                   <Dialog>
                     <DialogContent className="max-w-3xl">
                       <DialogHeader>
-                        <DialogTitle>{selectedDbtModel.name}</DialogTitle>
+                        <DialogTitle>{selectedDbtModel.name ?? selectedDbtKey ?? "dbt Model"}</DialogTitle>
                         <DialogDescription className="space-y-1">
-                          <p>{selectedDbtModel.description}</p>
-                          <p className="text-xs text-muted-foreground">Path: {selectedDbtModel.path}</p>
+                          {selectedDbtModel.description ? <p>{selectedDbtModel.description}</p> : null}
+                          {selectedDbtModel.path ? (
+                            <p className="text-xs text-muted-foreground">Path: {selectedDbtModel.path}</p>
+                          ) : null}
                         </DialogDescription>
                       </DialogHeader>
                       <pre className="max-h-[360px] overflow-auto rounded-md bg-muted p-4 text-xs">
-                        <code>{selectedDbtModel.sql}</code>
+                        <code>{selectedDbtModel.sql ?? "// dbt SQL not provided"}</code>
                       </pre>
                     </DialogContent>
                   </Dialog>
@@ -660,7 +515,7 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                   value="dbt"
                   title={
                     selectedDbtModel
-                      ? `View dbt model details for ${selectedDbtModel.name}`
+                      ? `View dbt model details for ${selectedDbtModel.name ?? selectedDbtKey ?? "dbt model"}`
                       : selectedDbtKey
                       ? `No dbt metadata registered for ${selectedDbtKey}`
                       : "Link a dbt model to this visualization to view details"
@@ -741,16 +596,22 @@ export function ChartGallery({ visualizations, onVisualizationSelect, onAddToDas
                 {selectedDbtModel ? (
                   <div className="space-y-3">
                     <div>
-                      <h4 className="text-sm font-semibold">{selectedDbtModel.name}</h4>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedDbtModel.description}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Path: {selectedDbtModel.path}
-                      </p>
+                      <h4 className="text-sm font-semibold">
+                        {selectedDbtModel.name ?? selectedDbtKey ?? "dbt Model"}
+                      </h4>
+                      {selectedDbtModel.description ? (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedDbtModel.description}
+                        </p>
+                      ) : null}
+                      {selectedDbtModel.path ? (
+                        <p className="text-xs text-muted-foreground">
+                          Path: {selectedDbtModel.path}
+                        </p>
+                      ) : null}
                     </div>
                     <pre className="bg-muted p-4 rounded-md text-xs overflow-auto max-h-[360px]">
-                      <code>{selectedDbtModel.sql}</code>
+                      <code>{selectedDbtModel.sql ?? "// dbt SQL not provided"}</code>
                     </pre>
                   </div>
                 ) : selectedDbtKey ? (

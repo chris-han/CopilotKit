@@ -48,6 +48,16 @@ interface GeneratedVisualization {
   created_at: string;
   updated_at?: string;
   dataset_name?: string | null;
+  dbt_metadata?: DbtModelMetadata | null;
+}
+
+interface DbtModelMetadata {
+  id?: string;
+  name?: string;
+  description?: string;
+  path?: string;
+  sql?: string;
+  aliases?: string[];
 }
 
 function pickDatasetKey(...candidates: Array<string | null | undefined>): string | undefined {
@@ -61,6 +71,17 @@ function pickDatasetKey(...candidates: Array<string | null | undefined>): string
     }
   }
   return undefined;
+}
+
+function normalizeDbtKey(value?: string | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.toLowerCase().replace(/[\s.-]+/g, "_").replace(/\.csv$/, "");
 }
 
 function normaliseChartConfigForDataset(chartConfig: any, datasetKey?: string | null) {
@@ -97,6 +118,7 @@ export function LidaInterface() {
   const [currentDataset, setCurrentDataset] = useState<string | null>(null);
   const [dataSummary, setDataSummary] = useState<DataSummaryData | null>(null);
   const [visualizations, setVisualizations] = useState<GeneratedVisualization[]>([]);
+  const [dbtModels, setDbtModels] = useState<Record<string, DbtModelMetadata>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [currentBackendInsights, setCurrentBackendInsights] = useState<string[]>([]);
   const [lastCacheKey, setLastCacheKey] = useState<string | null>(null);
@@ -153,6 +175,62 @@ export function LidaInterface() {
   const primaryApiUrl = apiCandidates[0] ?? "";
 
   useEffect(() => {
+    const loadDbtModels = async () => {
+      try {
+        const response = await fetchWithFallback("/lida/dbt-models");
+        if (!response || !response.ok) {
+          return;
+        }
+        const models = await response.json();
+        if (!Array.isArray(models)) {
+          return;
+        }
+        const next: Record<string, DbtModelMetadata> = {};
+        const register = (key?: string | null, metadata?: DbtModelMetadata) => {
+          const normalized = normalizeDbtKey(key);
+          if (!normalized || !metadata) {
+            return;
+          }
+          next[normalized] = metadata;
+        };
+        models.forEach((entry: any) => {
+          if (!entry) {
+            return;
+          }
+          const metadata: DbtModelMetadata = {
+            id: entry.id,
+            name: entry.name,
+            description: entry.description,
+            path: entry.path,
+            sql: entry.sql,
+            aliases: Array.isArray(entry.aliases) ? entry.aliases : [],
+          };
+          register(metadata.id, metadata);
+          metadata.aliases?.forEach((alias) => register(alias, metadata));
+        });
+        setDbtModels(next);
+      } catch (error) {
+        console.error("Failed to load dbt models:", error);
+      }
+    };
+    loadDbtModels();
+  }, [fetchWithFallback]);
+
+  const resolveDbtMetadata = useCallback(
+    (datasetKey?: string | null, fallback?: DbtModelMetadata | null) => {
+      if (fallback && (fallback.id || fallback.sql || fallback.name)) {
+        return fallback;
+      }
+      const normalized = normalizeDbtKey(datasetKey);
+      if (!normalized) {
+        return undefined;
+      }
+      return dbtModels[normalized];
+    },
+    [dbtModels],
+  );
+
+  useEffect(() => {
     const loadPersistedVisualizations = async () => {
       try {
         const data = await sendDirectDatabaseCrud({
@@ -171,10 +249,12 @@ export function LidaInterface() {
               viz.chart_config?.dataSource,
               viz.chart_config?.data_source,
             );
+            const metadata = resolveDbtMetadata(datasetKey, viz.dbt_metadata ?? null);
             return {
               ...viz,
               chart_config: normaliseChartConfigForDataset(viz.chart_config, datasetKey),
               dataset_name: datasetKey ?? viz.dataset_name ?? null,
+              dbt_metadata: metadata ?? null,
             };
           });
           setVisualizations(normalized);
@@ -260,11 +340,13 @@ export function LidaInterface() {
       visualization.chart_config?.data_source,
     );
     const normalizedConfig = normaliseChartConfigForDataset(visualization.chart_config, datasetKey);
+    const resolvedDbtMetadata = resolveDbtMetadata(datasetKey, visualization.dbt_metadata ?? null) ?? null;
 
     const fallbackVisualization: GeneratedVisualization = {
       ...visualization,
       chart_config: normalizedConfig,
       dataset_name: datasetKey ?? visualization.dataset_name ?? null,
+      dbt_metadata: resolvedDbtMetadata,
     };
     setVisualizations((prev) => [fallbackVisualization, ...prev.filter((viz) => viz.id !== visualization.id)]);
 
@@ -273,6 +355,7 @@ export function LidaInterface() {
         ...visualization,
         chart_config: normalizedConfig,
         dataset_name: datasetKey ?? visualization.dataset_name ?? null,
+        dbt_metadata: resolvedDbtMetadata,
       };
       const saved = await sendDirectDatabaseCrud({
         operation: 'create',
@@ -292,10 +375,12 @@ export function LidaInterface() {
           savedVisualization.chart_config?.data_source,
           datasetKey,
         );
+        const savedDbtMetadata = resolveDbtMetadata(savedDatasetKey, savedVisualization.dbt_metadata ?? resolvedDbtMetadata) ?? null;
         const normalizedSaved: GeneratedVisualization = {
           ...savedVisualization,
           chart_config: normaliseChartConfigForDataset(savedVisualization.chart_config, savedDatasetKey),
           dataset_name: savedDatasetKey ?? savedVisualization.dataset_name ?? null,
+          dbt_metadata: savedDbtMetadata,
         };
         setVisualizations((prev) => [normalizedSaved, ...prev.filter((viz) => viz.id !== normalizedSaved.id)]);
         return normalizedSaved;
@@ -304,7 +389,7 @@ export function LidaInterface() {
       console.error("Error persisting visualization:", error);
     }
     return fallbackVisualization;
-  }, [sendDirectDatabaseCrud]);
+  }, [resolveDbtMetadata, sendDirectDatabaseCrud]);
 
   const handleVisualizationGenerated = useCallback(
     async (visualization: GeneratedVisualization) => {
@@ -454,6 +539,7 @@ export function LidaInterface() {
           dataSummary?.name,
         );
         const normalizedConfig = normaliseChartConfigForDataset(initialConfig, datasetKey);
+        const dbtMetadata = resolveDbtMetadata(datasetKey, result.visualizations[0]?.dbt_metadata ?? null) ?? null;
         const newViz: GeneratedVisualization = {
           id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           title: request.goal,
@@ -464,6 +550,7 @@ export function LidaInterface() {
           insights: result.insights || [],
           created_at: new Date().toISOString(),
           dataset_name: datasetKey ?? null,
+          dbt_metadata: dbtMetadata,
         };
 
         const saved = await persistVisualization(newViz);
@@ -477,7 +564,7 @@ export function LidaInterface() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentDataset, dataSummary, generateCacheKey, insightsCache, CACHE_EXPIRY_MS, fetchWithFallback, persistVisualization]);
+  }, [currentDataset, dataSummary, generateCacheKey, insightsCache, CACHE_EXPIRY_MS, fetchWithFallback, persistVisualization, resolveDbtMetadata]);
 
   const handleChartSelected = useCallback((suggestion: any, config: any) => {
     // Generate final visualization from selected chart
@@ -494,6 +581,7 @@ export function LidaInterface() {
       dataSummary?.name,
     );
     const normalizedConfig = normaliseChartConfigForDataset(config, datasetKey);
+    const dbtMetadata = resolveDbtMetadata(datasetKey, suggestion?.dbt_metadata ?? null) ?? null;
     const newViz: GeneratedVisualization = {
       id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       title: suggestion.title || "Generated Visualization",
@@ -506,13 +594,14 @@ export function LidaInterface() {
         : [`Selected ${suggestion.chart_type} chart`, suggestion.best_for],
       created_at: new Date().toISOString(),
       dataset_name: datasetKey ?? null,
+      dbt_metadata: dbtMetadata,
     };
 
     persistVisualization(newViz).catch((error) => {
       console.error("Failed to persist visualization from suggestion:", error);
     });
     setActiveTab("gallery"); // Switch to gallery to show the generated chart
-  }, [persistVisualization, currentBackendInsights, currentDataset, dataSummary]);
+  }, [persistVisualization, currentBackendInsights, currentDataset, dataSummary, resolveDbtMetadata]);
 
   // Dashboard management handlers
   const handleCreateDashboard = useCallback(async (name: string, description?: string) => {

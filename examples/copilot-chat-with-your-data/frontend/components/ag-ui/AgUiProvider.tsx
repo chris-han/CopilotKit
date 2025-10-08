@@ -1051,7 +1051,7 @@ export function AgUiProvider({ children, runtimeUrl, systemPrompt }: ProviderPro
           content: `[DatabaseCRUD] ${message.operation.toUpperCase()} ${message.resource} failed: ${error instanceof Error ? error.message : String(error)}`,
         },
       ]);
-      throw error;
+      return null;
     }
   }, [runtimeBaseUrl]);
 

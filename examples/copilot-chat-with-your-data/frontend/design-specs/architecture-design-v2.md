@@ -2732,6 +2732,37 @@ gantt
 
 ---
 
+## 🔄 LIDA Visualization Persistence & dbt Lineage (Update Q2 2025)
+
+To guarantee every generated visualization exposes verifiable SQL lineage, the runtime now persists dbt metadata in Postgres rather than relying on hardcoded frontend maps.
+
+### Data Model Changes
+
+| Table | Columns |
+|-------|---------|
+| `dashboards.lida_dbt_models` | `id` (PK), `name`, `description`, `path`, `sql`, `aliases` (`text[]`), `created_at`, `updated_at` |
+| `dashboards.lida_visualizations` | `id`, `title`, `description`, `chart_type`, `chart_config`, `code`, `insights`, `dataset_name`, `dbt_metadata` (`jsonb`), `created_at`, `updated_at` |
+
+- `lida_dbt_models` is seeded on startup (for bundled demo datasets) and can be extended via migrations or tooling.
+- When the backend stores or retrieves a visualization it automatically hydrates `dbt_metadata` by matching `dataset_name`/aliases against `lida_dbt_models`.
+- The frontend gallery renders the “dbt Model” tab directly from the persisted metadata—no static maps or duplicated definitions.
+
+### API Surface
+
+- `GET /lida/dbt-models` → returns the catalog (`id`, `name`, `path`, `description`, `sql`).
+- `GET /lida/dbt-models/{modelId}` → single model lookup, including alias resolution.
+- Visualization endpoints (`/lida/visualizations`, `/ag-ui/database` create/update) transparently upsert `dbt_metadata`.
+
+### Frontend Responsibilities
+
+1. Fetch dbt model catalog on mount and cache by alias (case/format insensitive).
+2. Attach `dbt_metadata` when persisting visualizations (fallback to backend auto-hydration for server-side generation).
+3. Render dbt lineage UI exclusively from the persisted metadata object.
+
+This shift guarantees dbt lineage remains in sync across environments, enables future admin tooling, and eliminates the risk of stale hardcoded SQL definitions in the UI.
+
+---
+
 ## 📋 Conclusion
 
 This **Context-Aware Agentic Data Visualization Solution** represents a paradigm shift in business intelligence by:

@@ -49,6 +49,7 @@ from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_mana
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
 from pydantic import BaseModel
 from lida_visualization_store import LidaVisualizationStore
+from lida_dbt_model_store import LidaDbtModelStore
 from semantic_layer_integration import SemanticLayerIntegration
 from fastmcp import FastMCP
 
@@ -149,6 +150,7 @@ _focus_integration: Optional[FocusSampleDataIntegration] = None
 # Global FastMCP ECharts server instance
 _echarts_mcp: Optional[FastMCP] = None
 lida_visualization_store = LidaVisualizationStore()
+dbt_model_store = LidaDbtModelStore()
 semantic_layer_integration = SemanticLayerIntegration()
 
 
@@ -192,6 +194,7 @@ class LidaVisualizationPayload(BaseModel):
     code: Optional[str] = ""
     insights: Optional[List[str]] = []
     dataset_name: Optional[str] = None
+    dbt_metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
 
 
@@ -233,6 +236,12 @@ async def _startup_event():
             logger.info("Initialized LIDA visualization store with Postgres backend")
         except Exception as exc:  # pragma: no cover - startup path
             logger.warning("Failed to initialize LIDA visualization store: %s", exc)
+    if dbt_model_store.configured:
+        try:
+            await dbt_model_store.init()
+            logger.info("Initialized LIDA dbt model store with Postgres backend")
+        except Exception as exc:  # pragma: no cover - startup path
+            logger.warning("Failed to initialize LIDA dbt model store: %s", exc)
 
 
 def _extract_prompt_details(messages: Sequence[Any]) -> Tuple[str, List[str], List[Tuple[str, str]]]:
@@ -349,6 +358,30 @@ def _format_chart_title(chart_id: str) -> str:
     # Fallback: humanize the slug
     parts = chart_id.replace("_", "-").split("-")
     return " ".join(part.capitalize() for part in parts if part)
+
+
+async def _resolve_dbt_metadata(dataset_name: Optional[str], existing: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Return dbt metadata for a given dataset name, preferring provided metadata."""
+
+    if existing:
+        return existing
+    if not dataset_name:
+        return None
+    try:
+        record = await dbt_model_store.get_by_id_or_alias(dataset_name)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to resolve dbt metadata for %s: %s", dataset_name, exc)
+        return None
+    if not record:
+        return None
+    return {
+        "id": record.get("id"),
+        "name": record.get("name"),
+        "description": record.get("description"),
+        "path": record.get("path"),
+        "sql": record.get("sql"),
+        "aliases": record.get("aliases", []),
+    }
 
 
 def _inject_chart_suggestions(answer: str, chart_ids: List[str]) -> str:
@@ -990,7 +1023,21 @@ async def ag_ui_database_crud(request: DatabaseCrudRequest) -> JSONResponse:
         if not request.payload:
             raise HTTPException(status_code=400, detail="Payload is required for create/update operations")
 
-        saved = await lida_visualization_store.upsert(request.payload)
+        payload = dict(request.payload)
+        chart_config = payload.get("chart_config") or {}
+        dataset_name = (
+            payload.get("dataset_name")
+            or chart_config.get("dbtModel")
+            or chart_config.get("dbt_model")
+            or chart_config.get("datasetName")
+            or chart_config.get("dataset_name")
+            or chart_config.get("dataSource")
+            or chart_config.get("data_source")
+        )
+        payload["dataset_name"] = dataset_name
+        payload["dbt_metadata"] = await _resolve_dbt_metadata(dataset_name, payload.get("dbt_metadata"))
+
+        saved = await lida_visualization_store.upsert(payload)
         status_code = 201 if request.operation == "create" else 200
         return JSONResponse(
             {
@@ -1047,6 +1094,21 @@ async def list_lida_visualizations():
     return visualizations
 
 
+@app.get("/lida/dbt-models")
+async def list_dbt_models() -> List[Dict[str, Any]]:
+    """Return known dbt model catalogue."""
+
+    return await dbt_model_store.fetch_all()
+
+
+@app.get("/lida/dbt-models/{model_id}")
+async def get_dbt_model(model_id: str):
+    metadata = await dbt_model_store.get_by_id_or_alias(model_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"dbt model '{model_id}' not found")
+    return metadata
+
+
 @app.post("/lida/visualizations")
 async def create_lida_visualization(payload: LidaVisualizationPayload):
     """Persist or update a LIDA visualization."""
@@ -1061,6 +1123,7 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
         or chart_config.get("dataSource")
         or chart_config.get("data_source")
     )
+    dbt_metadata = await _resolve_dbt_metadata(dataset_name, payload.dbt_metadata)
 
     saved = await lida_visualization_store.upsert(
         {
@@ -1072,6 +1135,7 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
             "code": payload.code,
             "insights": payload.insights,
             "dataset_name": dataset_name,
+            "dbt_metadata": dbt_metadata,
             "created_at": payload.created_at,
         }
     )

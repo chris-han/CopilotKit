@@ -1365,6 +1365,25 @@ sequenceDiagram
   - Build mart models for FOCUS v1.2 compliance
   - Auto-generate metric definitions and tests
 
+### Task 13b: Persist dbt Model Catalogue & Visualization Lineage (NEW)
+- [ ] **Create Postgres catalogue**
+  - Table `dashboards.lida_dbt_models` with columns `id`, `name`, `description`, `path`, `sql`, `aliases[]`, timestamps.
+  - Seed with bundled demo datasets during backend startup (salesData, productData, enterprise_multi_cloud, etc.).
+- [ ] **Extend visualization storage**
+  - Add `dbt_metadata jsonb` column to `dashboards.lida_visualizations`.
+  - Update FastAPI create/update handlers to hydrate metadata automatically using dataset aliases.
+- [ ] **Expose APIs**
+  - `GET /lida/dbt-models` → full catalogue for frontend cache.
+  - `GET /lida/dbt-models/{id}` → individual lookup (alias aware).
+  - Ensure `/lida/visualizations` and `/ag-ui/database` responses always include `dbt_metadata`.
+- [ ] **Frontend integration**
+  - Fetch catalogue on LIDA interface mount and cache by alias.
+  - Persist lineage metadata with every visualization save.
+  - Render dbt tabs exclusively from persisted metadata (remove hardcoded maps).
+- [ ] **Testing**
+  - Migration test covering catalogue seeding and visualization upsert.
+  - Gallery UI regression verifying dbt tab renders for each dataset.
+
 ### Task 14: Migration Validation and Testing
 - [ ] **Implement comprehensive migration validation**
   ```python

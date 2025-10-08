@@ -219,24 +219,6 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
           ))}
         </svg>
 
-        {/* Legend */}
-        <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-sm border">
-          <h4 className="text-sm font-medium mb-2">Legend</h4>
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 rounded bg-blue-100 border border-blue-300"></div>
-              <span className="text-xs">Entity</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 rounded bg-green-100 border border-green-300"></div>
-              <span className="text-xs">Metric</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 rounded bg-yellow-100 border border-yellow-300"></div>
-              <span className="text-xs">Dimension</span>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }, [lineage, selectedNode, height]);
@@ -458,16 +440,40 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
       {/* Content */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Main view */}
-        <div className="lg:col-span-3">
-          <Card>
-            <CardContent className="p-4">
+        <div className="lg:col-span-3 space-y-4">
+          {viewMode === "graph" && (
+            <Card>
+              <CardHeader className="pb-3">
+               <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-2">
+                    
+                    <span className="text-sm">Legend</span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 rounded bg-blue-100 border border-blue-300"></div>
+                    <span className="text-xs text-muted-foreground">Entity</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 rounded bg-green-100 border border-green-300"></div>
+                    <span className="text-xs text-muted-foreground">Metric</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 rounded bg-yellow-100 border border-yellow-300"></div>
+                    <span className="text-xs text-muted-foreground">Dimension</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
               {viewMode === "graph" ? renderGraphView() : renderTableView()}
             </CardContent>
-          </Card>
+            </Card>
+          )}
+          
         </div>
 
         {/* Details panel */}
-        <div className="lg:col-span-1">
+        
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
@@ -557,7 +563,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
               )}
             </CardContent>
           </Card>
-        </div>
+        
       </div>
     </div>
   );

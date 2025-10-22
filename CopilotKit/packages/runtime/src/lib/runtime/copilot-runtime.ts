@@ -45,7 +45,6 @@ import { ForwardedParametersInput } from "../../graphql/inputs/forwarded-paramet
 
 import {
   isRemoteAgentAction,
-  RemoteAgentAction,
   EndpointType,
   setupRemoteActions,
   EndpointDefinition,
@@ -91,6 +90,7 @@ type CreateMCPClientFunction = (config: MCPEndpointConfig) => Promise<MCPClient>
 
 import { generateHelpfulErrorMessage } from "../streaming";
 import { CopilotContextInput } from "../../graphql/inputs/copilot-context.input";
+import { RemoteAgentAction } from "./agui-action";
 
 export interface CopilotRuntimeRequest {
   serviceAdapter: CopilotServiceAdapter;
@@ -338,6 +338,16 @@ export class CopilotRuntime<const T extends Parameter[] | [] = []> {
   // --- MCP Client Factory ---
 
   constructor(params?: CopilotRuntimeConstructorParams<T>) {
+    if (
+      params?.remoteEndpoints &&
+      params?.remoteEndpoints.some((e) => e.type === EndpointType.LangGraphPlatform)
+    ) {
+      throw new CopilotKitMisuseError({
+        message:
+          "LangGraph Platform remote endpoints are deprecated in favor of the `agents` property. Refer to https://docs.copilotkit.ai/langgraph for more information.",
+      });
+    }
+
     if (
       params?.actions &&
       params?.remoteEndpoints &&
@@ -598,6 +608,7 @@ please use an LLM adapter instead.`,
         name: action.name,
         description: action.description,
         jsonSchema: JSON.stringify(actionParametersToJsonSchema(action.parameters)),
+        additionalConfig: action.additionalConfig,
       }));
 
       const actionInputs = flattenToolCallsNoDuplicates([

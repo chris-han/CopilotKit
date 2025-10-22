@@ -1,5 +1,82 @@
 # ui
 
+## 1.10.6
+
+### Patch Changes
+
+- 3ac64bf: - fix: allow disabling actions in the new action hooks
+- c9e499f: - feat: create targeted convenience wrappers around copilot action
+- 8626c5a: - fix: surface errors also in production
+- Updated dependencies [8626c5a]
+- Updated dependencies [e0dd5d5]
+  - @copilotkit/runtime-client-gql@1.10.6
+  - @copilotkit/shared@1.10.6
+
+## 1.10.6-next.6
+
+### Patch Changes
+
+- @copilotkit/runtime-client-gql@1.10.6-next.6
+- @copilotkit/shared@1.10.6-next.6
+
+## 1.10.6-next.5
+
+### Patch Changes
+
+- Updated dependencies [e0dd5d5]
+  - @copilotkit/shared@1.10.6-next.5
+  - @copilotkit/runtime-client-gql@1.10.6-next.5
+
+## 1.10.6-next.4
+
+### Patch Changes
+
+- 8626c5a: - fix: surface errors also in production
+- Updated dependencies [8626c5a]
+  - @copilotkit/runtime-client-gql@1.10.6-next.4
+  - @copilotkit/shared@1.10.6-next.4
+
+## 1.10.6-next.3
+
+### Patch Changes
+
+- @copilotkit/runtime-client-gql@1.10.6-next.3
+- @copilotkit/shared@1.10.6-next.3
+
+## 1.10.6-next.2
+
+### Patch Changes
+
+- 3ac64bf: - fix: allow disabling actions in the new action hooks
+  - @copilotkit/runtime-client-gql@1.10.6-next.2
+  - @copilotkit/shared@1.10.6-next.2
+
+## 1.10.6-next.1
+
+### Patch Changes
+
+- c9e499f: - feat: create targeted convenience wrappers around copilot action
+  - @copilotkit/runtime-client-gql@1.10.6-next.1
+  - @copilotkit/shared@1.10.6-next.1
+
+## 1.10.6-next.0
+
+### Patch Changes
+
+- @copilotkit/runtime-client-gql@1.10.6-next.0
+- @copilotkit/shared@1.10.6-next.0
+
+## 1.10.5
+
+### Patch Changes
+
+- b7bc3a0: - feat: pass copilot readable context to agui agents
+- f3fdd7a: - fix: stop chat from contacting agent that has errored
+- 32c163e: - inspector visibility toggle in ConsoleTrigger component
+- 6112a67: - fix: consider edge cases when regenerate button is used
+  - @copilotkit/runtime-client-gql@1.10.5
+  - @copilotkit/shared@1.10.5
+
 ## 1.10.5-next.10
 
 ### Patch Changes

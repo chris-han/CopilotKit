@@ -4,17 +4,16 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import {
   GitBranch,
   Database,
   TrendingUp,
-  ArrowRight,
   ArrowDown,
   ArrowUp,
   Zap,
   Layers,
-  AlertCircle
+  AlertCircle,
+  Copy,
 } from "lucide-react";
 
 interface LineageNode {
@@ -34,6 +33,16 @@ interface DataLineage {
   data_flow: LineageNode[];
 }
 
+interface DbtModelMetadata {
+  id?: string;
+  slug?: string;
+  name?: string;
+  description?: string;
+  path?: string;
+  sql?: string;
+  aliases?: string[];
+}
+
 interface DataLineageViewProps {
   modelName: string;
   height?: number;
@@ -45,9 +54,10 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNode | null>(null);
   const [viewMode, setViewMode] = useState<"graph" | "table">("graph");
+  const [modelMetadata, setModelMetadata] = useState<DbtModelMetadata | null>(null);
+  const [sqlCopied, setSqlCopied] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Load data lineage
   const loadLineage = useCallback(async () => {
     try {
       setLoading(true);
@@ -56,17 +66,31 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
       const base =
         process.env.NEXT_PUBLIC_API_URL?.split(",").map((url) => url.trim()).filter(Boolean)[0] ??
         "http://localhost:8004";
-      const response = await fetch(`${base}/lida/semantic-models/${modelName}/lineage`);
-      if (!response.ok) {
+      const encoded = encodeURIComponent(modelName);
+      const [lineageResponse, metadataResponse] = await Promise.all([
+        fetch(`${base}/lida/semantic-models/${encoded}/lineage`),
+        fetch(`${base}/lida/dbt-models/${encoded}`),
+      ]);
+
+      if (!lineageResponse.ok) {
         throw new Error(
-          `Failed to load lineage: ${response.status} ${response.statusText}`,
+          `Failed to load lineage: ${lineageResponse.status} ${lineageResponse.statusText}`,
         );
       }
 
-      const lineageData = await response.json();
+      const lineageData = await lineageResponse.json();
       setLineage(lineageData);
+      setSelectedNode(null);
+
+      if (metadataResponse.ok) {
+        const metadata = await metadataResponse.json();
+        setModelMetadata(metadata);
+      } else {
+        setModelMetadata(null);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data lineage');
+      setError(err instanceof Error ? err.message : "Failed to load data lineage");
+      setModelMetadata(null);
     } finally {
       setLoading(false);
     }
@@ -76,54 +100,50 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
     loadLineage();
   }, [loadLineage]);
 
-  // Render graph visualization
+  const handleCopySql = useCallback(async () => {
+    if (!modelMetadata?.sql || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(modelMetadata.sql);
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 2000);
+    } catch (copyError) {
+      console.error("Failed to copy SQL", copyError);
+    }
+  }, [modelMetadata]);
+
   const renderGraphView = useCallback(() => {
     if (!lineage) return null;
 
-    const allNodes = [...lineage.entities, ...lineage.data_flow];
     const nodeWidth = 180;
     const nodeHeight = 80;
     const horizontalSpacing = 220;
     const verticalSpacing = 120;
 
-    // Calculate positions
     const entityNodes = lineage.entities.map((entity, index) => ({
       ...entity,
       x: 50 + (index % 3) * horizontalSpacing,
-      y: 50 + Math.floor(index / 3) * verticalSpacing
+      y: 50 + Math.floor(index / 3) * verticalSpacing,
     }));
 
     const metricNodes = lineage.data_flow.map((metric, index) => ({
       ...metric,
       x: 50 + (index % 3) * horizontalSpacing,
-      y: 250 + Math.floor(index / 3) * verticalSpacing
+      y: 250 + Math.floor(index / 3) * verticalSpacing,
     }));
 
     const allPositionedNodes = [...entityNodes, ...metricNodes];
 
     return (
-      
       <div className="relative">
-        <svg
-          ref={svgRef}
-          width="100%"
-          height={height}
-          className=" rounded-lg bg-muted/10"
-        >
-          {/* Background grid */}
-          {/* <defs>
-            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e5e7eb" strokeWidth="1" opacity="0.3"/>
-            </pattern>
-          </defs> */}
-
+        <svg ref={svgRef} width="100%" height={height} className="rounded-lg bg-muted/10">
           <rect width="100%" height="100%" fill="url(#grid)" />
 
-          {/* Render connections */}
           {allPositionedNodes.map((node, nodeIndex) => (
             <g key={`connections-${nodeIndex}`}>
               {node.downstream_dependencies.map((dep, depIndex) => {
-                const targetNode = allPositionedNodes.find(n => n.name === dep.name);
+                const targetNode = allPositionedNodes.find((n) => n.name === dep.name);
                 if (!targetNode) return null;
 
                 return (
@@ -143,24 +163,12 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
             </g>
           ))}
 
-          {/* Arrow marker */}
           <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon
-                points="0 0, 10 3.5, 0 7"
-                fill="#6366f1"
-              />
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
             </marker>
           </defs>
 
-          {/* Render nodes */}
           {allPositionedNodes.map((node, index) => (
             <g
               key={`node-${index}`}
@@ -178,12 +186,8 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                 className="transition-all hover:stroke-gray-400"
               />
 
-              {/* Node icon */}
-              <g transform="translate(10, 15)">
-                {getNodeIcon(node.type)}
-              </g>
+              <g transform="translate(10, 15)">{getNodeIcon(node.type)}</g>
 
-              {/* Node text */}
               <text
                 x="40"
                 y="25"
@@ -205,7 +209,6 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                 {node.type}
               </text>
 
-              {/* Additional info */}
               {node.type === "metric" && node.base_field && (
                 <text
                   x="40"
@@ -220,33 +223,28 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
             </g>
           ))}
         </svg>
-
       </div>
     );
-  }, [lineage, selectedNode, height]);
+  }, [height, lineage, selectedNode]);
 
-  // Render table view
   const renderTableView = useCallback(() => {
     if (!lineage) return null;
 
-    const allNodes = [...lineage.entities, ...lineage.data_flow];
-
     return (
       <div className="space-y-6">
-        {/* Entities Table */}
         <div>
-          <h3 className="text-lg font-semibold mb-3 flex items-center">
-            <Database className="h-5 w-5 mr-2" />
+          <h3 className="mb-3 flex items-center text-lg font-semibold">
+            <Database className="mr-2 h-5 w-5" />
             Entities ({lineage.entities.length})
           </h3>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-hidden rounded-lg border">
             <table className="w-full">
               <thead className="bg-muted">
                 <tr>
-                  <th className="text-left p-3 font-medium">Name</th>
-                  <th className="text-left p-3 font-medium">Description</th>
-                  <th className="text-left p-3 font-medium">Upstream</th>
-                  <th className="text-left p-3 font-medium">Downstream</th>
+                  <th className="p-3 text-left font-medium">Name</th>
+                  <th className="p-3 text-left font-medium">Description</th>
+                  <th className="p-3 text-left font-medium">Upstream</th>
+                  <th className="p-3 text-left font-medium">Downstream</th>
                 </tr>
               </thead>
               <tbody>
@@ -254,7 +252,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                   <tr key={index} className="border-t hover:bg-muted/50">
                     <td className="p-3">
                       <div className="flex items-center">
-                        <Database className="h-4 w-4 mr-2 text-blue-600" />
+                        <Database className="mr-2 h-4 w-4 text-blue-600" />
                         <span className="font-medium">{entity.name}</span>
                       </div>
                     </td>
@@ -286,20 +284,19 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
           </div>
         </div>
 
-        {/* Metrics Table */}
         <div>
-          <h3 className="text-lg font-semibold mb-3 flex items-center">
-            <TrendingUp className="h-5 w-5 mr-2" />
+          <h3 className="mb-3 flex items-center text-lg font-semibold">
+            <TrendingUp className="mr-2 h-5 w-5" />
             Metrics ({lineage.data_flow.length})
           </h3>
-          <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-hidden rounded-lg border">
             <table className="w-full">
               <thead className="bg-muted">
                 <tr>
-                  <th className="text-left p-3 font-medium">Name</th>
-                  <th className="text-left p-3 font-medium">Description</th>
-                  <th className="text-left p-3 font-medium">Base Field</th>
-                  <th className="text-left p-3 font-medium">Dependencies</th>
+                  <th className="p-3 text-left font-medium">Name</th>
+                  <th className="p-3 text-left font-medium">Description</th>
+                  <th className="p-3 text-left font-medium">Base Field</th>
+                  <th className="p-3 text-left font-medium">Dependencies</th>
                 </tr>
               </thead>
               <tbody>
@@ -307,7 +304,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                   <tr key={index} className="border-t hover:bg-muted/50">
                     <td className="p-3">
                       <div className="flex items-center">
-                        <TrendingUp className="h-4 w-4 mr-2 text-green-600" />
+                        <TrendingUp className="mr-2 h-4 w-4 text-green-600" />
                         <span className="font-medium">{metric.name}</span>
                       </div>
                     </td>
@@ -315,7 +312,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                       {metric.description || "No description"}
                     </td>
                     <td className="p-3 text-sm">
-                      <code className="bg-muted px-2 py-1 rounded text-xs">
+                      <code className="rounded bg-muted px-2 py-1 text-xs">
                         {metric.base_field || "N/A"}
                       </code>
                     </td>
@@ -338,40 +335,50 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
     );
   }, [lineage]);
 
-  // Helper functions
   const getNodeColor = (type: string) => {
     switch (type) {
-      case "entity": return "#dbeafe";
-      case "metric": return "#dcfce7";
-      case "dimension": return "#fef3c7";
-      case "table": return "#f3e8ff";
-      case "view": return "#fce7f3";
-      default: return "#f9fafb";
+      case "entity":
+        return "#dbeafe";
+      case "metric":
+        return "#dcfce7";
+      case "dimension":
+        return "#fef3c7";
+      case "table":
+        return "#f3e8ff";
+      case "view":
+        return "#fce7f3";
+      default:
+        return "#f9fafb";
     }
   };
 
   const getNodeIcon = (type: string) => {
     const iconProps = { size: 16, color: "#374151" };
     switch (type) {
-      case "entity": return <Database {...iconProps} />;
-      case "metric": return <TrendingUp {...iconProps} />;
-      case "dimension": return <Layers {...iconProps} />;
-      case "table": return <Database {...iconProps} />;
-      case "view": return <Zap {...iconProps} />;
-      default: return <GitBranch {...iconProps} />;
+      case "entity":
+        return <Database {...iconProps} />;
+      case "metric":
+        return <TrendingUp {...iconProps} />;
+      case "dimension":
+        return <Layers {...iconProps} />;
+      case "table":
+        return <Database {...iconProps} />;
+      case "view":
+        return <Zap {...iconProps} />;
+      default:
+        return <GitBranch {...iconProps} />;
     }
   };
 
-  const truncateText = (text: string, maxLength: number) => {
-    return text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
-  };
+  const truncateText = (text: string, maxLength: number) =>
+    text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
 
   if (loading) {
     return (
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
             <span className="ml-2">Loading data lineage...</span>
           </div>
         </CardContent>
@@ -383,9 +390,14 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center text-red-600">
-            <AlertCircle className="h-5 w-5 mr-2" />
-            <span>{error}</span>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center text-red-600">
+              <AlertCircle className="mr-2 h-5 w-5" />
+              <span>{error}</span>
+            </div>
+            <Button size="sm" onClick={loadLineage}>
+              Retry
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -396,9 +408,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="text-center text-muted-foreground">
-            No lineage information available
-          </div>
+          <div className="text-center text-muted-foreground">No lineage information available</div>
         </CardContent>
       </Card>
     );
@@ -406,7 +416,6 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -416,7 +425,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                 <span>Data Lineage: {lineage.model_name}</span>
               </CardTitle>
               <CardDescription>
-                Visual representation of data flow and dependencies
+                {modelMetadata?.description ?? "Visual representation of data flow and dependencies"}
               </CardDescription>
             </div>
             <div className="flex space-x-2">
@@ -438,41 +447,76 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Content */}
-           {viewMode === "graph" && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-           
-        <Card className="lg:col-span-3 space-y-4">
-          
-
-                
-              <CardHeader>
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center space-x-2">                          
-                    <span className="text-xs text-muted-foreground">Legend</span>
+          {modelMetadata && (
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {modelMetadata.slug && (
+                  <Badge variant="secondary" className="text-xs">
+                    Slug: {modelMetadata.slug}
+                  </Badge>
+                )}
+                {Array.isArray(modelMetadata.aliases) && modelMetadata.aliases.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {modelMetadata.aliases.map((alias) => (
+                      <Badge key={alias} variant="outline" className="text-xs">
+                        {alias}
+                      </Badge>
+                    ))}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded bg-blue-100 border border-blue-300"></div>
-                    <span className="text-xs text-muted-foreground">Entity</span>
+                )}
+                {modelMetadata.path && (
+                  <code className="rounded border bg-background/60 px-2 py-1 text-xs">
+                    {modelMetadata.path}
+                  </code>
+                )}
+              </div>
+              {modelMetadata.sql && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Model SQL</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleCopySql}
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      {sqlCopied ? "Copied" : "Copy SQL"}
+                    </Button>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded bg-green-100 border border-green-300"></div>
-                    <span className="text-xs text-muted-foreground">Metric</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 rounded bg-yellow-100 border border-yellow-300"></div>
-                    <span className="text-xs text-muted-foreground">Dimension</span>
-                  </div>
+                  <pre className="max-h-60 overflow-auto rounded border bg-background/60 p-3 text-xs">
+                    {modelMetadata.sql}
+                  </pre>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {viewMode === "graph" ? renderGraphView() : renderTableView()}
-              </CardContent>
+              )}
+            </div>
+          )}
 
-        </Card>
-            
+          {viewMode === "graph" ? (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+              <Card className="space-y-4 lg:col-span-3">
+                <CardHeader>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-muted-foreground">Legend</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="h-4 w-4 rounded bg-blue-100 border border-blue-300"></div>
+                      <span className="text-xs text-muted-foreground">Entity</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="h-4 w-4 rounded bg-green-100 border border-green-300"></div>
+                      <span className="text-xs text-muted-foreground">Metric</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="h-4 w-4 rounded bg-yellow-100 border border-yellow-300"></div>
+                      <span className="text-xs text-muted-foreground">Dimension</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">{renderGraphView()}</CardContent>
+              </Card>
 
-            
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">
@@ -483,7 +527,7 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                   {selectedNode ? (
                     <div className="space-y-4">
                       <div>
-                        <div className="flex items-center space-x-2 mb-2">
+                        <div className="mb-2 flex items-center space-x-2">
                           {getNodeIcon(selectedNode.type)}
                           <span className="font-medium">{selectedNode.name}</span>
                         </div>
@@ -494,25 +538,21 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
 
                       {selectedNode.description && (
                         <div>
-                          <h4 className="text-sm font-medium mb-1">Description</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedNode.description}
-                          </p>
+                          <h4 className="mb-1 text-sm font-medium">Description</h4>
+                          <p className="text-sm text-muted-foreground">{selectedNode.description}</p>
                         </div>
                       )}
 
                       {selectedNode.base_field && (
                         <div>
-                          <h4 className="text-sm font-medium mb-1">Base Field</h4>
-                          <code className="text-xs bg-muted px-2 py-1 rounded">
-                            {selectedNode.base_field}
-                          </code>
+                          <h4 className="mb-1 text-sm font-medium">Base Field</h4>
+                          <code className="rounded bg-muted px-2 py-1 text-xs">{selectedNode.base_field}</code>
                         </div>
                       )}
 
                       {selectedNode.attributes && selectedNode.attributes.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2">Attributes</h4>
+                          <h4 className="mb-2 text-sm font-medium">Attributes</h4>
                           <div className="flex flex-wrap gap-1">
                             {selectedNode.attributes.map((attr, i) => (
                               <Badge key={i} variant="secondary" className="text-xs">
@@ -525,15 +565,14 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
 
                       {selectedNode.upstream_dependencies.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2 flex items-center">
-                            <ArrowUp className="h-4 w-4 mr-1" />
-                            Upstream
+                          <h4 className="mb-2 flex items-center text-sm font-medium">
+                            <ArrowUp className="mr-1 h-4 w-4" /> Upstream
                           </h4>
-                          <div className="space-y-1">
+                          <div className="flex flex-wrap gap-1">
                             {selectedNode.upstream_dependencies.map((dep, i) => (
-                              <div key={i} className="text-sm text-muted-foreground">
+                              <Badge key={i} variant="outline" className="text-xs">
                                 {dep.name}
-                              </div>
+                              </Badge>
                             ))}
                           </div>
                         </div>
@@ -541,15 +580,14 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
 
                       {selectedNode.downstream_dependencies.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-medium mb-2 flex items-center">
-                            <ArrowDown className="h-4 w-4 mr-1" />
-                            Downstream
+                          <h4 className="mb-2 flex items-center text-sm font-medium">
+                            <ArrowDown className="mr-1 h-4 w-4" /> Downstream
                           </h4>
-                          <div className="space-y-1">
+                          <div className="flex flex-wrap gap-1">
                             {selectedNode.downstream_dependencies.map((dep, i) => (
-                              <div key={i} className="text-sm text-muted-foreground">
+                              <Badge key={i} variant="secondary" className="text-xs">
                                 {dep.name}
-                              </div>
+                              </Badge>
                             ))}
                           </div>
                         </div>
@@ -562,13 +600,12 @@ export function DataLineageView({ modelName, height = 600 }: DataLineageViewProp
                   )}
                 </CardContent>
               </Card>
-           
-          </div>        
-        )}
+            </div>
+          ) : (
+            renderTableView()
+          )}
         </CardContent>
       </Card>
-
-
     </div>
   );
 }

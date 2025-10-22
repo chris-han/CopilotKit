@@ -18,7 +18,8 @@ import {
   Link,
   TrendingUp,
   GitBranch,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from "lucide-react";
 
 interface SemanticEntity {
@@ -44,6 +45,17 @@ interface SemanticModelDefinition {
   entities: SemanticEntity[];
   metrics: SemanticMetric[];
   relationships: any[];
+}
+
+interface DbtModelMetadata {
+  id?: string;
+  slug?: string;
+  name?: string;
+  description?: string;
+  path?: string;
+  sql?: string;
+  aliases?: string[];
+  semantic_definition?: Record<string, unknown>;
 }
 
 export interface SemanticModel {
@@ -76,32 +88,194 @@ export function SemanticModelEditor({
   const [editingMetric, setEditingMetric] = useState<SemanticMetric | null>(null);
   const [isEntityDialogOpen, setIsEntityDialogOpen] = useState(false);
   const [isMetricDialogOpen, setIsMetricDialogOpen] = useState(false);
+  const [dbtMetadata, setDbtMetadata] = useState<DbtModelMetadata | null>(null);
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const [lineageData, setLineageData] = useState<{
+    entities: Array<{
+      name: string;
+      type: string;
+      description?: string;
+      attributes?: string[];
+      primary_key?: string;
+    }>;
+    data_flow: Array<{
+      name: string;
+      description?: string;
+      type?: string;
+      base_field?: string;
+      dimensions?: string[];
+      narrative_goal?: string;
+    }>;
+    relationships: any[];
+  } | null>(null);
 
   useEffect(() => {
-    if (!semanticModel) {
+    if (!semanticModel && !dbtMetadata) {
       setModelDef(null);
       return;
     }
-    const definitionRaw = semanticModel.definition ?? {};
+
+    const rawDefinition =
+      semanticModel?.definition ?? dbtMetadata?.semantic_definition ?? {};
+
     let definition: Record<string, unknown>;
-    if (typeof definitionRaw === "string") {
+    if (typeof rawDefinition === "string") {
       try {
-        definition = JSON.parse(definitionRaw);
+        definition = JSON.parse(rawDefinition);
       } catch {
         definition = {};
       }
-    } else if (typeof definitionRaw === "object" && definitionRaw !== null) {
-      definition = definitionRaw as Record<string, unknown>;
+    } else if (typeof rawDefinition === "object" && rawDefinition !== null) {
+      definition = rawDefinition as Record<string, unknown>;
     } else {
       definition = {};
     }
+
+    const definedEntities = Array.isArray(definition.entities)
+      ? (definition.entities as SemanticEntity[])
+      : [];
+    const definedMetrics = Array.isArray(definition.metrics)
+      ? (definition.metrics as SemanticMetric[])
+      : [];
+    const definedRelationships = Array.isArray(definition.relationships)
+      ? (definition.relationships as any[])
+      : [];
+
+    const fallbackEntities: SemanticEntity[] =
+      definedEntities.length > 0
+        ? definedEntities
+        : lineageData?.entities?.map((entity) => ({
+            name: entity.name,
+            description: entity.description ?? "",
+            primary_key: entity.primary_key ?? "id",
+            attributes: Array.isArray(entity.attributes) ? entity.attributes : [],
+            relationships: [],
+          })) ?? [];
+
+    const fallbackMetrics: SemanticMetric[] =
+      definedMetrics.length > 0
+        ? definedMetrics
+        : lineageData?.data_flow?.map((metric) => ({
+            name: metric.name,
+            description: metric.description ?? "",
+            type: metric.type ?? "aggregate",
+            base_field: metric.base_field ?? "",
+            sql: metric.base_field ?? "",
+            dimensions: Array.isArray(metric.dimensions) ? metric.dimensions : [],
+            filters: [],
+          })) ?? [];
+
     setModelDef({
-      name: semanticModel.name ?? semanticModel.dataset_name ?? "Semantic Model",
-      entities: Array.isArray(definition.entities) ? definition.entities : [],
-      metrics: Array.isArray(definition.metrics) ? definition.metrics : [],
-      relationships: Array.isArray(definition.relationships) ? definition.relationships : [],
+      name:
+        semanticModel?.name ??
+        semanticModel?.dataset_name ??
+        dbtMetadata?.name ??
+        dbtMetadata?.slug ??
+        "Semantic Model",
+      entities: fallbackEntities,
+      metrics: fallbackMetrics,
+      relationships:
+        definedRelationships.length > 0
+          ? definedRelationships
+          : lineageData?.relationships ?? [],
     });
-  }, [semanticModel]);
+  }, [semanticModel, dbtMetadata, lineageData]);
+
+  useEffect(() => {
+    const dataset = semanticModel?.dataset_name;
+    if (!dataset) {
+      setDbtMetadata(null);
+      setSqlCopied(false);
+      setLineageData(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchMetadata = async () => {
+      try {
+        const base =
+          process.env.NEXT_PUBLIC_API_URL?.split(",").map((url) => url.trim()).filter(Boolean)[0] ??
+          "http://localhost:8004";
+        const response = await fetch(`${base}/lida/dbt-models/${encodeURIComponent(dataset)}`);
+        if (!response.ok) {
+          if (!cancelled) {
+            setDbtMetadata(null);
+            setSqlCopied(false);
+          }
+          return;
+        }
+        const payload = await response.json();
+        if (!cancelled) {
+          setDbtMetadata(payload);
+          setSqlCopied(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDbtMetadata(null);
+          setSqlCopied(false);
+        }
+      }
+    };
+
+    fetchMetadata();
+    return () => {
+      cancelled = true;
+    };
+  }, [semanticModel?.dataset_name]);
+
+  useEffect(() => {
+    const dataset = semanticModel?.dataset_name;
+    if (!dataset) {
+      setLineageData(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchLineage = async () => {
+      try {
+        const base =
+          process.env.NEXT_PUBLIC_API_URL?.split(",").map((url) => url.trim()).filter(Boolean)[0] ??
+          "http://localhost:8004";
+        const response = await fetch(`${base}/lida/semantic-models/${encodeURIComponent(dataset)}/lineage`);
+        if (!response.ok) {
+          if (!cancelled) {
+            setLineageData(null);
+          }
+          return;
+        }
+        const payload = await response.json();
+        if (!cancelled) {
+          setLineageData({
+            entities: Array.isArray(payload.entities) ? payload.entities : [],
+            data_flow: Array.isArray(payload.data_flow) ? payload.data_flow : [],
+            relationships: Array.isArray(payload.relationships) ? payload.relationships : [],
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLineageData(null);
+        }
+      }
+    };
+
+    fetchLineage();
+    return () => {
+      cancelled = true;
+    };
+  }, [semanticModel?.dataset_name]);
+
+  const handleCopySql = useCallback(async () => {
+    if (!dbtMetadata?.sql || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(dbtMetadata.sql);
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy SQL", err);
+    }
+  }, [dbtMetadata]);
 
   const handleModelUpdate = useCallback(
     (updated: SemanticModelDefinition) => {
@@ -255,10 +429,60 @@ export function SemanticModelEditor({
             <span>Semantic Model: {semanticModel?.name ?? semanticModel?.dataset_name ?? "Model"}</span>
           </CardTitle>
           <CardDescription>
-            Define business entities, metrics, and relationships for your data model
+            {dbtMetadata?.description ?? "Define business entities, metrics, and relationships for your data model"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">  
+          {dbtMetadata && (
+            <div className="space-y-3 rounded-lg border bg-muted/40 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {semanticModel?.dataset_name && (
+                  <Badge variant="secondary" className="text-xs">
+                    Dataset: {semanticModel.dataset_name}
+                  </Badge>
+                )}
+                {dbtMetadata.slug && dbtMetadata.slug !== semanticModel?.dataset_name && (
+                  <Badge variant="outline" className="text-xs">
+                    Slug: {dbtMetadata.slug}
+                  </Badge>
+                )}
+                {Array.isArray(dbtMetadata.aliases) && dbtMetadata.aliases.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {dbtMetadata.aliases.map((alias) => (
+                      <Badge key={alias} variant="outline" className="text-xs">
+                        {alias}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {dbtMetadata.path && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <GitBranch className="h-3 w-3" />
+                  <code className="rounded bg-background/60 px-2 py-1">{dbtMetadata.path}</code>
+                </div>
+              )}
+              {dbtMetadata.sql && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Model SQL</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleCopySql}
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      {sqlCopied ? "Copied" : "Copy SQL"}
+                    </Button>
+                  </div>
+                  <pre className="max-h-60 overflow-auto rounded border bg-background/60 p-3 text-xs">
+                    {dbtMetadata.sql}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
 
             {/* Model Content */}
             <Tabs defaultValue="entities" className="w-full">

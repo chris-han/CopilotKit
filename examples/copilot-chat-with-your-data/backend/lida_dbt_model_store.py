@@ -332,12 +332,39 @@ class LidaDbtModelStore:
                     path TEXT,
                     sql TEXT,
                     aliases TEXT[] DEFAULT ARRAY[]::TEXT[],
+                    semantic_definition JSONB NOT NULL DEFAULT '{}'::JSONB,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
+            await conn.execute(
+                "ALTER TABLE dashboards.lida_dbt_models ADD COLUMN IF NOT EXISTS semantic_definition JSONB NOT NULL DEFAULT '{}'::JSONB"
+            )
+            await self._migrate_semantic_models(conn)
         self._table_initialized = True
+
+    async def _migrate_semantic_models(self, conn: asyncpg.Connection) -> None:
+        table_exists = await conn.fetchval(
+            "SELECT to_regclass('dashboards.lida_semantic_models') IS NOT NULL"
+        )
+        if not table_exists:
+            return
+
+        await conn.execute(
+            """
+            UPDATE dashboards.lida_dbt_models AS dbt
+            SET semantic_definition = COALESCE(sem.definition, '{}'::jsonb),
+                name = COALESCE(NULLIF(sem.name, ''), dbt.name),
+                description = COALESCE(NULLIF(sem.description, ''), dbt.description),
+                updated_at = GREATEST(dbt.updated_at, sem.updated_at)
+            FROM dashboards.lida_semantic_models AS sem
+            WHERE sem.dataset_name = dbt.slug
+               OR (dbt.aliases IS NOT NULL AND sem.dataset_name = ANY(dbt.aliases))
+            """
+        )
+
+        await conn.execute("DROP TABLE IF EXISTS dashboards.lida_semantic_models")
 
     async def _seed_defaults(self) -> None:
         if not self._pool:
@@ -356,14 +383,15 @@ class LidaDbtModelStore:
                     await conn.execute(
                         """
                         INSERT INTO dashboards.lida_dbt_models
-                            (id, slug, name, description, path, sql, aliases)
-                        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::text[])
+                            (id, slug, name, description, path, sql, aliases, semantic_definition)
+                        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::text[], $8::jsonb)
                         ON CONFLICT (slug) DO UPDATE
                           SET name = EXCLUDED.name,
                               description = EXCLUDED.description,
                               path = EXCLUDED.path,
                               sql = EXCLUDED.sql,
                               aliases = EXCLUDED.aliases,
+                              semantic_definition = EXCLUDED.semantic_definition,
                               updated_at = NOW()
                         """,
                         model_uuid,
@@ -373,6 +401,7 @@ class LidaDbtModelStore:
                         model.get("path", ""),
                         model.get("sql", ""),
                         normalized_aliases,
+                        json.dumps(model.get("semantic_definition") or {}),
                     )
 
     def _register_memory(self, model: Dict[str, Any]) -> None:
@@ -388,6 +417,7 @@ class LidaDbtModelStore:
             "id": model_id,
             "slug": slug,
             "aliases": list(sorted(normalized_aliases)),
+            "semantic_definition": model.get("semantic_definition") or model.get("definition") or {},
             "created_at": model.get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": model.get("updated_at") or datetime.now(timezone.utc).isoformat(),
         }
@@ -402,7 +432,7 @@ class LidaDbtModelStore:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT id, slug, name, description, path, sql, aliases, created_at, updated_at
+                    SELECT id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
                     FROM dashboards.lida_dbt_models
                     ORDER BY name ASC
                     """
@@ -427,7 +457,7 @@ class LidaDbtModelStore:
                 if uuid_identifier:
                     row = await conn.fetchrow(
                         """
-                        SELECT id, slug, name, description, path, sql, aliases, created_at, updated_at
+                        SELECT id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
                         FROM dashboards.lida_dbt_models
                         WHERE id = $1
                         """,
@@ -438,7 +468,7 @@ class LidaDbtModelStore:
 
                 row = await conn.fetchrow(
                     """
-                    SELECT id, slug, name, description, path, sql, aliases, created_at, updated_at
+                    SELECT id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
                     FROM dashboards.lida_dbt_models
                     WHERE slug = $1
                        OR slug = $2
@@ -463,6 +493,20 @@ class LidaDbtModelStore:
 
     @staticmethod
     def _row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
+        raw_definition = None
+        if "semantic_definition" in row:
+            raw_definition = row["semantic_definition"]
+        definition: Dict[str, Any]
+        if isinstance(raw_definition, str):
+            try:
+                definition = json.loads(raw_definition)
+            except json.JSONDecodeError:
+                definition = {}
+        elif raw_definition is None:
+            definition = {}
+        else:
+            definition = raw_definition
+
         return {
             "id": str(row["id"]) if row["id"] is not None else None,
             "slug": row["slug"],
@@ -471,6 +515,195 @@ class LidaDbtModelStore:
             "path": row["path"],
             "sql": row["sql"],
             "aliases": row["aliases"] or [],
+            "semantic_definition": definition,
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }
+
+    async def get_semantic_model(self, dataset_name: str) -> Optional[Dict[str, Any]]:
+        if not dataset_name:
+            return None
+
+        record = await self.get_by_id_or_alias(dataset_name)
+        if not record:
+            return None
+        return {
+            "id": record.get("id"),
+            "dataset_name": record.get("slug") or dataset_name,
+            "name": record.get("name"),
+            "description": record.get("description"),
+            "definition": record.get("semantic_definition") or {},
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at"),
+        }
+
+    async def upsert_semantic_model(self, semantic_model: Dict[str, Any]) -> Dict[str, Any]:
+        dataset_name = semantic_model.get("dataset_name")
+        if not dataset_name:
+            raise ValueError("'dataset_name' is required for semantic model upsert")
+
+        existing = await self.get_by_id_or_alias(dataset_name)
+        now = datetime.now(timezone.utc)
+        name = semantic_model.get("name") or dataset_name
+        description = semantic_model.get("description") or ""
+        definition = semantic_model.get("definition") or {}
+        normalized_slug = _normalize_key(dataset_name)
+        alias_candidates = {
+            normalized_slug,
+            dataset_name,
+        }
+        if existing:
+            alias_candidates.update(existing.get("aliases") or [])
+            alias_candidates.add(existing.get("slug"))
+
+        if self._pool:
+            await self._ensure_table()
+            async with self._pool.acquire() as conn:
+                if existing and existing.get("id"):
+                    alias_list = sorted(
+                        filter(None, {candidate for candidate in alias_candidates if isinstance(candidate, str)})
+                    )
+                    row = await conn.fetchrow(
+                        """
+                        UPDATE dashboards.lida_dbt_models
+                        SET name = $2,
+                            description = $3,
+                            semantic_definition = $4::jsonb,
+                            aliases = $5::text[],
+                            updated_at = NOW()
+                        WHERE id = $1::uuid
+                        RETURNING id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
+                        """,
+                        UUID(existing["id"]),
+                        name,
+                        description,
+                        json.dumps(definition),
+                        alias_list,
+                    )
+                else:
+                    new_id = uuid4()
+                    slug = normalized_slug or str(new_id)
+                    alias_candidates.update({str(new_id), slug})
+                    alias_list = sorted(
+                        filter(None, {candidate for candidate in alias_candidates if isinstance(candidate, str)})
+                    )
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO dashboards.lida_dbt_models
+                            (id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at)
+                        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10)
+                        RETURNING id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
+                        """,
+                        new_id,
+                        slug,
+                        name,
+                        description,
+                        semantic_model.get("path", ""),
+                        semantic_model.get("sql", ""),
+                        alias_list or [slug],
+                        json.dumps(definition),
+                        now,
+                        now,
+                    )
+                stored = self._row_to_dict(row)
+                return {
+                    "id": stored.get("id"),
+                    "dataset_name": stored.get("slug") or dataset_name,
+                    "name": stored.get("name"),
+                    "description": stored.get("description"),
+                    "definition": stored.get("semantic_definition") or {},
+                    "created_at": stored.get("created_at"),
+                    "updated_at": stored.get("updated_at"),
+                }
+
+        async with self._memory_lock:
+            model_id = existing.get("id") if existing else str(uuid4())
+            slug_value = existing.get("slug") if existing else (normalized_slug or dataset_name or model_id)
+            alias_candidates.update({model_id, slug_value})
+            alias_list = sorted(
+                filter(None, {candidate for candidate in alias_candidates if isinstance(candidate, str)})
+            )
+            payload = {
+                "id": model_id,
+                "dataset_name": dataset_name,
+                "name": name,
+                "description": description,
+                "definition": definition,
+                "semantic_definition": definition,
+                "aliases": alias_list,
+                "slug": slug_value,
+                "created_at": existing.get("created_at") if existing else now.isoformat(),
+                "updated_at": now.isoformat(),
+            }
+            self._register_memory(payload)
+            return {
+                "id": payload["id"],
+                "dataset_name": payload["slug"] or dataset_name,
+                "name": payload["name"],
+                "description": payload["description"],
+                "definition": payload["definition"] or {},
+                "created_at": payload["created_at"],
+                "updated_at": payload["updated_at"],
+            }
+
+    async def update_semantic_model(self, model_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not model_id:
+            return None
+
+        definition = updates.get("definition")
+        name = updates.get("name")
+        description = updates.get("description")
+
+        if self._pool:
+            await self._ensure_table()
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    UPDATE dashboards.lida_dbt_models
+                    SET name = COALESCE($2, name),
+                        description = COALESCE($3, description),
+                        semantic_definition = CASE WHEN $4::jsonb IS NULL THEN semantic_definition ELSE $4::jsonb END,
+                        updated_at = NOW()
+                    WHERE id = $1::uuid
+                    RETURNING id, slug, name, description, path, sql, aliases, semantic_definition, created_at, updated_at
+                    """,
+                    UUID(model_id),
+                    name,
+                    description,
+                    json.dumps(definition) if definition is not None else None,
+                )
+            if not row:
+                return None
+            stored = self._row_to_dict(row)
+            return {
+                "id": stored.get("id"),
+                "dataset_name": stored.get("slug"),
+                "name": stored.get("name"),
+                "description": stored.get("description"),
+                "definition": stored.get("semantic_definition") or {},
+                "created_at": stored.get("created_at"),
+                "updated_at": stored.get("updated_at"),
+            }
+
+        async with self._memory_lock:
+            existing = self._memory.get(model_id)
+            if not existing:
+                return None
+            merged = {
+                **existing,
+                "name": name or existing.get("name"),
+                "description": description if description is not None else existing.get("description"),
+                "semantic_definition": definition if definition is not None else existing.get("semantic_definition"),
+                "definition": definition if definition is not None else existing.get("definition"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._memory[model_id] = merged
+            return {
+                "id": merged.get("id"),
+                "dataset_name": merged.get("slug"),
+                "name": merged.get("name"),
+                "description": merged.get("description"),
+                "definition": merged.get("semantic_definition") or {},
+                "created_at": merged.get("created_at"),
+                "updated_at": merged.get("updated_at"),
+            }

@@ -2740,11 +2740,12 @@ To guarantee every generated visualization exposes verifiable SQL lineage, the r
 
 | Table | Columns |
 |-------|---------|
-| `dashboards.lida_dbt_models` | `id` (UUID PK), `name`, `description`, `path`, `sql`, `aliases` (`text[]`), `created_at`, `updated_at` |
-| `dashboards.lida_visualizations` | `id`, `title`, `description`, `chart_type`, `chart_config`, `code`, `insights`, `dataset_name`, `dbt_metadata` (`jsonb`), `created_at`, `updated_at` |
+| `dashboards.lida_dbt_models` | `id` (UUID PK), `slug` (dataset key), `name`, `description`, `path`, `sql`, `aliases` (`text[]`), `semantic_definition` (`jsonb`), `created_at`, `updated_at` |
+| `dashboards.lida_visualizations` | `id`, `title`, `description`, `chart_type`, `chart_config`, `code`, `insights`, `dataset_name`, `semantic_model_id` (`uuid` → `lida_dbt_models.id`), `dbt_metadata` (`jsonb`), `created_at`, `updated_at` |
 
 - `lida_dbt_models` is seeded on startup (for bundled demo datasets) and can be extended via migrations or tooling.
-- When the backend stores or retrieves a visualization it automatically hydrates `dbt_metadata` by matching `dataset_name`/aliases against `lida_dbt_models`.
+- Each row now owns the semantic definition for the dataset via `semantic_definition`, eliminating the separate `lida_semantic_models` table.
+- When the backend stores or retrieves a visualization it automatically hydrates both `dbt_metadata` and `semantic_model_id` by matching `dataset_name`/aliases against `lida_dbt_models`.
 - The frontend gallery renders the “dbt Model” tab directly from the persisted metadata—no static maps or duplicated definitions.
 
 ### API Surface
@@ -2767,8 +2768,7 @@ This shift guarantees dbt lineage remains in sync across environments, enables f
 erDiagram
     datasets ||--o{ lida_visualizations : provides
     lida_dbt_models ||--o{ lida_visualizations : informs
-    lida_semantic_models ||--o{ lida_visualizations : maps
-    lida_semantic_models ||--|| datasets : derived_from
+    lida_dbt_models ||--|| datasets : derived_from
     lida_visualizations ||--o{ dashboards_dashboard_items : renders
     dashboards ||--o{ dashboards_dashboard_items : contains
     dashboards_dashboard_items }o--|| dashboards : part_of
@@ -2783,20 +2783,12 @@ erDiagram
 
     lida_dbt_models {
       uuid id PK
+      text slug
       text name
       text path
       text sql
       text[] aliases
-    }
-
-    lida_semantic_models {
-      uuid id PK
-      text dataset_id FK
-      text name
-      text description
-      jsonb definition
-      timestamptz created_at
-      timestamptz updated_at
+      jsonb semantic_definition
     }
 
     lida_visualizations {

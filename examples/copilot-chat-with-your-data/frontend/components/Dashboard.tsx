@@ -14,8 +14,10 @@ import {
   type StrategicCommentaryTabEventDetail,
 } from "../lib/chart-highlighting";
 import { isDashboardDataPayload, type DashboardDataPayload } from "../data/dashboard-data";
+import { useDashboardContext } from "../contexts/DashboardContext";
 
 export function Dashboard() {
+  const { setIsDynamicDashboard } = useDashboardContext();
   const [strategicCommentary, setStrategicCommentary] = useState<string>("");
   const [commentaryLoading, setCommentaryLoading] = useState<boolean>(false);
   const [commentaryError, setCommentaryError] = useState<string | null>(null);
@@ -39,6 +41,11 @@ export function Dashboard() {
     () => `${baseRuntimeUrl}/dashboard-data`,
     [baseRuntimeUrl],
   );
+
+  useEffect(() => {
+    setIsDynamicDashboard(true);
+    return () => setIsDynamicDashboard(false);
+  }, [setIsDynamicDashboard]);
 
   useEffect(() => {
     let cancelled = false;

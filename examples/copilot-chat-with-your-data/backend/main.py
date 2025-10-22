@@ -49,7 +49,6 @@ from lida_enhanced_manager import LidaEnhancedManager, create_lida_enhanced_mana
 from focus_sample_data_integration import create_focus_sample_integration, FocusSampleDataIntegration
 from pydantic import BaseModel
 from lida_visualization_store import LidaVisualizationStore
-from lida_semantic_model_store import LidaSemanticModelStore
 from lida_dbt_model_store import LidaDbtModelStore
 from semantic_layer_integration import SemanticLayerIntegration
 from fastmcp import FastMCP
@@ -151,7 +150,6 @@ _focus_integration: Optional[FocusSampleDataIntegration] = None
 # Global FastMCP ECharts server instance
 _echarts_mcp: Optional[FastMCP] = None
 lida_visualization_store = LidaVisualizationStore()
-semantic_model_store = LidaSemanticModelStore()
 dbt_model_store = LidaDbtModelStore()
 semantic_layer_integration = SemanticLayerIntegration()
 
@@ -260,12 +258,6 @@ async def _startup_event():
             logger.info("Initialized LIDA dbt model store with Postgres backend")
         except Exception as exc:  # pragma: no cover - startup path
             logger.warning("Failed to initialize LIDA dbt model store: %s", exc)
-    if semantic_model_store.configured:
-        try:
-            await semantic_model_store.init()
-            logger.info("Initialized LIDA semantic model store with Postgres backend")
-        except Exception as exc:  # pragma: no cover - startup path
-            logger.warning("Failed to initialize LIDA semantic model store: %s", exc)
 
 
 def _extract_prompt_details(messages: Sequence[Any]) -> Tuple[str, List[str], List[Tuple[str, str]]]:
@@ -1116,7 +1108,7 @@ async def ag_ui_database_crud(request: DatabaseCrudRequest) -> JSONResponse:
             except (TypeError, ValueError):
                 payload["echar_code"] = None
         if not payload.get("semantic_model_id") and dataset_name:
-            existing_semantic_model = await semantic_model_store.get_by_dataset(dataset_name)
+            existing_semantic_model = await dbt_model_store.get_semantic_model(dataset_name)
             if existing_semantic_model:
                 payload["semantic_model_id"] = existing_semantic_model["id"]
 
@@ -1194,12 +1186,12 @@ async def get_dbt_model(model_id: str):
 
 @app.post("/lida/semantic-models")
 async def create_or_get_semantic_model(payload: SemanticModelGenerateRequest) -> Dict[str, Any]:
-    existing = await semantic_model_store.get_by_dataset(payload.dataset_name)
+    existing = await dbt_model_store.get_semantic_model(payload.dataset_name)
     if existing:
         return existing
 
     definition = payload.definition or _generate_semantic_definition(payload.dataset_name, payload.summary)
-    record = await semantic_model_store.upsert(
+    record = await dbt_model_store.upsert_semantic_model(
         {
             "dataset_name": payload.dataset_name,
             "name": payload.name or f"{payload.dataset_name} semantic model",
@@ -1212,7 +1204,7 @@ async def create_or_get_semantic_model(payload: SemanticModelGenerateRequest) ->
 
 @app.get("/lida/semantic-models/{dataset_name}")
 async def get_semantic_model(dataset_name: str) -> Dict[str, Any]:
-    record = await semantic_model_store.get_by_dataset(dataset_name)
+    record = await dbt_model_store.get_semantic_model(dataset_name)
     if not record:
         raise HTTPException(status_code=404, detail=f"Semantic model for '{dataset_name}' not found")
     return record
@@ -1220,7 +1212,7 @@ async def get_semantic_model(dataset_name: str) -> Dict[str, Any]:
 
 @app.put("/lida/semantic-models/{model_id}")
 async def update_semantic_model(model_id: str, payload: SemanticModelUpdateRequest) -> Dict[str, Any]:
-    record = await semantic_model_store.update(
+    record = await dbt_model_store.update_semantic_model(
         model_id,
         {
             "name": payload.name,
@@ -1235,7 +1227,7 @@ async def update_semantic_model(model_id: str, payload: SemanticModelUpdateReque
 
 @app.get("/lida/semantic-models/{dataset_name}/lineage")
 async def get_semantic_model_lineage(dataset_name: str) -> Dict[str, Any]:
-    record = await semantic_model_store.get_by_dataset(dataset_name)
+    record = await dbt_model_store.get_semantic_model(dataset_name)
     if not record:
         raise HTTPException(status_code=404, detail=f"Semantic model '{dataset_name}' not found")
 
@@ -1326,7 +1318,7 @@ async def create_lida_visualization(payload: LidaVisualizationPayload):
             echar_code = None
     semantic_model_id = payload.semantic_model_id
     if not semantic_model_id and dataset_name:
-        existing_semantic_model = await semantic_model_store.get_by_dataset(dataset_name)
+        existing_semantic_model = await dbt_model_store.get_semantic_model(dataset_name)
         if existing_semantic_model:
             semantic_model_id = existing_semantic_model["id"]
 

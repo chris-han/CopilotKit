@@ -1367,32 +1367,31 @@ sequenceDiagram
 
 ### Task 13b: Persist dbt Model Catalogue & Visualization Lineage (NEW)
 - [ ] **Create Postgres catalogue**
-  - Table `dashboards.lida_dbt_models` with columns `id UUID`, `name`, `description`, `path`, `sql`, `aliases[]`, timestamps.
+  - Table `dashboards.lida_dbt_models` with columns `id UUID`, `slug`, `name`, `description`, `path`, `sql`, `aliases[]`, `semantic_definition JSONB`, timestamps.
   - Seed with bundled demo datasets during backend startup (salesData, productData, enterprise_multi_cloud, etc.).
 - [ ] **Extend visualization storage**
-  - Add `dbt_metadata jsonb` column to `dashboards.lida_visualizations`.
-  - Update FastAPI create/update handlers to hydrate metadata automatically using dataset aliases.
+  - Add `dbt_metadata jsonb` and `semantic_model_id uuid` columns to `dashboards.lida_visualizations`.
+  - Update FastAPI create/update handlers to hydrate metadata and semantic FK automatically using dataset aliases.
 - [ ] **Expose APIs**
   - `GET /lida/dbt-models` → full catalogue for frontend cache.
   - `GET /lida/dbt-models/{id}` → individual lookup (alias aware).
-  - Ensure `/lida/visualizations` and `/ag-ui/database` responses always include `dbt_metadata`.
+  - Ensure `/lida/visualizations` and `/ag-ui/database` responses always include `dbt_metadata` and `semantic_model_id`.
 - [ ] **Frontend integration**
   - Fetch catalogue on LIDA interface mount and cache by alias.
-  - Persist lineage metadata with every visualization save.
+  - Persist lineage metadata + semantic model reference with every visualization save.
   - Render dbt tabs exclusively from persisted metadata (remove hardcoded maps).
 - [ ] **Testing**
-  - Migration test covering catalogue seeding and visualization upsert.
+  - Migration test covering catalogue seeding, semantic definition merge, and visualization upsert.
   - Gallery UI regression verifying dbt tab renders for each dataset.
 
-### Task 13c: Semantic Model Generation & Persistence (NEW)
-- [ ] **Create semantic model store**
-  - Table `dashboards.lida_semantic_models` with `id UUID`, `dataset_name`, `name`, `description`, `definition JSONB`, timestamps.
+- [ ] **Extend semantic model persistence**
+  - Reuse `dashboards.lida_dbt_models.semantic_definition` for semantic payloads (no separate table).
   - Auto-seed when a dataset is selected (fallback definition derived from dataset summary).
 - [ ] **Expose APIs**
   - `GET /lida/semantic-models/{dataset}` → fetch or lazily create semantic model for dataset.
-  - `POST /lida/semantic-models` → allow manual overrides (definition updates).
+  - `POST /lida/semantic-models` → allow manual overrides (definition updates) via the unified store.
 - [ ] **Update visualization schema**
-  - Add `semantic_model_id` FK to `dashboards.lida_visualizations`.
+  - Ensure `semantic_model_id` references `dashboards.lida_dbt_models.id`.
   - Ensure visualization CRUD paths populate the FK based on the active dataset.
 - [ ] **Frontend integration**
   - Fetch semantic model during dataset selection in the LIDA interface.

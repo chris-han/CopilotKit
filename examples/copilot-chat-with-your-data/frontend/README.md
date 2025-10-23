@@ -60,7 +60,20 @@ Transform your data visualization experience with an AI-powered dashboard assist
    TAVILY_API_KEY=your_tavily_api_key
    # Optional: override the AG-UI runtime URL consumed by the Next.js app
    # NEXT_PUBLIC_AG_UI_RUNTIME_URL=http://localhost:8004/ag-ui/run
+   # Optional: disable narrated data stories in the browser
+   # NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED=false
    ```
+
+### Optional: Disable data story narration
+
+By default the sidebar timeline will request audio narration for each generated story. The frontend reads
+`NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED` (defaults to `true`) to decide whether to fetch audio segments from
+`/ag-ui/action/generateDataStoryAudio`. Set it to `false` in your `.env` when the backend is not configured for
+text-to-speech or when you want to avoid streaming audio during local development:
+
+```
+NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED=false
+```
 
 4. Install backend dependencies and start the FastAPI runtime in a separate terminal:
 

@@ -57,6 +57,7 @@ The LIDA-ECharts Implementation Plan serves as the architectural blueprint for t
 - Frontend: Next.js App Router with sophisticated ECharts integration
 - Data: FOCUS v1.2 compliant FinOps analytics
 - Intelligence: LIDA-enhanced semantic understanding with persona-aware visualization selection
+- Environment: `NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED` defaults to `true` and controls whether the client requests narrated data story audio; set it to `false` for silent timelines or when the TTS backend is offline.
 
 ### Data Assistant Communication Protocol
 

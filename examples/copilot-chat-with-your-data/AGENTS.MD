@@ -132,6 +132,7 @@ sendAiDatabaseCrud({
 ## Configuration & Environment
 - Document required environment variables in `.env.example` and surface defaults where safe.
 - Frontend expects `process.env.NEXT_PUBLIC_AG_UI_RUNTIME_URL`; fallback is `http://localhost:8004/ag-ui/run`.
+- `NEXT_PUBLIC_DATA_STORY_AUDIO_ENABLED` controls whether the client requests narrated audio for data stories (defaults to `true`); set it to `false` when the backend text-to-speech pipeline is unavailable.
 - Backend logs startup state (runtime URL, Tavily availability) and should fail fast on missing Azure config.
 - Secrets stay server-side; never ship API keys to the browser. Enforce HTTPS for production deployments.
 

@@ -82,10 +82,10 @@ export function logActions(context: CopilotContextParams) {
     return;
   }
   for (const action of Object.values(context.actions)) {
-    console.group(action.name);
-    console.log("name", action.name);
-    console.log("description", action.description);
-    console.log("parameters", action.parameters);
+    console.group((action as any).name);
+    console.log("name", (action as any).name);
+    console.log("description", (action as any).description);
+    console.log("parameters", (action as any).parameters);
 
     console.groupEnd();
   }
@@ -99,7 +99,7 @@ export function logMessages(context: CopilotMessagesContextParams) {
     return;
   }
 
-  const tableData = context.messages.map((message) => {
+  const tableData = context.messages.map((message: any) => {
     if (message.isTextMessage()) {
       return {
         id: message.id,

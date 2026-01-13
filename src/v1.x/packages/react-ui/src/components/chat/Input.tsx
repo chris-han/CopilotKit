@@ -4,7 +4,6 @@ import { useChatContext } from "./ChatContext";
 import AutoResizingTextarea from "./Textarea";
 import { usePushToTalk } from "../../hooks/use-push-to-talk";
 import { useCopilotContext, useCopilotChatInternal } from "@copilotkit/react-core";
-import { PoweredByTag } from "./PoweredByTag";
 
 const MAX_NEWLINES = 6;
 
@@ -18,8 +17,6 @@ export const Input = ({
 }: InputProps) => {
   const context = useChatContext();
   const copilotContext = useCopilotContext();
-
-  const showPoweredBy = !copilotContext.copilotApiConfig?.publicApiKey;
 
   const pushToTalkConfigured =
     copilotContext.copilotApiConfig.textToSpeechUrl !== undefined &&
@@ -95,7 +92,7 @@ export const Input = ({
   const sendDisabled = !canSend && !canStop;
 
   return (
-    <div className={`copilotKitInputContainer ${showPoweredBy ? "poweredByContainer" : ""}`}>
+    <div className="copilotKitInputContainer">
       <div className="copilotKitInput" onClick={handleDivClick}>
         <AutoResizingTextarea
           ref={textareaRef}
@@ -150,7 +147,6 @@ export const Input = ({
           </button>
         </div>
       </div>
-      <PoweredByTag showPoweredBy={showPoweredBy} />
     </div>
   );
 };

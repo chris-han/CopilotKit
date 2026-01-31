@@ -15,7 +15,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm run build:ts && pnpm run build:css",
+    "build": "pnpm run build:css && pnpm run build:ts",
     "build:ts": "tsup",
     "build:css": "npx @tailwindcss/cli -i ./src/styles/tailwind.css -o ./src/styles/generated.css -m",
     "dev": "pnpm run build:css && concurrently \"pnpm run dev:css\" \"tsup --watch\"",

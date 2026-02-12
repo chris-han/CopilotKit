@@ -4,7 +4,6 @@ import { useChatContext } from "./ChatContext";
 import AutoResizingTextarea from "./Textarea";
 import { usePushToTalk } from "../../hooks/use-push-to-talk";
 import { useCopilotContext, useCopilotChatInternal } from "@copilotkit/react-core";
-import { PoweredByTag } from "./PoweredByTag";
 
 const MAX_NEWLINES = 6;
 
@@ -150,7 +149,6 @@ export const Input = ({
           </button>
         </div>
       </div>
-      <PoweredByTag showPoweredBy={showPoweredBy} />
     </div>
   );
 };

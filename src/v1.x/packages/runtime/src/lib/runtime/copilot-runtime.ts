@@ -32,7 +32,7 @@ import {
   type CopilotRuntimeOptions,
   type CopilotRuntimeOptions as CopilotRuntimeOptionsVNext,
   InMemoryAgentRunner,
-} from "@copilotkit/runtime";
+} from "@copilotkitnext/runtime";
 import { TelemetryAgentRunner } from "./telemetry-agent-runner";
 import telemetry from "../telemetry-client";
 

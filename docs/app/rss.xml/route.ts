@@ -23,7 +23,7 @@ export async function GET() {
     .map((page) => {
       const title = escapeXml(page.data.title || 'Untitled');
       const description = escapeXml(page.data.description || '');
-      const link = escapeXml(`${baseUrl}${page.url}`);
+      const link = `${baseUrl}${page.url}`;
       const pageData = page.data as { lastModified?: string };
       const pubDate = pageData.lastModified 
         ? new Date(pageData.lastModified).toUTCString()
@@ -39,15 +39,17 @@ export async function GET() {
     })
     .join('\n');
 
+  const escapedBaseUrl = escapeXml(baseUrl);
+
   const rssFeed = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>CopilotKit Documentation</title>
-    <link>${baseUrl}</link>
+    <link>${escapedBaseUrl}</link>
     <description>Build agent-native applications with generative UI, shared state, and human-in-the-loop workflows.</description>
     <language>en</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
-    <atom:link href="${baseUrl}/rss.xml" rel="self" type="application/rss+xml"/>
+    <atom:link href="${escapedBaseUrl}/rss.xml" rel="self" type="application/rss+xml"/>
 ${rssItems}
   </channel>
 </rss>`;

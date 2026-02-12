@@ -1,6 +1,6 @@
 import { source } from '../source';
 
-export const revalidate = false;
+export const revalidate = 3600; // Revalidate every hour
 
 const baseUrl =
   process.env.NODE_ENV === 'development' || !process.env.VERCEL_URL
@@ -25,9 +25,15 @@ export async function GET() {
       const description = escapeXml(page.data.description || '');
       const link = `${baseUrl}${page.url}`;
       const pageData = page.data as { lastModified?: string };
-      const pubDate = pageData.lastModified 
-        ? new Date(pageData.lastModified).toUTCString()
-        : new Date().toUTCString();
+      
+      // Validate lastModified date
+      let pubDate: string;
+      if (pageData.lastModified) {
+        const date = new Date(pageData.lastModified);
+        pubDate = !isNaN(date.getTime()) ? date.toUTCString() : new Date().toUTCString();
+      } else {
+        pubDate = new Date().toUTCString();
+      }
       
       return `    <item>
       <title>${title}</title>

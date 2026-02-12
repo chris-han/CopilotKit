@@ -27,6 +27,12 @@ export default async function Layout({ children }: { children: ReactNode }) {
       suppressHydrationWarning
     >
       <head>
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="CopilotKit Documentation RSS Feed"
+          href="/rss.xml"
+        />
         <Script
           id="hubspot-script"
           type="text/javascript"

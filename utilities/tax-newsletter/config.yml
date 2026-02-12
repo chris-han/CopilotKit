@@ -1,0 +1,106 @@
+# Configuration for US-China Tax Regulations Newsletter
+
+# Data sources and their update frequencies
+sources:
+  # US IRS Sources
+  irs:
+    - name: "IRS Newsroom"
+      url: "https://www.irs.gov/newsroom"
+      type: "rss"
+      rss_url: "https://www.irs.gov/newsroom/rss"
+      keywords: ["international", "nonresident", "alien", "treaty", "FATCA", "foreign"]
+      priority: 5
+    
+    - name: "Taxation of Nonresident Aliens"
+      url: "https://www.irs.gov/individuals/international-taxpayers/taxation-of-nonresident-aliens"
+      type: "web"
+      priority: 5
+    
+    - name: "Publication 519"
+      url: "https://www.irs.gov/publications/p519"
+      type: "publication"
+      priority: 5
+    
+    - name: "China Tax Treaty Documents"
+      url: "https://www.irs.gov/businesses/international-businesses/china-tax-treaty-documents"
+      type: "web"
+      priority: 4
+  
+  # US Treasury
+  treasury:
+    - name: "Tax Treaty Documents"
+      url: "https://home.treasury.gov/policy-issues/tax-policy/treaties"
+      type: "web"
+      priority: 4
+  
+  # China Sources
+  china:
+    - name: "National Tax Administration"
+      url: "https://www.chinatax.gov.cn/"
+      type: "web"
+      keywords: ["境外所得", "CRS", "税收协定", "非居民"]
+      priority: 5
+    
+    - name: "AEOI (Automatic Exchange of Information)"
+      url: "http://www.chinatax.gov.cn/aeoi_index.html"
+      type: "web"
+      priority: 4
+  
+  # Professional Services (These would require API access or web scraping)
+  professional:
+    - name: "China Briefing"
+      url: "https://www.china-briefing.com/"
+      type: "rss"
+      rss_url: "https://www.china-briefing.com/news/feed/"
+      keywords: ["tax", "US", "China", "cross-border"]
+      priority: 4
+    
+    - name: "PwC Tax News"
+      url: "https://www.pwccn.com/en/tax-news.html"
+      type: "web"
+      priority: 3
+    
+    - name: "Deloitte China Tax"
+      url: "https://www2.deloitte.com/cn/en/pages/tax/topics/tax-news.html"
+      type: "web"
+      priority: 3
+
+# Topics to focus on
+focus_topics:
+  - "US-source income"
+  - "Nonresident aliens"
+  - "Form 1040-NR"
+  - "W-8BEN"
+  - "W-8BEN-E"
+  - "FATCA"
+  - "Tax treaty"
+  - "China-US tax treaty"
+  - "CRS (Common Reporting Standard)"
+  - "1099-K"
+  - "1099-DA"
+  - "Cross-border taxation"
+  - "境外所得"
+  - "金税四期"
+  - "Double taxation"
+  - "Foreign account"
+  - "非居民纳税人"
+
+# Output configuration
+output:
+  directory: "newsletters"
+  format: "markdown"
+  filename_pattern: "newsletter-{date}.md"
+  date_format: "%Y-%m-%d"
+  
+# Newsletter structure
+newsletter:
+  title: "US-China Tax Regulations Update Newsletter"
+  sections:
+    - name: "US IRS Updates"
+      sources: ["irs", "treasury"]
+    - name: "China Tax Administration Updates"
+      sources: ["china"]
+    - name: "Professional Analysis"
+      sources: ["professional"]
+    - name: "Key Highlights"
+      description: "Most important updates this week"

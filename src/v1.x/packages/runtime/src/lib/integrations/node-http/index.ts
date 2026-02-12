@@ -1,6 +1,6 @@
 import { CreateCopilotRuntimeServerOptions, getCommonConfig } from "../shared";
 import telemetry, { getRuntimeInstanceTelemetryInfo } from "../../telemetry-client";
-import { createCopilotEndpointSingleRoute } from "@copilotkitnext/runtime";
+import { createCopilotEndpointSingleRoute } from '@copilotkit/runtime';
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   getFullUrl,

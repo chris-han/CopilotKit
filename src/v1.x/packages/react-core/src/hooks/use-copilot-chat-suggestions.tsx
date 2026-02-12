@@ -63,9 +63,9 @@ import {
   useCopilotChatConfiguration,
   useCopilotKit,
   useSuggestions,
-} from "@copilotkitnext/react";
+} from '@copilotkit/react-core';
 import { useEffect } from "react";
-import { StaticSuggestionsConfig, Suggestion } from "@copilotkitnext/core";
+import { StaticSuggestionsConfig, Suggestion } from '@copilotkit/runtime';
 
 type StaticSuggestionInput = Omit<Suggestion, "isLoading"> & Partial<Pick<Suggestion, "isLoading">>;
 

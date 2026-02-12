@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { AgentSubscriber } from "@ag-ui/client";
-import { useAgent } from "@copilotkitnext/react";
+import { useAgent } from '@copilotkit/react-core';
 
 export function useAgentNodeName(agentName?: string) {
   const { agent } = useAgent({ agentId: agentName });

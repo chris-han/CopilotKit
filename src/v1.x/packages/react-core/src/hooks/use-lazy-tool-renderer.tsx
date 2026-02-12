@@ -1,4 +1,4 @@
-import { useRenderToolCall } from "@copilotkitnext/react";
+import { useRenderToolCall } from '@copilotkit/react-core';
 import { AIMessage, Message, ToolResult } from "@copilotkit/shared";
 import React, { useCallback } from "react";
 

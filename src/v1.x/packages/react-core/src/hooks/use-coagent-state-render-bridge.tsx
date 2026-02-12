@@ -1,4 +1,4 @@
-import { ReactCustomMessageRendererPosition, useAgent } from "@copilotkitnext/react";
+import { ReactCustomMessageRendererPosition, useAgent } from '@copilotkit/react-core';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AgentSubscriber } from "@ag-ui/client";
 import { useCoAgentStateRenders } from "../context";

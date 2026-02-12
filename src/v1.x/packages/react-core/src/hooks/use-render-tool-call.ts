@@ -6,7 +6,7 @@ import {
 } from "../types";
 import { Parameter, getZodParameters } from "@copilotkit/shared";
 import React, { useEffect, useRef } from "react";
-import { defineToolCallRenderer, useCopilotKit } from "@copilotkitnext/react";
+import { defineToolCallRenderer, useCopilotKit } from '@copilotkit/react-core';
 import { parseJson } from "@copilotkit/shared";
 
 type ToolCallRendererDefinition = Parameters<typeof defineToolCallRenderer>[0];

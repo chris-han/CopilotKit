@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
-import { ToolCallStatus } from "@copilotkitnext/core";
+import { ToolCallStatus } from '@copilotkit/runtime';
 import { useFrontendTool } from "../use-frontend-tool";
 
 jest.mock("@copilotkitnext/react", () => {

@@ -2,11 +2,11 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { ActionRenderProps, FrontendAction } from "../types/frontend-action";
 import { Parameter, getZodParameters, MappedParameterTypes } from "@copilotkit/shared";
 import { parseJson } from "@copilotkit/shared";
-import { ToolCallStatus } from "@copilotkitnext/core";
+import { ToolCallStatus } from '@copilotkit/runtime';
 import {
   type ReactFrontendTool,
   useFrontendTool as useFrontendToolVNext,
-} from "@copilotkitnext/react";
+} from '@copilotkit/react-core';
 
 type FrontendToolOptions<T extends Parameter[] | []> = ReactFrontendTool<MappedParameterTypes<T>>;
 type FrontendToolRenderArgs<T extends Parameter[] | []> =

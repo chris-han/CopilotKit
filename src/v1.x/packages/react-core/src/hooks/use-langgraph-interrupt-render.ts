@@ -4,7 +4,7 @@ import type { AbstractAgent, AgentSubscriber } from "@ag-ui/client";
 import { MetaEventName } from "@copilotkit/runtime-client-gql";
 import { dataToUUID, parseJson } from "@copilotkit/shared";
 import { useAgentNodeName } from "./use-agent-nodename";
-import { useCopilotChatConfiguration } from "@copilotkitnext/react";
+import { useCopilotChatConfiguration } from '@copilotkit/react-core';
 
 type InterruptProps = {
   event: any;

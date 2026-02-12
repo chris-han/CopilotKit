@@ -1,4 +1,4 @@
-import { createCopilotEndpointSingleRoute } from "@copilotkitnext/runtime";
+import { createCopilotEndpointSingleRoute } from '@copilotkit/runtime';
 import { CreateCopilotRuntimeServerOptions, getCommonConfig } from "../shared";
 import telemetry, { getRuntimeInstanceTelemetryInfo } from "../../telemetry-client";
 import { handle } from "hono/vercel";

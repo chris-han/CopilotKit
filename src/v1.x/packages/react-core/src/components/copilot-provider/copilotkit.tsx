@@ -20,7 +20,7 @@ import {
   CopilotKitInspector,
   CopilotKitProvider as CopilotKitNextProvider,
   useCopilotKit,
-} from "@copilotkitnext/react";
+} from '@copilotkit/react-core';
 import {
   CopilotContext,
   CopilotApiConfig,

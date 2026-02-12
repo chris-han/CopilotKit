@@ -1,3 +1,3 @@
 import "reflect-metadata";
-export * from "@copilotkitnext/runtime";
-export * from "@copilotkitnext/agent";
+export * from '@copilotkit/runtime';
+// export * from '@copilotkit/runtime'; // v2 agent package not available in v1.x build

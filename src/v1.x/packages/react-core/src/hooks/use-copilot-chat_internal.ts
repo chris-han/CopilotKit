@@ -11,8 +11,8 @@ import {
   useCopilotKit,
   useRenderCustomMessages,
   useSuggestions,
-} from "@copilotkitnext/react";
-import { Suggestion } from "@copilotkitnext/core";
+} from '@copilotkit/react-core';
+import { Suggestion } from '@copilotkit/runtime';
 import { useLazyToolRenderer } from "./use-lazy-tool-renderer";
 import { AbstractAgent, AGUIConnectNotImplementedError } from "@ag-ui/client";
 import {

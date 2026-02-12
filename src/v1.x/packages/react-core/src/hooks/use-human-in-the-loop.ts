@@ -7,8 +7,8 @@ import {
   getZodParameters,
   parseJson,
 } from "@copilotkit/shared";
-import { useHumanInTheLoop as useHumanInTheLoopVNext } from "@copilotkitnext/react";
-import { ToolCallStatus } from "@copilotkitnext/core";
+import { useHumanInTheLoop as useHumanInTheLoopVNext } from '@copilotkit/react-core';
+import { ToolCallStatus } from '@copilotkit/runtime';
 import React, { ComponentType, FunctionComponent, useEffect, useRef } from "react";
 
 type HumanInTheLoopOptions = Parameters<typeof useHumanInTheLoopVNext>[0];

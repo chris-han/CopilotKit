@@ -1,4 +1,4 @@
 import "./index.css";
 
-export * from "@copilotkitnext/core";
-export * from "@copilotkitnext/react";
+export * from '@copilotkit/runtime';
+export * from '@copilotkit/react-core';

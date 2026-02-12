@@ -61,7 +61,7 @@
  * }
  * ```
  */
-import { useCopilotKit } from "@copilotkitnext/react";
+import { useCopilotKit } from '@copilotkit/react-core';
 import { useEffect, useRef } from "react";
 
 /**

@@ -32,7 +32,7 @@ import {
   type CopilotRuntimeOptions,
   type CopilotRuntimeOptions as CopilotRuntimeOptionsVNext,
   InMemoryAgentRunner,
-} from "@copilotkitnext/runtime";
+} from "@copilotkit/runtime";
 import { TelemetryAgentRunner } from "./telemetry-agent-runner";
 import telemetry from "../telemetry-client";
 
@@ -56,7 +56,8 @@ import {
   type MCPTool,
   extractParametersFromSchema,
 } from "./mcp-tools-utils";
-import { BuiltInAgent, type BuiltInAgentConfiguration } from "@copilotkitnext/agent";
+// Note: BuiltInAgent is part of v2 architecture, commented out for v1.x builds
+// import { BuiltInAgent, type BuiltInAgentConfiguration } from '@copilotkit/runtime';
 // Define the function type alias here or import if defined elsewhere
 type CreateMCPClientFunction = (config: MCPEndpointConfig) => Promise<MCPClient>;
 

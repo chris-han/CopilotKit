@@ -23,9 +23,10 @@ export async function GET() {
     .map((page) => {
       const title = escapeXml(page.data.title || 'Untitled');
       const description = escapeXml(page.data.description || '');
-      const link = `${baseUrl}${page.url}`;
-      const pubDate = (page.data as any).lastModified 
-        ? new Date((page.data as any).lastModified).toUTCString()
+      const link = escapeXml(`${baseUrl}${page.url}`);
+      const pageData = page.data as { lastModified?: string };
+      const pubDate = pageData.lastModified 
+        ? new Date(pageData.lastModified).toUTCString()
         : new Date().toUTCString();
       
       return `    <item>

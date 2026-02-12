@@ -15,6 +15,7 @@ interface NewsItem {
   date: string;
   summary: string;
   source: string;
+  category: string;
   priority: number;
 }
 
@@ -22,6 +23,7 @@ interface Source {
   name: string;
   url: string;
   type: 'rss' | 'web' | 'publication';
+  category: string;
   rss_url?: string;
   keywords?: string[];
   priority: number;
@@ -41,6 +43,7 @@ const config = {
         name: 'IRS Newsroom',
         url: 'https://www.irs.gov/newsroom',
         type: 'rss' as const,
+        category: 'US IRS Updates',
         rss_url: 'https://www.irs.gov/newsroom/rss',
         keywords: ['international', 'nonresident', 'alien', 'treaty', 'FATCA', 'foreign'],
         priority: 5
@@ -49,18 +52,21 @@ const config = {
         name: 'Taxation of Nonresident Aliens',
         url: 'https://www.irs.gov/individuals/international-taxpayers/taxation-of-nonresident-aliens',
         type: 'web' as const,
+        category: 'US IRS Updates',
         priority: 5
       },
       {
         name: 'Publication 519',
         url: 'https://www.irs.gov/publications/p519',
         type: 'publication' as const,
+        category: 'US IRS Updates',
         priority: 5
       },
       {
         name: 'China Tax Treaty Documents',
         url: 'https://www.irs.gov/businesses/international-businesses/china-tax-treaty-documents',
         type: 'web' as const,
+        category: 'US IRS Updates',
         priority: 4
       }
     ],
@@ -69,6 +75,7 @@ const config = {
         name: 'Tax Treaty Documents',
         url: 'https://home.treasury.gov/policy-issues/tax-policy/treaties',
         type: 'web' as const,
+        category: 'US Treasury Updates',
         priority: 4
       }
     ],
@@ -77,6 +84,7 @@ const config = {
         name: 'National Tax Administration',
         url: 'https://www.chinatax.gov.cn/',
         type: 'web' as const,
+        category: 'China Tax Administration Updates',
         keywords: ['境外所得', 'CRS', '税收协定', '非居民'],
         priority: 5
       },
@@ -84,6 +92,7 @@ const config = {
         name: 'AEOI (Automatic Exchange of Information)',
         url: 'http://www.chinatax.gov.cn/aeoi_index.html',
         type: 'web' as const,
+        category: 'China Tax Administration Updates',
         priority: 4
       }
     ],
@@ -92,6 +101,7 @@ const config = {
         name: 'China Briefing',
         url: 'https://www.china-briefing.com/',
         type: 'rss' as const,
+        category: 'Professional Analysis',
         rss_url: 'https://www.china-briefing.com/news/feed/',
         keywords: ['tax', 'US', 'China', 'cross-border'],
         priority: 4
@@ -136,6 +146,7 @@ async function fetchRSS(source: Source): Promise<NewsItem[]> {
           date: item.pubDate || item.isoDate || new Date().toISOString(),
           summary: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
           source: source.name,
+          category: source.category,
           priority: source.priority
         });
       }
@@ -178,6 +189,7 @@ async function fetchWeb(source: Source): Promise<NewsItem[]> {
           date: new Date().toISOString(),
           summary: summary.substring(0, 300) + (summary.length > 300 ? '...' : ''),
           source: source.name,
+          category: source.category,
           priority: source.priority
         });
       }
@@ -191,6 +203,7 @@ async function fetchWeb(source: Source): Promise<NewsItem[]> {
         date: new Date().toISOString(),
         summary: 'Please visit the source website for the latest updates.',
         source: source.name,
+        category: source.category,
         priority: source.priority
       });
     }
@@ -206,6 +219,7 @@ async function fetchWeb(source: Source): Promise<NewsItem[]> {
       date: new Date().toISOString(),
       summary: 'Unable to automatically fetch updates. Please visit the source website.',
       source: source.name,
+      category: source.category,
       priority: source.priority
     }];
   }
@@ -262,13 +276,11 @@ function generateMarkdown(items: NewsItem[]): string {
   };
   
   for (const item of sortedItems) {
-    if (item.source.includes('IRS') || item.source.includes('Publication')) {
-      byCategory['US IRS Updates'].push(item);
-    } else if (item.source.includes('Treasury')) {
-      byCategory['US Treasury Updates'].push(item);
-    } else if (item.source.includes('China') || item.source.includes('National Tax') || item.source.includes('AEOI')) {
-      byCategory['China Tax Administration Updates'].push(item);
+    // Use explicit category field instead of string matching
+    if (byCategory[item.category]) {
+      byCategory[item.category].push(item);
     } else {
+      // Fallback to Professional Analysis if category not recognized
       byCategory['Professional Analysis'].push(item);
     }
   }

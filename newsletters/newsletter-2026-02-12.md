@@ -27,6 +27,38 @@ Unable to automatically fetch updates. Please visit the source website.
 
 ---
 
+### Taxation of Nonresident Aliens - Check for Updates
+
+**Source:** Taxation of Nonresident Aliens | **Date:** Feb 12, 2026
+
+Unable to automatically fetch updates. Please visit the source website.
+
+🔗 [Read more](https://www.irs.gov/individuals/international-taxpayers/taxation-of-nonresident-aliens)
+
+---
+
+### China Tax Treaty Documents - Check for Updates
+
+**Source:** China Tax Treaty Documents | **Date:** Feb 12, 2026
+
+Unable to automatically fetch updates. Please visit the source website.
+
+🔗 [Read more](https://www.irs.gov/businesses/international-businesses/china-tax-treaty-documents)
+
+---
+
+## US Treasury Updates
+
+### Tax Treaty Documents - Check for Updates
+
+**Source:** Tax Treaty Documents | **Date:** Feb 12, 2026
+
+Unable to automatically fetch updates. Please visit the source website.
+
+🔗 [Read more](https://home.treasury.gov/policy-issues/tax-policy/treaties)
+
+---
+
 ## China Tax Administration Updates
 
 ### National Tax Administration - Check for Updates
@@ -46,38 +78,6 @@ Unable to automatically fetch updates. Please visit the source website.
 Unable to automatically fetch updates. Please visit the source website.
 
 🔗 [Read more](http://www.chinatax.gov.cn/aeoi_index.html)
-
----
-
-### China Tax Treaty Documents - Check for Updates
-
-**Source:** China Tax Treaty Documents | **Date:** Feb 12, 2026
-
-Unable to automatically fetch updates. Please visit the source website.
-
-🔗 [Read more](https://www.irs.gov/businesses/international-businesses/china-tax-treaty-documents)
-
----
-
-## Professional Analysis
-
-### Taxation of Nonresident Aliens - Check for Updates
-
-**Source:** Taxation of Nonresident Aliens | **Date:** Feb 12, 2026
-
-Unable to automatically fetch updates. Please visit the source website.
-
-🔗 [Read more](https://www.irs.gov/individuals/international-taxpayers/taxation-of-nonresident-aliens)
-
----
-
-### Tax Treaty Documents - Check for Updates
-
-**Source:** Tax Treaty Documents | **Date:** Feb 12, 2026
-
-Unable to automatically fetch updates. Please visit the source website.
-
-🔗 [Read more](https://home.treasury.gov/policy-issues/tax-policy/treaties)
 
 ---
 

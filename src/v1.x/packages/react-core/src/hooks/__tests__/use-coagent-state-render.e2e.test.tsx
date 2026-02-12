@@ -33,7 +33,7 @@ const mockAgent = {
 
 let lastSubscriber: TestAgentSubscriber | null = null;
 
-jest.mock("@copilotkitnext/react", () => ({
+jest.mock("@copilotkit/react-core", () => ({
   useAgent: jest.fn(() => ({ agent: mockAgent })),
   useCopilotKit: jest.fn(() => ({
     copilotkit: {
@@ -433,7 +433,7 @@ describe("useCoAgentStateRender", () => {
   });
 
   it("falls back to legacy renderer when renderCustomMessages throws", async () => {
-    const { useRenderCustomMessages } = jest.requireMock("@copilotkitnext/react");
+    const { useRenderCustomMessages } = jest.requireMock("@copilotkit/react-core");
     useRenderCustomMessages.mockImplementationOnce(() => () => {
       throw new Error("boom");
     });
@@ -464,7 +464,7 @@ describe("useCoAgentStateRender", () => {
   });
 
   it("prefers legacy renderer over renderCustomMessages when both exist", async () => {
-    const { useRenderCustomMessages } = jest.requireMock("@copilotkitnext/react");
+    const { useRenderCustomMessages } = jest.requireMock("@copilotkit/react-core");
     const renderCustomSpy = jest.fn(() => null);
     useRenderCustomMessages.mockImplementationOnce(() => renderCustomSpy);
 

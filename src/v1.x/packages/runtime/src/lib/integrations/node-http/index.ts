@@ -38,7 +38,7 @@ export function copilotRuntimeNodeHttpEndpoint(options: CreateCopilotRuntimeServ
     options.runtime.handleServiceAdapter(serviceAdapter);
   }
 
-  // Note: cors option requires @copilotkitnext/runtime with credentials support
+  // Note: cors option requires @copilotkit/runtime with credentials support
   const honoApp = createCopilotEndpointSingleRoute({
     runtime: options.runtime.instance,
     basePath: options.baseUrl ?? options.endpoint,

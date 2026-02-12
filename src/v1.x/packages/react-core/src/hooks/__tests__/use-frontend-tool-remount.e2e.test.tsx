@@ -3,7 +3,7 @@ import { render, waitFor } from "@testing-library/react";
 import { ToolCallStatus } from '@copilotkit/runtime';
 import { useFrontendTool } from "../use-frontend-tool";
 
-jest.mock("@copilotkitnext/react", () => {
+jest.mock("@copilotkit/react-core", () => {
   let currentRender: any = null;
   const listeners = new Set<() => void>();
 
@@ -22,7 +22,7 @@ jest.mock("@copilotkitnext/react", () => {
   };
 });
 
-const toolRenderModule = jest.requireMock("@copilotkitnext/react") as {
+const toolRenderModule = jest.requireMock("@copilotkit/react-core") as {
   __getCurrentRender: () => any;
   __subscribeRender: (listener: () => void) => () => void;
 };

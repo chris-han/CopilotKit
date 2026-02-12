@@ -2,7 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { useCoAgent } from "../use-coagent";
 import type { AgentSubscriber } from "@ag-ui/client";
 
-// Mock functions for @copilotkitnext/react
+// Mock functions for @copilotkit/react-core
 const mockSetState = jest.fn();
 const mockRunAgent = jest.fn();
 const mockAbortRun = jest.fn();
@@ -28,7 +28,7 @@ const mockAgent = {
   }),
 };
 
-jest.mock("@copilotkitnext/react", () => ({
+jest.mock("@copilotkit/react-core", () => ({
   useAgent: jest.fn(() => ({ agent: mockAgent })),
   useCopilotKit: jest.fn(() => ({
     copilotkit: {

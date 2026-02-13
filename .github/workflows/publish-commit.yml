@@ -26,6 +26,3 @@ jobs:
       - name: Build
         run: pnpm run build:packages
 
-      - name: Publish pkg-pr-new preview
-        continue-on-error: true
-        run: npx pkg-pr-new publish "./packages/v1/*" "./packages/v2/*"

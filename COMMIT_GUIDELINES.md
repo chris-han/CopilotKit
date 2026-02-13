@@ -19,7 +19,7 @@ Commit messages must follow this format:
 - `feat`: A new feature
 - `fix`: A bug fix
 - `docs`: Documentation only changes
-- `style`: Code style changes (formatting, missing semi colons, etc)
+- `style`: Code style changes (formatting, missing semicolons, etc)
 - `refactor`: Code change that neither fixes a bug nor adds a feature
 - `perf`: Performance improvements
 - `test`: Adding or updating tests

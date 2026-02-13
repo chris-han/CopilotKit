@@ -5,7 +5,7 @@ This branch has been successfully rebased to the latest commit from the main bra
 
 ## Base Commit Details
 - **SHA**: `7b838547a90663514c9d0c1628baded6c61be87a`
-- **Message**: feat: re-architeture the monorepo setup (#3187)  
+- **Message**: feat: re-architecture the monorepo setup (#3187)  
 - **Author**: Alem Tuzlak <t.zlak@hotmail.com>
 - **Date**: Fri Feb 13 11:01:44 2026 +0100
 

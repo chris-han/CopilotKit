@@ -27,5 +27,4 @@ jobs:
         run: pnpm run build:packages
 
       - name: Publish pkg-pr-new preview
-        continue-on-error: true
-        run: npx pkg-pr-new publish "./packages/v1/*" "./packages/v2/*"
+        run: npx pkg-pr-new publish "./packages/v1/*" "./packages/v2/*" || echo "pkg-pr-new publish skipped (app may not be installed)"

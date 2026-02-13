@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# Get the commit message file
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Only add template for regular commits (not merge, squash, or amend)
+if [ -z "$COMMIT_SOURCE" ] || [ "$COMMIT_SOURCE" = "message" ]; then
+  # Check if the commit message is empty or just contains comments
+  if ! grep -qE "^[^#]" "$COMMIT_MSG_FILE" 2>/dev/null; then
+    # Prepend template to commit message
+    cat > "$COMMIT_MSG_FILE" << 'EOF'
+# Please enter a commit message following the Conventional Commits format:
+# <type>(<scope>): <subject>
+#
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+# Example: feat: add user authentication
+#
+# More info: https://www.conventionalcommits.org/
+EOF
+  fi
+fi

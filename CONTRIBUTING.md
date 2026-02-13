@@ -114,11 +114,21 @@ git add .
 
 ## Step 7: Commit the changes (Git)
 
-Commit the changes with a short message. (See below for more details on how we structure our commit messages)
+Commit the changes with a short message following the [Conventional Commits format](./COMMIT_GUIDELINES.md).
+
+**Quick Option**: Use our interactive commit helper:
+
+```jsx
+pnpm commit
+```
+
+**Manual Option**: Commit directly with the proper format:
 
 ```jsx
 git commit -m "<type>(<package>): <subject>"
 ```
+
+For more details on commit message format and helpful tools, see [COMMIT_GUIDELINES.md](./COMMIT_GUIDELINES.md).
 
 ## Step 8: Push the changes to the remote repository
 
@@ -155,6 +165,10 @@ Example
 ```
 fix(server): missing entity on init
 ```
+
+**💡 Tip**: Use `pnpm commit` for an interactive helper that guides you through creating properly formatted commit messages.
+
+For complete details, examples, and tools to help you create valid commit messages, see [COMMIT_GUIDELINES.md](./COMMIT_GUIDELINES.md).
 
 ### Types:
 

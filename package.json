@@ -43,6 +43,7 @@
     "demo:next:angular": "turbo run dev --filter='@copilotkitnext/angular-demo-server' --filter='@copilotkitnext/angular-demo'",
     "demo:next:react": "pnpm -C examples/v2/react/demo dev",
     "dev:next:packages": "turbo run dev --filter='@copilotkitnext/core' --filter='@copilotkitnext/shared' --filter='@copilotkitnext/web-inspector' --filter='@copilotkitnext/runtime' --filter='@copilotkitnext/sqlite-runner' --filter='@copilotkitnext/react' --filter='@copilotkitnext/angular' --filter='@copilotkitnext/agent'",
+    "commit": "bash scripts/commit-helper.sh",
     "prepare": "husky"
   },
   "v2Leftovers": {

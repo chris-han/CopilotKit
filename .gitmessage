@@ -1,0 +1,12 @@
+# <type>: <subject>
+#
+# type: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+# subject: concise description (lowercase, no period at end)
+#
+# Example:
+# feat: add user authentication
+# fix: resolve navigation bug
+# docs: update README with installation steps
+# ci: update commitlint configuration
+#
+# More info: https://www.conventionalcommits.org/

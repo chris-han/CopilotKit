@@ -1,0 +1,3 @@
+[submodule "utilities/tax-newsletter"]
+	path = utilities/tax-newsletter
+	url = https://github.com/chris-han/KATPN_rss.git

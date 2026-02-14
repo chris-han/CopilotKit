@@ -25,7 +25,7 @@
   "types": "./dist/index.d.ts",
   "license": "MIT",
   "scripts": {
-    "build": "pnpm run graphql-codegen && tsup --clean && rollup -c rollup.config.mjs",
+    "build": "echo 'Skipping graphql-codegen due to duplicate graphql issue' && tsup --clean && rollup -c rollup.config.mjs",
     "dev": "concurrently \"pnpm run graphql-codegen:watch\" \"tsup --watch --no-splitting\"",
     "test": "vitest run",
     "test:watch": "vitest",

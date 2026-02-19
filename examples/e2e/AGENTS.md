@@ -1,5 +1,6 @@
 # Examples E2E (Playwright) — Notes for Agents & Future Devs
 
+
 This folder contains an end-to-end (e2e) smoke test harness for the repository’s `examples/`.
 
 The goals are:
